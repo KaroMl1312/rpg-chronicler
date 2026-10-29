@@ -1,0 +1,23 @@
+# Sekrety
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+
+# IDE
+.idea/
+.vscode/
+
+# Dane lokalne (audio, transkrypcje)
+data/
+*.m4a
+*.mp3
+*.wav
+*.flac
+*.ogg

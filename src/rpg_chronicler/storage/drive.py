@@ -1,0 +1,54 @@
+"""Synchronizacja z Google Drive przez rclone."""
+import os
+import subprocess
+
+from ..config import (
+    AUDIO_DIR,
+    RCLONE_AUDIO_REMOTE,
+    RCLONE_SUMMARY_REMOTE,
+    RCLONE_TXT_REMOTE,
+    SUMMARY_DIR,
+    TXT_DIR,
+)
+
+
+def rclone_copy(src: str, dst: str, quiet: bool = False) -> None:
+    """Kopiuje pliki rclone'em; rzuca CalledProcessError przy niepowodzeniu."""
+    subprocess.run(["rclone", "copy", src, dst, "--quiet" if quiet else "-P"], check=True)
+
+
+def sync_from_gdrive():
+    print("--- [1/4] Pobieranie nowych plików z Google Drive ---")
+    for path in (AUDIO_DIR, TXT_DIR, SUMMARY_DIR):
+        os.makedirs(path, exist_ok=True)
+
+    # Pobieramy też gotowe transkrypcje (z .mowcy.json) i podsumowania, żeby wiedzieć co już zostało zrobione
+    for remote, local in ((RCLONE_TXT_REMOTE, TXT_DIR), (RCLONE_SUMMARY_REMOTE, SUMMARY_DIR)):
+        try:
+            rclone_copy(remote, local, quiet=True)
+        except Exception as e:
+            print(f"[OSTRZEŻENIE] Nie udało się pobrać {remote}: {e}")
+
+    try:
+        rclone_copy(RCLONE_AUDIO_REMOTE, AUDIO_DIR)
+        print("Pobieranie zakończone z sukcesem.")
+    except Exception as e:
+        print(f"[OSTRZEŻENIE] Błąd podczas pobierania rclone: {e}")
+
+
+def upload_to_gdrive():
+    print("\n--- [4/4] Wysyłanie plików na Google Drive ---")
+
+    print("Wysyłanie transkrypcji...")
+    try:
+        rclone_copy(TXT_DIR, RCLONE_TXT_REMOTE)
+        print("Transkrypcje wysłane z sukcesem.")
+    except Exception as e:
+        print(f"[BŁĄD] Nie udało się wysłać transkrypcji: {e}")
+
+    print("Wysyłanie podsumowań AI...")
+    try:
+        rclone_copy(SUMMARY_DIR, RCLONE_SUMMARY_REMOTE)
+        print("Podsumowania wysłane z sukcesem.")
+    except Exception as e:
+        print(f"[BŁĄD] Nie udało się wysłać podsumowań: {e}")
