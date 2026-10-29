@@ -1,13 +1,61 @@
 import os
+import time
 
-from faster_whisper import WhisperModel
+from faster_whisper import BatchedInferencePipeline, WhisperModel
 from pyannote.audio import Pipeline
 from tqdm import tqdm
 
-from ..config import HUGGINGFACE_TOKEN, MODEL_SIZE, TXT_DIR
+from ..config import (
+    DIARIZATION_MODEL,
+    HUGGINGFACE_TOKEN,
+    MODEL_SIZE,
+    TXT_DIR,
+    WHISPER_BATCH_SIZE,
+    WHISPER_CPU_THREADS,
+    WHISPER_VAD,
+)
 from ..session import Session
 from ..transcript import Segment, Transcript, save_transcript
 from .merge import Turn, assign_speakers
+
+
+def format_duration(seconds: float) -> str:
+    minutes, secs = divmod(round(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes:02d}m {secs:02d}s" if hours else f"{minutes}m {secs:02d}s"
+
+
+def load_whisper(cpu_threads: int = WHISPER_CPU_THREADS) -> WhisperModel:
+    return WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
+
+
+def load_diarization(model: str = DIARIZATION_MODEL) -> Pipeline:
+    return Pipeline.from_pretrained(model, token=HUGGINGFACE_TOKEN)
+
+
+def diarize(pipeline: Pipeline, audio) -> list[Turn]:
+    """`audio` to ścieżka do pliku albo {"waveform": tensor, "sample_rate": int}."""
+    diarization = pipeline(audio)
+    return [Turn(turn.start, turn.end, spk)
+            for turn, _, spk in diarization.speaker_diarization.itertracks(yield_label=True)]
+
+
+def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_VAD,
+                     batch_size: int = WHISPER_BATCH_SIZE, show_progress: bool = True):
+    """Zwraca (lista segmentów, info). `audio` to ścieżka albo tablica numpy 16 kHz."""
+    if batch_size > 0:
+        segments_iter, info = BatchedInferencePipeline(whisper_model).transcribe(
+            audio, language="pl", batch_size=batch_size)
+    else:
+        segments_iter, info = whisper_model.transcribe(audio, language="pl", vad_filter=vad)
+
+    # Segmenty powstają w trakcie iterowania - stąd postęp liczony po czasie nagrania
+    segments = []
+    with tqdm(total=round(info.duration), unit="s", desc="Transkrypcja", disable=not show_progress) as progress:
+        for segment in segments_iter:
+            segments.append(segment)
+            progress.update(max(0, min(round(segment.end), progress.total) - progress.n))
+    return segments, info
 
 
 def transcribe_sessions(sessions: list[Session]) -> bool:
@@ -20,14 +68,10 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
         print("Wszystkie nagrania mają już gotowe transkrypcje!")
         return False
 
-    print("Ładowanie modeli Whisper oraz PyAnnote...")
-    whisper_model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
+    print(f"Ładowanie modeli Whisper ({MODEL_SIZE}, {WHISPER_CPU_THREADS} wątków) oraz PyAnnote...")
+    whisper_model = load_whisper()
+    diarization_pipeline = load_diarization()
 
-    # Ładowanie modelu do rozróżniania głosów
-    diarization_pipeline = Pipeline.from_pretrained(
-        "pyannote/speaker-diarization-3.1",
-        token=HUGGINGFACE_TOKEN
-    )
     processed_any = False
     for session in pending:
         filename = os.path.basename(session.audio_path)
@@ -35,18 +79,18 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
         try:
             # 1. Wykrywanie głosów (Diarization)
             print("Analizowanie głosów uczestników...")
-            diarization = diarization_pipeline(session.audio_path)
-            turns = [Turn(turn.start, turn.end, spk)
-                     for turn, _, spk in diarization.speaker_diarization.itertracks(yield_label=True)]
+            started = time.perf_counter()
+            turns = diarize(diarization_pipeline, session.audio_path)
+            diarization_time = time.perf_counter() - started
+            print(f"[CZAS] Rozpoznawanie głosów: {format_duration(diarization_time)}")
 
-            # 2. Transkrypcja tekstu (Whisper) - segmenty powstają w trakcie iterowania
+            # 2. Transkrypcja tekstu (Whisper)
             print("Transkrypcja mowy...")
-            segments_iter, info = whisper_model.transcribe(session.audio_path, language="pl")
-            segments = []
-            with tqdm(total=round(info.duration), unit="s", desc="Transkrypcja") as progress:
-                for segment in segments_iter:
-                    segments.append(segment)
-                    progress.update(max(0, min(round(segment.end), progress.total) - progress.n))
+            started = time.perf_counter()
+            segments, info = transcribe_audio(whisper_model, session.audio_path)
+            transcription_time = time.perf_counter() - started
+            print(f"[CZAS] Transkrypcja: {format_duration(transcription_time)} "
+                  f"(nagranie: {format_duration(info.duration)})")
 
             # 3. Dopasowywanie tekstu do konkretnego mówcy
             speakers = assign_speakers(segments, turns)

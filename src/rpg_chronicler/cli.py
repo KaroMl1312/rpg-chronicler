@@ -3,7 +3,7 @@ import argparse
 import os
 import sys
 
-from .config import LLM_PROVIDER
+from .config import DIARIZATION_MODEL, LLM_PROVIDER, WHISPER_CPU_THREADS
 from .session import SessionNotFound, list_sessions
 
 PROVIDERS = ["claude-code", "anthropic", "gemini"]
@@ -72,6 +72,16 @@ def cmd_summarize(args):
     from .summary import summarize_sessions
     summarize_sessions(list_sessions(args.sessions), args.provider,
                        interactive=args.interactive, allow_unnamed=args.allow_unnamed, force=args.force)
+
+
+def cmd_benchmark(args):
+    from .transcription.benchmark import run_benchmark
+    session = list_sessions([args.session])[0]
+    if not session.audio_path:
+        raise SessionNotFound(f"Sesja '{session.name}' nie ma lokalnego nagrania.")
+    run_benchmark(session.audio_path, args.seconds, threads=args.threads, vad=args.vad,
+                  batch_size=args.batch_size, diarization=not args.no_diarization,
+                  diarization_models=args.diarization_models)
 
 
 def cmd_run(args):
@@ -154,6 +164,20 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_args(p)
     p.add_argument("--force", action="store_true", help="wygeneruj ponownie istniejące podsumowania")
     p.set_defaults(func=cmd_summarize)
+
+    p = sub.add_parser("benchmark", help="zmierz szybkość transkrypcji na fragmencie nagrania")
+    p.add_argument("session", metavar="SESJA", help="sesja z lokalnym nagraniem")
+    p.add_argument("--seconds", type=int, default=300, help="długość fragmentu w sekundach (domyślnie 300)")
+    p.add_argument("--threads", type=int, nargs="+", default=[WHISPER_CPU_THREADS],
+                   help=f"liczby wątków do porównania, np. --threads 4 6 12 (domyślnie {WHISPER_CPU_THREADS})")
+    p.add_argument("--vad", action="store_true", help="włącz pomijanie ciszy")
+    p.add_argument("--batch-size", type=int, default=0, help="tryb wsadowy z podanym rozmiarem partii")
+    p.add_argument("--no-diarization", action="store_true", help="pomiń pomiar rozpoznawania głosów")
+    p.add_argument("--diarization-models", nargs="+", default=[DIARIZATION_MODEL], metavar="MODEL",
+                   help=f"modele diaryzacji do porównania (domyślnie {DIARIZATION_MODEL})")
+    p.add_argument("--no-whisper", dest="threads", action="store_const", const=[],
+                   help="pomiń pomiar Whispera")
+    p.set_defaults(func=cmd_benchmark)
 
     p = sub.add_parser("migrate", help="zamień starsze transkrypcje .txt na format JSON")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")

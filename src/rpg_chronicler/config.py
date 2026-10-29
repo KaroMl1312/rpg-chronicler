@@ -30,6 +30,10 @@ SUMMARY_DIR = os.path.expanduser("~/Documents/Podsumowania")
 CAMPAIGNS_FILE = PROJECT_ROOT / "kampanie.toml"
 
 MODEL_SIZE = "medium"
+WHISPER_CPU_THREADS = max(1, (os.cpu_count() or 2) // 2)  # liczba rdzeni fizycznych
+WHISPER_VAD = False          # pomijanie ciszy (szybciej, mniej "zmyślonych" zdań w ciszy)
+WHISPER_BATCH_SIZE = 0       # >0 = tryb wsadowy BatchedInferencePipeline (zawsze z VAD)
+DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
 
 # --- AI KONFIGURACJA (sekrety z .env) ---
