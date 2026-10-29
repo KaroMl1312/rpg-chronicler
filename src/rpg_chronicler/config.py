@@ -27,6 +27,8 @@ AUDIO_DIR = os.path.expanduser("~/Documents/Audio_sesje_rpg")
 TXT_DIR = os.path.expanduser("~/Documents/Transkrypcje")
 SUMMARY_DIR = os.path.expanduser("~/Documents/Podsumowania")
 
+CAMPAIGNS_FILE = PROJECT_ROOT / "kampanie.toml"
+
 MODEL_SIZE = "medium"
 SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
 

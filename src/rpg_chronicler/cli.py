@@ -1,5 +1,6 @@
 """Komendy CLI: rpg-chronicler <komenda> [opcje]. Bez komendy uruchamia pełny przebieg (run)."""
 import argparse
+import os
 import sys
 
 from .config import LLM_PROVIDER
@@ -14,11 +15,37 @@ def cmd_status(args):
         print("Brak sesji (nagrań ani transkrypcji).")
         return
     width = max(len(s.name) for s in sessions)
+    system_width = max(len("SYSTEM"), *(len(s.system_name) for s in sessions))
     mark = lambda ok: "✓" if ok else "-"
-    print(f"{'SESJA'.ljust(width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE")
+    transcript_mark = lambda s: "✓" if s.has_json else ("txt" if s.has_transcript else "-")
+    print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE")
     for s in sessions:
-        print(f"{s.name.ljust(width)}  {mark(s.audio_path):^5}  {mark(s.has_transcript):^12}  "
-              f"{mark(s.has_speakers):^5}  {mark(s.has_summary):^12}")
+        print(f"{s.name.ljust(width)}  {s.system_name.ljust(system_width)}  {mark(s.audio_path):^5}  "
+              f"{transcript_mark(s):^12}  {mark(s.has_speakers):^5}  {mark(s.has_summary):^12}")
+    if any(s.has_transcript and not s.has_json for s in sessions):
+        print("\ntxt = starszy format transkrypcji; zamień na JSON komendą: rpg-chronicler migrate")
+
+
+def cmd_migrate(args):
+    import json
+    from .transcript import Transcript
+
+    pending = [s for s in list_sessions(args.sessions) if s.has_transcript and not s.has_json]
+    if not pending:
+        print("Wszystkie transkrypcje są już w formacie JSON.")
+        return
+    for s in pending:
+        transcript = s.load_transcript()
+        transcript.audio = os.path.basename(s.audio_path) if s.audio_path else None
+        if transcript.segments:
+            transcript.duration = transcript.segments[-1].end
+        if args.dry_run:
+            print(f"[PODGLĄD] {s.name}: {len(transcript.segments)} segmentów, mówcy: {len(transcript.speakers)}")
+            continue
+        # Zapisujemy tylko JSON - oryginalny .txt zostaje nietknięty
+        with open(s.json_path, "w", encoding="utf-8") as f:
+            json.dump(transcript.to_dict(), f, ensure_ascii=False, indent=1)
+        print(f"[SUKCES] {s.name}: {len(transcript.segments)} segmentów -> {os.path.basename(s.json_path)}")
 
 
 def cmd_sync(args):
@@ -127,6 +154,11 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_args(p)
     p.add_argument("--force", action="store_true", help="wygeneruj ponownie istniejące podsumowania")
     p.set_defaults(func=cmd_summarize)
+
+    p = sub.add_parser("migrate", help="zamień starsze transkrypcje .txt na format JSON")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie zrobione")
+    p.set_defaults(func=cmd_migrate)
 
     p = sub.add_parser("upload", help="wyślij transkrypcje i podsumowania na Google Drive")
     p.set_defaults(func=cmd_upload)

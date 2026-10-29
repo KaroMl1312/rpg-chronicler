@@ -1,6 +1,8 @@
+import os
+import tempfile
+
 from rpg_chronicler.prompts import render
-from rpg_chronicler.session import system_name_from_filename
-from rpg_chronicler.transcript import compact_for_llm, detect_speakers
+from rpg_chronicler.transcript import Segment, Transcript, load_transcript, save_transcript
 
 TRANSCRIPT = """\
 [SPEAKER_00] [0.00s -> 2.50s]  Wchodzicie do karczmy.
@@ -9,9 +11,21 @@ TRANSCRIPT = """\
 [SPEAKER_UNKNOWN] [5.00s -> 6.00s]  {nawias}
 """
 
+LEGACY_TRANSCRIPT = """\
+[0.00s -> 2.00s]  To jest Fred.
+[2.00s -> 3.00s]  Wygląda na Freda.
+"""
+
+
+def test_parses_both_txt_formats():
+    t = Transcript.from_txt(TRANSCRIPT)
+    assert t.segments[0] == Segment(0.0, 2.5, "Wchodzicie do karczmy.", "SPEAKER_00")
+    legacy = Transcript.from_txt(LEGACY_TRANSCRIPT)
+    assert legacy.segments[1] == Segment(2.0, 3.0, "Wygląda na Freda.", None)
+
 
 def test_compact_strips_timestamps_and_merges_lines():
-    assert compact_for_llm(TRANSCRIPT) == (
+    assert Transcript.from_txt(TRANSCRIPT).compact_for_llm() == (
         "SPEAKER_00: Wchodzicie do karczmy. Jest pusto.\n"
         "SPEAKER_01: Rozglądam się.\n"
         "SPEAKER_UNKNOWN: {nawias}"
@@ -19,22 +33,35 @@ def test_compact_strips_timestamps_and_merges_lines():
 
 
 def test_compact_substitutes_names():
-    compact = compact_for_llm(TRANSCRIPT, {"SPEAKER_00": "MG", "SPEAKER_01": "Hans"})
+    compact = Transcript.from_txt(TRANSCRIPT).compact_for_llm({"SPEAKER_00": "MG", "SPEAKER_01": "Hans"})
     assert compact.startswith("MG: Wchodzicie do karczmy.")
     assert "Hans: Rozglądam się." in compact
 
 
-def test_detect_speakers_ignores_unknown():
-    assert detect_speakers(TRANSCRIPT) == ["SPEAKER_00", "SPEAKER_01"]
+def test_compact_keeps_legacy_lines_separate():
+    assert Transcript.from_txt(LEGACY_TRANSCRIPT).compact_for_llm() == "To jest Fred.\nWygląda na Freda."
 
 
-def test_system_name_from_filename():
-    assert system_name_from_filename("warhammer-fantasy_sesja12.txt") == "Warhammer Fantasy"
-    assert system_name_from_filename("sesja.txt") == "RPG"
+def test_speakers_ignore_unknown():
+    assert Transcript.from_txt(TRANSCRIPT).speakers == ["SPEAKER_00", "SPEAKER_01"]
+    assert Transcript.from_txt(LEGACY_TRANSCRIPT).speakers == []
+
+
+def test_save_and_load_json_and_txt():
+    t = Transcript.from_txt(TRANSCRIPT)
+    t.audio, t.duration = "sesja.m4a", 6.0
+    with tempfile.TemporaryDirectory() as tmp:
+        json_path, txt_path = os.path.join(tmp, "s.transkrypcja.json"), os.path.join(tmp, "s.txt")
+        save_transcript(t, json_path, txt_path)
+        assert load_transcript(json_path, txt_path) == t
+        with open(txt_path, encoding="utf-8") as f:
+            assert Transcript.from_txt(f.read()).segments == t.segments
+        os.remove(json_path)  # bez JSON wczytujemy starszy .txt
+        assert load_transcript(json_path, txt_path).segments == t.segments
 
 
 def test_prompts_render_with_braces_in_transcript():
-    prompt = render("summary", system_name="Warhammer", speaker_mapping_info="",
-                    transcript=compact_for_llm(TRANSCRIPT))
+    prompt = render("summary", system_name="Warhammer", speaker_mapping_info="", campaign_context="",
+                    transcript=Transcript.from_txt(TRANSCRIPT).compact_for_llm())
     assert "**Warhammer**" in prompt and "{nawias}" in prompt
     assert "Warhammer" in render("speaker_identification", system_name="Warhammer", transcript="x")

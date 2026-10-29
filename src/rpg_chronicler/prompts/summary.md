@@ -6,7 +6,7 @@ Zasady działania:
 2. Skup się na wydarzeniach fabularnych, decyzjach bohaterów, konkretyzowaniu zdobytych informacji.
 3. NIE POMIJAJ żadnych istotnych faktów, imion, nazw lokacji, zdobytych przedmiotów czy ustaleń z NPC-ami.
 4. Dopasuj słownictwo, klimat i styl narracji do realiów systemu.
-{speaker_mapping_info}
+{speaker_mapping_info}{campaign_context}
 
 Podsumowanie powinno zawierać:
 - Tytuł: 📜 Kronika Sesji [{system_name}]: [Chwytliwy tytuł pasujący do wydarzeń]

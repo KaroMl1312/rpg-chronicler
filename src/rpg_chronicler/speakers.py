@@ -1,13 +1,17 @@
 from .llm import LLMClient, LLMError, with_retry
 from .prompts import render
-from .transcript import compact_for_llm, detect_speakers
+from .transcript import Transcript
 
 
-def identify_speakers(llm: LLMClient, transcript_text: str, system_name: str) -> dict[str, str]:
+def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str) -> dict[str, str]:
     """Prosi AI o charakterystykę mówców, a potem pyta użytkownika o ich imiona/role."""
+    if not transcript.speakers:
+        print("[INFO] W transkrypcji nie ma rozpoznanych mówców (SPEAKER_XX).")
+        return {}
+
     prompt = render("speaker_identification",
                     system_name=system_name,
-                    transcript=compact_for_llm(transcript_text))
+                    transcript=transcript.compact_for_llm())
 
     print(f"\n[{llm.name}] Analizowanie transkrypcji w celu rozpoznania ról...")
     try:
@@ -20,14 +24,9 @@ def identify_speakers(llm: LLMClient, transcript_text: str, system_name: str) ->
     print(suggestion)
     print("---------------------------------------")
 
-    detected_speakers = detect_speakers(transcript_text)
-    if not detected_speakers:
-        print("[INFO] W pliku nie znaleziono etykiet typu [SPEAKER_XX].")
-        return {}
-
     mapping = {}
     print("\nPrzypisz imiona/role do wykrytych etykiet (pozostaw puste i wciśnij Enter, aby pominąć dany kod):")
-    for spk in detected_speakers:
+    for spk in transcript.speakers:
         name_input = input(f"Kto to jest '{spk}'? (np. MG / Hans / Anna): ").strip()
         if name_input:
             mapping[spk] = name_input

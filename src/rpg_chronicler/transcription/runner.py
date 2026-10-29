@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from ..config import HUGGINGFACE_TOKEN, MODEL_SIZE, TXT_DIR
 from ..session import Session
+from ..transcript import Segment, Transcript, save_transcript
 from .merge import Turn, assign_speakers
 
 
@@ -50,14 +51,17 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             # 3. Dopasowywanie tekstu do konkretnego mówcy
             speakers = assign_speakers(segments, turns)
 
-            # Zapis do pliku tymczasowego, żeby przerwany zapis nie zostawił niepełnej transkrypcji
-            tmp_path = session.txt_path + ".part"
-            with open(tmp_path, "w", encoding="utf-8") as f:
-                for segment, speaker in zip(segments, speakers):
-                    f.write(f"[{speaker}] [{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}\n")
-            os.replace(tmp_path, session.txt_path)
+            transcript = Transcript(
+                segments=[Segment(round(seg.start, 2), round(seg.end, 2), seg.text.strip(), speaker)
+                          for seg, speaker in zip(segments, speakers)],
+                audio=filename,
+                language=info.language,
+                model=MODEL_SIZE,
+                duration=round(info.duration, 2),
+            )
+            save_transcript(transcript, session.json_path, session.txt_path)
 
-            print(f"[SUKCES] Zapisano w: {session.txt_path}")
+            print(f"[SUKCES] Zapisano w: {session.json_path} (oraz .txt)")
             processed_any = True
         except Exception as e:
             print(f"[BŁĄD] Nie udało się przetworzyć {filename}: {e}")
