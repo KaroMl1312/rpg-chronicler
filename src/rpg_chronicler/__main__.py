@@ -1,14 +1,6 @@
-from .storage.drive import sync_from_gdrive, upload_to_gdrive
-from .summary import generate_summaries
-from .transcription.runner import transcribe_new_files
+import sys
 
-
-def main():
-    sync_from_gdrive()
-    transcribe_new_files()
-    generate_summaries()
-    upload_to_gdrive()
-
+from .cli import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

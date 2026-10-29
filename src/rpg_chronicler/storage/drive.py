@@ -18,7 +18,7 @@ def rclone_copy(src: str, dst: str, quiet: bool = False) -> None:
 
 
 def sync_from_gdrive():
-    print("--- [1/4] Pobieranie nowych plików z Google Drive ---")
+    print("--- Pobieranie nowych plików z Google Drive ---")
     for path in (AUDIO_DIR, TXT_DIR, SUMMARY_DIR):
         os.makedirs(path, exist_ok=True)
 
@@ -37,7 +37,7 @@ def sync_from_gdrive():
 
 
 def upload_to_gdrive():
-    print("\n--- [4/4] Wysyłanie plików na Google Drive ---")
+    print("\n--- Wysyłanie plików na Google Drive ---")
 
     print("Wysyłanie transkrypcji...")
     try:

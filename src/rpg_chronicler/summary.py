@@ -1,17 +1,11 @@
-import glob
 import os
 
-from .config import SUMMARY_DIR, TXT_DIR
-from .llm import LLMError, get_client, with_retry
+from .config import LLM_PROVIDER, SUMMARY_DIR
+from .llm import LLMClient, LLMError, get_client, with_retry
 from .prompts import render
+from .session import Session
 from .speakers import identify_speakers
 from .transcript import compact_for_llm, load_speaker_mapping, save_speaker_mapping
-
-
-def system_name_from_filename(base_name: str) -> str:
-    if "_" not in base_name:
-        return "RPG"
-    return base_name.split("_")[0].replace("-", " ").title()
 
 
 def speaker_mapping_info(mapping: dict[str, str]) -> str:
@@ -22,64 +16,107 @@ def speaker_mapping_info(mapping: dict[str, str]) -> str:
             + "\nUżywaj tych imion i ról przy opisywaniu akcji konkretnych bohaterów!")
 
 
-def generate_summaries():
-    print("\n--- [3/4] Generowanie podsumowań przez AI ---")
+def _read_transcript(session: Session) -> str:
+    with open(session.txt_path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _print_header(session: Session) -> None:
+    print(f"\n==================================================")
+    print(f"Przetwarzanie pliku: {session.name} (System: {session.system_name})")
+    print(f"==================================================")
+
+
+class _LazyClient:
+    """Tworzy klienta LLM dopiero przy pierwszym użyciu (np. nie wymaga klucza, gdy nie ma nic do zrobienia)."""
+
+    def __init__(self, provider: str):
+        self.provider = provider
+        self._client: LLMClient | None = None
+
+    def get(self) -> LLMClient:
+        if self._client is None:
+            self._client = get_client(self.provider)
+        return self._client
+
+
+def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
+    """Interaktywne nadawanie imion mówcom w sesjach, które nie mają jeszcze mapowania."""
+    print("\n--- Rozpoznawanie mówców ---")
+    pending = [s for s in sessions if s.has_transcript and (force or not s.has_speakers)]
+    if not pending:
+        print("Wszystkie transkrypcje mają już przypisanych mówców.")
+        return
+
+    llm = _LazyClient(provider)
+    for session in pending:
+        _print_header(session)
+        try:
+            mapping = identify_speakers(llm.get(), _read_transcript(session), session.system_name)
+        except LLMError as e:
+            print(f"[OSTRZEŻENIE] {e}")
+            return
+        if mapping:
+            save_speaker_mapping(session.txt_path, mapping)
+            print(f"[SUKCES] Zapisano mówców w: {session.speakers_path}")
+
+
+def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
+                       interactive: bool, allow_unnamed: bool = False, force: bool = False) -> None:
+    """Generuje podsumowania dla sesji z transkrypcją.
+
+    Sesje bez przypisanych mówców: w trybie interaktywnym pytamy, czy je nazwać;
+    w nieinteraktywnym pomijamy (chyba że `allow_unnamed`), żeby nie tworzyć kronik bez imion.
+    """
+    print("\n--- Generowanie podsumowań przez AI ---")
     os.makedirs(SUMMARY_DIR, exist_ok=True)
 
-    pending = []
-    for txt_path in sorted(glob.glob(os.path.join(TXT_DIR, "*.txt"))):
-        base_name = os.path.basename(txt_path)
-        summary_path = os.path.join(SUMMARY_DIR, base_name.replace(".txt", "_podsumowanie.txt"))
-        # Jeśli podsumowanie już istnieje lokalnie lub na GDrive -> pomijamy!
-        if os.path.exists(summary_path):
-            print(f"[POMINIĘTO] Podsumowanie dla {base_name} już istnieje.")
+    llm = _LazyClient(provider)
+    for session in sessions:
+        if not session.has_transcript:
             continue
-        pending.append((txt_path, summary_path))
+        # Jeśli podsumowanie już istnieje lokalnie lub na GDrive -> pomijamy!
+        if session.has_summary and not force:
+            print(f"[POMINIĘTO] Podsumowanie dla {session.name} już istnieje.")
+            continue
 
-    if not pending:
-        return
-
-    try:
-        llm = get_client()
-    except LLMError as e:
-        print(f"[OSTRZEŻENIE] {e}")
-        return
-
-    for txt_path, summary_path in pending:
-        base_name = os.path.basename(txt_path)
-        system_name = system_name_from_filename(base_name)
-
-        print(f"\n==================================================")
-        print(f"Przetwarzanie pliku: {base_name} (System: {system_name})")
-        print(f"==================================================")
-
-        with open(txt_path, "r", encoding="utf-8") as f:
-            transcript_text = f.read()
-
-        # 1. Sprawdzamy czy mamy już zapisane mapowanie w pliku JSON
-        mapping = load_speaker_mapping(txt_path)
+        transcript_text = _read_transcript(session)
+        mapping = load_speaker_mapping(session.txt_path)
         if mapping:
-            print("[INFO] Wczytano zapisane wcześniej imiona mówców z pliku .mowcy.json")
-        else:
-            # 2. Jeśli brak mapowania, pytamy użytkownika czy chce spróbować zidentyfikować mówców
-            user_choice = input(f"Czy chcesz spróbować nadać imiona dla wykrytych mówców w {base_name}? (y/n): ").strip().lower()
+            print(f"[INFO] {session.name}: wczytano imiona mówców z pliku .mowcy.json")
+        elif interactive:
+            _print_header(session)
+            user_choice = input(f"Czy chcesz spróbować nadać imiona dla wykrytych mówców w {session.name}? (y/n): ").strip().lower()
             if user_choice == "y":
-                mapping = identify_speakers(llm, transcript_text, system_name)
+                try:
+                    mapping = identify_speakers(llm.get(), transcript_text, session.system_name)
+                except LLMError as e:
+                    print(f"[OSTRZEŻENIE] {e}")
+                    return
                 if mapping:
-                    save_speaker_mapping(txt_path, mapping)
+                    save_speaker_mapping(session.txt_path, mapping)
+        elif not allow_unnamed:
+            print(f"[POMINIĘTO] {session.name}: brak przypisanych mówców. "
+                  f"Uruchom: rpg-chronicler speakers {session.name} (lub summarize --allow-unnamed)")
+            continue
 
-        # 3. Generowanie właściwego podsumowania
-        print(f"\n[{llm.name}] Generowanie podsumowania w klimacie systemowym '{system_name}'...")
+        try:
+            client = llm.get()
+        except LLMError as e:
+            print(f"[OSTRZEŻENIE] {e}")
+            return
+
+        print(f"\n[{client.name}] Generowanie podsumowania {session.name} w klimacie '{session.system_name}'...")
         prompt = render("summary",
-                        system_name=system_name,
+                        system_name=session.system_name,
                         speaker_mapping_info=speaker_mapping_info(mapping),
                         transcript=compact_for_llm(transcript_text, mapping))
         try:
-            summary = with_retry(lambda: llm.generate(prompt), f"podsumowanie {base_name}")
+            summary = with_retry(lambda: client.generate(prompt), f"podsumowanie {session.name}")
         except LLMError:
-            print(f"[PORAŻKA] Pomijam {base_name}.")
+            print(f"[PORAŻKA] Pomijam {session.name}.")
             continue
 
-        with open(summary_path, "w", encoding="utf-8") as f:
+        with open(session.summary_path, "w", encoding="utf-8") as f:
             f.write(summary)
-        print(f"[SUKCES] Zapisano kronikę ({system_name}) w: {summary_path}")
+        print(f"[SUKCES] Zapisano kronikę ({session.system_name}) w: {session.summary_path}")

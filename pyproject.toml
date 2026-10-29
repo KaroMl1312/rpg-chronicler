@@ -19,7 +19,7 @@ gemini = ["google-genai>=2.0"]
 dev = ["pytest"]
 
 [project.scripts]
-rpg-chronicler = "rpg_chronicler.__main__:main"
+rpg-chronicler = "rpg_chronicler.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

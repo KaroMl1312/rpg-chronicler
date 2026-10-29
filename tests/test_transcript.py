@@ -1,5 +1,5 @@
 from rpg_chronicler.prompts import render
-from rpg_chronicler.summary import system_name_from_filename
+from rpg_chronicler.session import system_name_from_filename
 from rpg_chronicler.transcript import compact_for_llm, detect_speakers
 
 TRANSCRIPT = """\
