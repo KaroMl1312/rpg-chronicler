@@ -26,3 +26,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 rpg_chronicler = ["prompts/*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q -p no:anyio"
