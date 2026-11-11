@@ -65,7 +65,8 @@ def cmd_transcribe(args):
 
 def cmd_speakers(args):
     from .summary import name_speakers
-    name_speakers(list_sessions(args.sessions), args.provider, force=args.force)
+    name_speakers(list_sessions(args.sessions), args.provider, force=args.force,
+                  suggest_only=args.suggest_only)
 
 
 def cmd_summarize(args):
@@ -156,6 +157,8 @@ def build_parser() -> argparse.ArgumentParser:
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie bez mówców)")
     provider_arg(p)
     p.add_argument("--force", action="store_true", help="przypisz ponownie, nawet jeśli mapowanie istnieje")
+    p.add_argument("--suggest-only", action="store_true",
+                   help="tylko zapisz sugestię AI (.mowcy-sugestia.md), bez pytania o imiona")
     p.set_defaults(func=cmd_speakers)
 
     p = sub.add_parser("summarize", help="wygeneruj brakujące podsumowania")

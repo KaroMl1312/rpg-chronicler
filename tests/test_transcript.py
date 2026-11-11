@@ -65,3 +65,23 @@ def test_prompts_render_with_braces_in_transcript():
                     transcript=Transcript.from_txt(TRANSCRIPT).compact_for_llm())
     assert "**Warhammer**" in prompt and "{nawias}" in prompt
     assert "Warhammer" in render("speaker_identification", system_name="Warhammer", transcript="x")
+
+
+def test_speaker_samples_merge_consecutive_segments_and_pick_longest():
+    transcript = Transcript(segments=[
+        Segment(0.0, 2.0, "Witajcie", "SPEAKER_00"),
+        Segment(2.5, 6.0, "w karczmie.", "SPEAKER_00"),   # przerwa 0,5 s -> ta sama wypowiedź
+        Segment(6.0, 7.0, "Hej!", "SPEAKER_01"),
+        Segment(7.0, 8.0, "Kto tam?", "SPEAKER_00"),
+        Segment(20.0, 21.0, "  ", "SPEAKER_00"),          # pusty tekst pomijamy
+        Segment(30.0, 33.0, "Dalej.", "SPEAKER_00"),
+    ])
+    samples = transcript.speaker_samples("SPEAKER_00", limit=2)
+    assert [(s.start, s.end, s.text) for s in samples] == [(0.0, 6.0, "Witajcie w karczmie."), (30.0, 33.0, "Dalej.")]
+    assert transcript.speaker_samples("SPEAKER_00", limit=5, max_duration=3.0)[0].end == 2.0
+
+
+def test_speaker_stats():
+    transcript = Transcript.from_txt(TRANSCRIPT)
+    assert transcript.speaker_stats()["SPEAKER_00"] == (2, 4.0)
+    assert transcript.speaker_stats()["SPEAKER_01"] == (1, 1.0)

@@ -1,10 +1,11 @@
 import os
 
+from . import progress
 from .config import LLM_PROVIDER, SUMMARY_DIR
 from .llm import LLMClient, LLMError, get_client, with_retry
 from .prompts import render
 from .session import Session
-from .speakers import identify_speakers
+from .speakers import identify_speakers, save_suggestion, suggest_speakers
 from .transcript import load_speaker_mapping, save_speaker_mapping
 
 
@@ -40,10 +41,14 @@ class _LazyClient:
         return self._client
 
 
-def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
-    """Interaktywne nadawanie imion mówcom w sesjach, które nie mają jeszcze mapowania."""
+def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False,
+                  suggest_only: bool = False) -> None:
+    """Interaktywne nadawanie imion mówcom w sesjach, które nie mają jeszcze mapowania.
+
+    `suggest_only`: tylko zapisuje sugestię AI do pliku .mowcy-sugestia.md, bez pytania o imiona (dla GUI).
+    """
     print("\n--- Rozpoznawanie mówców ---")
-    pending = [s for s in sessions if s.has_transcript and (force or not s.has_speakers)]
+    pending = [s for s in sessions if s.has_transcript and (force or suggest_only or not s.has_speakers)]
     pending = [(s, t) for s in pending if (t := s.load_transcript()).speakers]
     if not pending:
         print("Wszystkie transkrypcje mają już przypisanych mówców.")
@@ -52,10 +57,20 @@ def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: 
     llm = _LazyClient(provider)
     for session, transcript in pending:
         _print_header(session)
+        progress.report("sugestia mówców", session.name)
         try:
-            mapping = identify_speakers(llm.get(), transcript, session.system_name)
+            if suggest_only:
+                suggestion = suggest_speakers(llm.get(), transcript, session.system_name)
+                save_suggestion(session.speaker_suggestion_path, suggestion)
+                print(suggestion)
+                print(f"[SUKCES] Zapisano sugestię mówców w: {session.speaker_suggestion_path}")
+                continue
+            mapping = identify_speakers(llm.get(), transcript, session.system_name,
+                                        session.speaker_suggestion_path)
         except LLMError as e:
             print(f"[OSTRZEŻENIE] {e}")
+            if suggest_only:
+                continue
             return
         if mapping:
             save_speaker_mapping(session.txt_path, mapping)
@@ -92,7 +107,8 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             user_choice = input(f"Czy chcesz spróbować nadać imiona dla wykrytych mówców w {session.name}? (y/n): ").strip().lower()
             if user_choice == "y":
                 try:
-                    mapping = identify_speakers(llm.get(), transcript, session.system_name)
+                    mapping = identify_speakers(llm.get(), transcript, session.system_name,
+                                                session.speaker_suggestion_path)
                 except LLMError as e:
                     print(f"[OSTRZEŻENIE] {e}")
                     return
@@ -109,6 +125,7 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             print(f"[OSTRZEŻENIE] {e}")
             return
 
+        progress.report("kronika", session.name)
         print(f"\n[{client.name}] Generowanie podsumowania {session.name} w klimacie '{session.system_name}'...")
         prompt = render("summary",
                         system_name=session.system_name,

@@ -72,6 +72,40 @@ class Transcript:
         """Etykiety mówców wykryte przez diaryzację (bez SPEAKER_UNKNOWN)."""
         return sorted({s.speaker for s in self.segments if s.speaker and re.fullmatch(r"SPEAKER_\d+", s.speaker)})
 
+    def speaker_stats(self) -> dict[str, tuple[int, float]]:
+        """Mówca -> (liczba wypowiedzi, łączny czas mówienia w sekundach)."""
+        stats: dict[str, tuple[int, float]] = {}
+        for s in self.segments:
+            if s.speaker in (None, ""):
+                continue
+            count, seconds = stats.get(s.speaker, (0, 0.0))
+            stats[s.speaker] = (count + 1, seconds + max(0.0, s.end - s.start))
+        return stats
+
+    def speaker_samples(self, speaker: str, limit: int = 5, max_gap: float = 1.5,
+                        max_duration: float = 20.0) -> list[Segment]:
+        """Najdłuższe wypowiedzi mówcy (do odsłuchu przy nadawaniu imion), w kolejności czasowej.
+
+        Kolejne segmenty tego samego mówcy (przerwa < `max_gap` s) są sklejane w jedną wypowiedź,
+        bo Whisper tnie mowę na krótkie kawałki; wypowiedź nie przekracza `max_duration` sekund.
+        """
+        turns: list[Segment] = []
+        previous: Segment | None = None
+        for s in self.segments:
+            text = s.text.strip()
+            if not text:
+                continue
+            if s.speaker == speaker:
+                last = turns[-1] if turns else None
+                if (last is not None and previous is not None and previous.speaker == speaker
+                        and s.start - last.end < max_gap and s.end - last.start <= max_duration):
+                    last.end, last.text = s.end, f"{last.text} {text}"
+                else:
+                    turns.append(Segment(s.start, s.end, text, speaker))
+            previous = s
+        longest = sorted(turns, key=lambda s: s.end - s.start, reverse=True)[:limit]
+        return sorted(longest, key=lambda s: s.start)
+
     def compact_for_llm(self, mapping: dict[str, str] | None = None) -> str:
         """Tekst bez znaczników czasu: kolejne wypowiedzi tego samego mówcy sklejone, z imionami z mapowania.
 

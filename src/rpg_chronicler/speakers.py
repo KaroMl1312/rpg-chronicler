@@ -3,27 +3,17 @@ from .prompts import render
 from .transcript import Transcript
 
 
-def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str) -> dict[str, str]:
-    """Prosi AI o charakterystykę mówców, a potem pyta użytkownika o ich imiona/role."""
-    if not transcript.speakers:
-        print("[INFO] W transkrypcji nie ma rozpoznanych mówców (SPEAKER_XX).")
-        return {}
-
+def suggest_speakers(llm: LLMClient, transcript: Transcript, system_name: str) -> str:
+    """Prosi AI o charakterystykę mówców. Rzuca LLMError, gdy się nie uda."""
     prompt = render("speaker_identification",
                     system_name=system_name,
                     transcript=transcript.compact_for_llm())
-
     print(f"\n[{llm.name}] Analizowanie transkrypcji w celu rozpoznania ról...")
-    try:
-        suggestion = with_retry(lambda: llm.generate(prompt), "rozpoznawanie mówców")
-    except LLMError:
-        print("[PORAŻKA] Nie udało się uzyskać sugestii mówców. Możesz spróbować ponownie przy następnym uruchomieniu.")
-        return {}
+    return with_retry(lambda: llm.generate(prompt), "rozpoznawanie mówców")
 
-    print(f"\n--- Rozpoznani mówcy według {llm.name} ---")
-    print(suggestion)
-    print("---------------------------------------")
 
+def ask_speaker_names(transcript: Transcript) -> dict[str, str]:
+    """Pyta w terminalu o imię/rolę dla każdej etykiety SPEAKER_XX."""
     mapping = {}
     print("\nPrzypisz imiona/role do wykrytych etykiet (pozostaw puste i wciśnij Enter, aby pominąć dany kod):")
     for spk in transcript.speakers:
@@ -31,3 +21,29 @@ def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str) 
         if name_input:
             mapping[spk] = name_input
     return mapping
+
+
+def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str,
+                      suggestion_path: str | None = None) -> dict[str, str]:
+    """Prosi AI o charakterystykę mówców, a potem pyta użytkownika o ich imiona/role."""
+    if not transcript.speakers:
+        print("[INFO] W transkrypcji nie ma rozpoznanych mówców (SPEAKER_XX).")
+        return {}
+
+    try:
+        suggestion = suggest_speakers(llm, transcript, system_name)
+    except LLMError:
+        print("[PORAŻKA] Nie udało się uzyskać sugestii mówców. Możesz spróbować ponownie przy następnym uruchomieniu.")
+        return {}
+    if suggestion_path:
+        save_suggestion(suggestion_path, suggestion)
+
+    print(f"\n--- Rozpoznani mówcy według {llm.name} ---")
+    print(suggestion)
+    print("---------------------------------------")
+    return ask_speaker_names(transcript)
+
+
+def save_suggestion(path: str, suggestion: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(suggestion)

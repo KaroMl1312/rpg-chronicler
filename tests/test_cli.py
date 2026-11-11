@@ -43,3 +43,16 @@ def test_summarize_non_interactive_from_cli(workspace):
     workspace.add_transcript("Warhammer_1", TRANSCRIPT)
     assert cli.main(["summarize", "--no-interactive", "--allow-unnamed"]) == 0
     assert (workspace.dirs["summary"] / "Warhammer_1_podsumowanie.txt").read_text(encoding="utf-8") == "KRONIKA"
+
+
+def test_speakers_suggest_only_saves_suggestion_without_asking(workspace, monkeypatch):
+    workspace.add_transcript("Warhammer_1", TRANSCRIPT)
+    workspace.llm.response = "SPEAKER_00 to MG."
+    monkeypatch.setattr("builtins.input", lambda *_: (_ for _ in ()).throw(AssertionError("input() w trybie GUI")))
+
+    assert cli.main(["speakers", "--suggest-only", "Warhammer_1"]) == 0
+    suggestion = workspace.dirs["txt"] / "Warhammer_1.mowcy-sugestia.md"
+    assert suggestion.read_text(encoding="utf-8") == "SPEAKER_00 to MG."
+    assert not (workspace.dirs["txt"] / "Warhammer_1.mowcy.json").exists()
+    # sugestia (.md) nie może być brana za osobną sesję
+    assert [s.name for s in cli.list_sessions()] == ["Warhammer_1"]

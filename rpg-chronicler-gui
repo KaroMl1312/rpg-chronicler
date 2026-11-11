@@ -1,0 +1,5 @@
+#!/bin/sh
+# GUI działa na systemowym Pythonie (PyGObject, GTK 4, libadwaita z Fedory);
+# transkrypcję i kroniki zleca komendzie .venv/bin/rpg-chronicler.
+ROOT="$(dirname "$(readlink -f "$0")")"
+PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m rpg_chronicler.gui "$@"

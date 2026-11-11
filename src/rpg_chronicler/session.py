@@ -32,6 +32,11 @@ class Session:
         return speakers_json_path(self.txt_path)
 
     @property
+    def speaker_suggestion_path(self) -> str:
+        """Ostatnia sugestia AI dotycząca mówców (.md, żeby nie była brana za transkrypcję .txt)."""
+        return os.path.join(TXT_DIR, f"{self.name}.mowcy-sugestia.md")
+
+    @property
     def summary_path(self) -> str:
         return os.path.join(SUMMARY_DIR, f"{self.name}_podsumowanie.txt")
 

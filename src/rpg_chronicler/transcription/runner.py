@@ -5,6 +5,7 @@ from faster_whisper import BatchedInferencePipeline, WhisperModel
 from pyannote.audio import Pipeline
 from tqdm import tqdm
 
+from .. import progress
 from ..config import (
     DIARIZATION_MODEL,
     HUGGINGFACE_TOKEN,
@@ -33,15 +34,32 @@ def load_diarization(model: str = DIARIZATION_MODEL) -> Pipeline:
     return Pipeline.from_pretrained(model, token=HUGGINGFACE_TOKEN)
 
 
-def diarize(pipeline: Pipeline, audio) -> list[Turn]:
+def _progress_hook(session_name: str | None):
+    """Hook pyannote zgłaszający postęp kolejnych etapów diaryzacji (tylko w trybie dla GUI)."""
+    names = {"segmentation": "segmentacja", "speaker_counting": "liczenie mówców",
+             "embeddings": "cechy głosów", "discrete_diarization": "przypisanie"}
+
+    def hook(step_name, step_artifact, file=None, total=None, completed=None):
+        if total is None:
+            return  # zakończenie etapu - kolejny i tak zgłosi swój postęp
+        step = names.get(step_name, step_name)
+        progress.report(f"rozpoznawanie głosów: {step}", session_name, completed, total)
+    return hook
+
+
+def diarize(pipeline: Pipeline, audio, session_name: str | None = None) -> list[Turn]:
     """`audio` to ścieżka do pliku albo {"waveform": tensor, "sample_rate": int}."""
-    diarization = pipeline(audio)
+    if progress.enabled():
+        diarization = pipeline(audio, hook=_progress_hook(session_name))
+    else:
+        diarization = pipeline(audio)
     return [Turn(turn.start, turn.end, spk)
             for turn, _, spk in diarization.speaker_diarization.itertracks(yield_label=True)]
 
 
 def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_VAD,
-                     batch_size: int = WHISPER_BATCH_SIZE, show_progress: bool = True):
+                     batch_size: int = WHISPER_BATCH_SIZE, show_progress: bool = True,
+                     session_name: str | None = None):
     """Zwraca (lista segmentów, info). `audio` to ścieżka albo tablica numpy 16 kHz."""
     if batch_size > 0:
         segments_iter, info = BatchedInferencePipeline(whisper_model).transcribe(
@@ -51,10 +69,14 @@ def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_
 
     # Segmenty powstają w trakcie iterowania - stąd postęp liczony po czasie nagrania
     segments = []
-    with tqdm(total=round(info.duration), unit="s", desc="Transkrypcja", disable=not show_progress) as progress:
+    report = show_progress and progress.enabled()
+    with tqdm(total=round(info.duration), unit="s", desc="Transkrypcja",
+              disable=not show_progress or report) as bar:
         for segment in segments_iter:
             segments.append(segment)
-            progress.update(max(0, min(round(segment.end), progress.total) - progress.n))
+            bar.update(max(0, min(round(segment.end), bar.total) - bar.n))
+            if report:
+                progress.report("transkrypcja", session_name, min(segment.end, info.duration), info.duration)
     return segments, info
 
 
@@ -68,6 +90,7 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
         print("Wszystkie nagrania mają już gotowe transkrypcje!")
         return False
 
+    progress.report("ładowanie modeli")
     print(f"Ładowanie modeli Whisper ({MODEL_SIZE}, {WHISPER_CPU_THREADS} wątków) oraz PyAnnote...")
     whisper_model = load_whisper()
     diarization_pipeline = load_diarization()
@@ -80,14 +103,16 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             # 1. Wykrywanie głosów (Diarization)
             print("Analizowanie głosów uczestników...")
             started = time.perf_counter()
-            turns = diarize(diarization_pipeline, session.audio_path)
+            progress.report("rozpoznawanie głosów", session.name)
+            turns = diarize(diarization_pipeline, session.audio_path, session.name)
             diarization_time = time.perf_counter() - started
             print(f"[CZAS] Rozpoznawanie głosów: {format_duration(diarization_time)}")
 
             # 2. Transkrypcja tekstu (Whisper)
             print("Transkrypcja mowy...")
             started = time.perf_counter()
-            segments, info = transcribe_audio(whisper_model, session.audio_path)
+            progress.report("transkrypcja", session.name)
+            segments, info = transcribe_audio(whisper_model, session.audio_path, session_name=session.name)
             transcription_time = time.perf_counter() - started
             print(f"[CZAS] Transkrypcja: {format_duration(transcription_time)} "
                   f"(nagranie: {format_duration(info.duration)})")
