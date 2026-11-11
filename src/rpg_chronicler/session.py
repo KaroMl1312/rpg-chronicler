@@ -67,12 +67,35 @@ def _name_from_path(path: str, suffix: str) -> str:
     return os.path.basename(path)[:-len(suffix)]
 
 
+def _find_audio() -> dict[str, str]:
+    """Nagrania w AUDIO_DIR: nazwa sesji -> ścieżka. Rozszerzenia bez względu na wielkość liter.
+
+    Gdy sesja ma kilka nagrań (np. .m4a i .flac), wybieramy pierwsze wg kolejności SUPPORTED_EXTS
+    i ostrzegamy o pozostałych.
+    """
+    try:
+        filenames = sorted(os.listdir(AUDIO_DIR))
+    except FileNotFoundError:
+        return {}
+
+    candidates: dict[str, list[str]] = {}
+    for filename in filenames:
+        name, ext = os.path.splitext(filename)
+        if ext.lower() in SUPPORTED_EXTS:
+            candidates.setdefault(name, []).append(filename)
+
+    audio = {}
+    for name, files in candidates.items():
+        files.sort(key=lambda f: SUPPORTED_EXTS.index(os.path.splitext(f)[1].lower()))
+        if len(files) > 1:
+            print(f"[OSTRZEŻENIE] Sesja {name} ma kilka nagrań ({', '.join(files)}) - używam {files[0]}.")
+        audio[name] = os.path.join(AUDIO_DIR, files[0])
+    return audio
+
+
 def list_sessions(names: list[str] | None = None) -> list[Session]:
     """Zwraca sesje znalezione na podstawie nagrań i transkrypcji (opcjonalnie tylko wskazane)."""
-    audio = {}
-    for ext in SUPPORTED_EXTS:
-        for path in glob.glob(os.path.join(AUDIO_DIR, f"*{ext}")):
-            audio[os.path.splitext(os.path.basename(path))[0]] = path
+    audio = _find_audio()
     transcripts = {_name_from_path(p, ".txt") for p in glob.glob(os.path.join(TXT_DIR, "*.txt"))}
     transcripts |= {_name_from_path(p, TRANSCRIPT_JSON_SUFFIX)
                     for p in glob.glob(os.path.join(TXT_DIR, f"*{TRANSCRIPT_JSON_SUFFIX}"))}
