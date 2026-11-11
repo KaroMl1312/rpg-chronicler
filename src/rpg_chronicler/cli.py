@@ -142,6 +142,33 @@ def cmd_trim(args):
     print(f"[SUKCES] Przycięto {os.path.basename(session.audio_path)}. Oryginał: {backup}")
 
 
+def cmd_voices(args):
+    from .transcription.voiceprints import voiceprint_sessions
+    from .voices import has_voiceprints
+
+    sessions = list_sessions(args.sessions)
+    if not args.sessions and not args.force:
+        sessions = [s for s in sessions if not has_voiceprints(s)]
+    done = voiceprint_sessions(sessions, force=args.force)
+    print(f"\nPoliczono odciski głosu dla {done} sesji." if done else "Brak sesji do przetworzenia.")
+    if args.sessions and len(args.sessions) == 1 and not args.no_suggest:
+        _print_voice_suggestions(sessions[0])
+
+
+def _print_voice_suggestions(session):
+    from .voices import suggest_for_session
+    suggestions = suggest_for_session(session)
+    if not suggestions:
+        print("Brak podpowiedzi - nazwij mówców w innych sesjach tej kampanii, żeby program poznał ich głosy.")
+        return
+    print(f"\nRozpoznane głosy ({session.name}):")
+    for spk in sorted(suggestions):
+        s = suggestions[spk]
+        kind = "pewne" if s.confident else "możliwe"
+        others = ", ".join(f"{n} {score:.0%}" for n, score in s.alternatives)
+        print(f"  {spk}: {s.name} ({s.score:.0%}, {kind})" + (f"   [inne: {others}]" if others else ""))
+
+
 def cmd_glossary(args):
     from . import glossary
     from .campaigns import campaign_for
@@ -284,6 +311,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="przytnij mimo istniejącej transkrypcji")
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż plan")
     p.set_defaults(func=cmd_trim)
+
+    p = sub.add_parser("voices", help="policz odciski głosu mówców (do rozpoznawania graczy w kolejnych sesjach)")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie bez odcisków)")
+    p.add_argument("--force", action="store_true", help="policz ponownie istniejące odciski")
+    p.add_argument("--no-suggest", action="store_true", help="nie pokazuj podpowiedzi imion po policzeniu")
+    p.set_defaults(func=cmd_voices)
 
     p = sub.add_parser("glossary", help="AI proponuje słownik kampanii (nazwy) na podstawie jej kronik")
     p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")

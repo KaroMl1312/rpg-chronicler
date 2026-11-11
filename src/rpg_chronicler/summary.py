@@ -8,6 +8,7 @@ from .prompts import render
 from .session import Session, list_sessions
 from .speakers import identify_speakers, save_suggestion, suggest_speakers
 from .transcript import load_speaker_mapping, save_speaker_mapping
+from .voices import suggest_for_session
 
 
 def speaker_mapping_info(mapping: dict[str, str]) -> str:
@@ -95,7 +96,7 @@ def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: 
                 print(f"[SUKCES] Zapisano sugestię mówców w: {session.speaker_suggestion_path}")
                 continue
             mapping = identify_speakers(llm.get(), transcript, session.campaign,
-                                        session.speaker_suggestion_path)
+                                        session.speaker_suggestion_path, suggest_for_session(session))
         except LLMError as e:
             print(f"[OSTRZEŻENIE] {e}")
             if suggest_only:
@@ -137,7 +138,7 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             if user_choice == "y":
                 try:
                     mapping = identify_speakers(llm.get(), transcript, session.campaign,
-                                                session.speaker_suggestion_path)
+                                                session.speaker_suggestion_path, suggest_for_session(session))
                 except LLMError as e:
                     print(f"[OSTRZEŻENIE] {e}")
                     return

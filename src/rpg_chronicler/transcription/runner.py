@@ -19,6 +19,7 @@ from ..config import (
 )
 from ..session import Session
 from ..transcript import Segment, Transcript, save_transcript
+from ..voices import save_voiceprints, voices_path
 from .merge import Turn, assign_speakers
 
 
@@ -109,6 +110,7 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
     diarization_pipeline = load_diarization()
 
     processed_any = False
+    embedding_model = None
     for session in pending:
         filename = os.path.basename(session.audio_path)
         print(f"\n[PRZETWARZANIE] {filename}...")
@@ -157,5 +159,18 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             processed_any = True
         except Exception as e:
             print(f"[BŁĄD] Nie udało się przetworzyć {filename}: {e}")
+            continue
+
+        # 4. Odciski głosu mówców - do rozpoznawania graczy w kolejnych sesjach
+        try:
+            from .voiceprints import compute_voiceprints, load_embedding_model
+            if embedding_model is None:
+                embedding_model = load_embedding_model()
+            voiceprints = compute_voiceprints(embedding_model, session.audio_path, transcript, session.name)
+            save_voiceprints(voices_path(session), voiceprints)
+            print(f"[SUKCES] Odciski głosu {len(voiceprints)} mówców zapisane.")
+        except Exception as e:  # transkrypcja jest już zapisana - odciski można policzyć później (voices)
+            print(f"[OSTRZEŻENIE] Nie udało się policzyć odcisków głosu {filename}: {e} "
+                  f"(spróbuj: rpg-chronicler voices {session.name})")
 
     return processed_any

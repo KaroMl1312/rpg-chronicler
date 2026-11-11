@@ -26,7 +26,7 @@ python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev,anthropic,gemini]"  
 ./rpg-chronicler-gui --instaluj          # wpis w menu GNOME (~/.local/share), --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -39,6 +39,7 @@ src/rpg_chronicler/
   cli.py                      # argparse, podkomendy cmd_*; ciężkie importy leniwie wewnątrz cmd_*
   session.py                  # Session (nazwa + ścieżki pochodne), list_sessions(), SessionNotFound
   campaigns.py                # Campaign (system, opis, postacie graczy, słownik), odczyt/zapis kampanie.toml, session_date()
+  voices.py                   # odciski głosu (.glosy.json), profile głosów kampanii, podpowiedzi imion; tylko stdlib
   glossary.py                 # propozycje słownika od AI z kronik, oczekujące w ~/.cache/rpg-chronicler/kampanie/
   transcript.py               # Segment, Transcript (JSON ⇄ .txt), compact_for_llm(), mapowanie mówców
   speakers.py                 # identify_speakers(): sugestia LLM + input() użytkownika
@@ -64,6 +65,7 @@ src/rpg_chronicler/
     runner.py                 # load_whisper/load_diarization/diarize/transcribe_audio, transcribe_sessions()
     merge.py                  # assign_speakers(): segment → mówca o największym pokryciu (wskaźnik przesuwny)
     benchmark.py              # pomiar szybkości na fragmencie nagrania
+    voiceprints.py            # liczenie odcisków głosu (pyannote/wespeaker) z nagrania i czasów z transkrypcji
   storage/drive.py            # rclone copy w obie strony
 tests/                        # pytest; conftest.py: fixture `workspace` (tmp katalogi + FakeLLM, cache w tmp, propozycje słownika wyłączone)
 ```
@@ -82,6 +84,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>.mowcy.json` | `TXT_DIR` | mapowanie `{"SPEAKER_00": "MG", ...}` |
 | `<nazwa>.mowcy-sugestia.md` | `TXT_DIR` | ostatnia sugestia AI co do mówców (`.md`, żeby nie była brana za transkrypcję) |
 | `<nazwa>_podsumowanie.txt` | `SUMMARY_DIR` | kronika wygenerowana przez LLM |
+| `<nazwa>.glosy.json` | `TXT_DIR` | odciski głosu mówców (wektory wespeaker) do rozpoznawania graczy |
 | `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw (synchronizowany z Drive) |
 
 Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówców) `[12.34s -> 15.67s] tekst`. `load_transcript` preferuje JSON, a w razie braku parsuje .txt. Komenda `migrate` tworzy JSON z .txt, nie ruszając .txt.
@@ -99,6 +102,12 @@ Klucz kampanii = prefiks nazwy sesji przed `_`. Plik `TXT_DIR/kampanie.toml` (fo
 
 Słownik budowany z AI: `glossary KAMPANIA` (wszystkie kroniki) i automatycznie po każdej nowej kronice (`ai.propozycje_slownika`). Propozycje nie trafiają od razu do pliku — czekają w cache (`glossary.load_proposals`/`pending_for`), aż użytkownik je zatwierdzi w oknie „Kampanie”. Prompt prosi o nazwy w mianowniku i JSON; `parse_response` toleruje tekst wokół JSON-a. Synchronizacja `TXT_DIR`/`SUMMARY_DIR` używa `rclone --update`, żeby starsza wersja z Drive nie nadpisała lokalnych zmian (kampanie, mówcy) i odwrotnie.
 
+## Rozpoznawanie graczy po głosie
+
+Po transkrypcji (`transcribe_sessions`) liczą się odciski głosu każdego `SPEAKER_XX` (średnia ważona odcisków jego najdłuższych wypowiedzi, do 120 s mowy; ~10 s na sesję); dla starszych sesji `voices`. Profile głosów kampanii (`voices.campaign_profiles`) powstają na bieżąco z sesji tej kampanii, które mają `.mowcy.json` i `.glosy.json` — nie ma osobnego magazynu, więc poprawki imion od razu zmieniają profile. `NameResolver` ujednolica nazwy (wielkość liter, literówki ≥ 0.85 podobieństwa, gracz z `postacie_graczy` → jego postać). Kilka etykiet może dostać to samo imię (diaryzacja dzieli osoby).
+
+Progi w `voices.py` dobrano testem „każda sesja na podstawie pozostałych” na nazwanych sesjach użytkownika (Warhammer + Fallout, 65 etykiet): „pewne” (najbliższy odcisk ≥ 0.65 i przewaga ≥ 0.10) ~96% trafnych przy ~40% etykiet; „możliwe” (miara łączona ≥ 0.5) ~78%. Zmieniając progi, powtórz taki test. GUI wpisuje pewne rozpoznania w pustej sesji, ale zapisuje je dopiero po zatwierdzeniu (bez autozapisu); terminalowe `speakers` przyjmuje pewną podpowiedź Enterem.
+
 ## Przepływ podsumowania
 
 `summarize_sessions` → dla sesji z transkrypcją bez podsumowania: wczytaj mapowanie mówców → jeśli brak i tryb interaktywny, zapytaj i wywołaj `identify_speakers`; jeśli nieinteraktywny i brak `--allow-unnamed`, pomiń → `render("summary", ...)` z `transcript.compact_for_llm(mapping)` (bez czasów, sklejone wypowiedzi — oszczędność tokenów) → `with_retry(client.generate)` → zapis.
@@ -114,7 +123,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 ## GUI
 
 - **Dwa interpretery:** GUI działa na systemowym `/usr/bin/python3` (Fedora: PyGObject, GTK 4, libadwaita), bo PyGObject nie ma w `.venv`. Ciężką pracę (transkrypcja, LLM, rclone) zleca procesowi `.venv/bin/rpg-chronicler` z `--no-interactive` i `RPG_CHRONICLER_PROGRESS=json`.
-- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `audio_trim`, `progress` (`glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
+- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `voices`, `audio_trim`, `progress` (`glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
 - Interakcja z użytkownikiem w GUI zamiast `input()`: sugestia mówców przez `speakers --suggest-only` (zapis do `.mowcy-sugestia.md`), imiona zapisuje GUI bezpośrednio (`save_speaker_mapping`).
 - Nowy długi etap w CLI → wołaj `progress.report(etap, sesja, zrobione, razem)`; bez zmiennej środowiskowej nic nie wypisuje. Wyjście `\r` (np. rclone -P) GUI pokazuje tylko w pasku stanu, nie w logu.
 - Logikę, którą da się testować bez GTK, umieszczaj w `gui/text.py` (testy: `tests/test_gui_text.py`). Okno można sprawdzić bez ekranu: `gtk4-broadwayd :5 &` i `GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 PYTHONPATH=src /usr/bin/python3 -m rpg_chronicler.gui`.

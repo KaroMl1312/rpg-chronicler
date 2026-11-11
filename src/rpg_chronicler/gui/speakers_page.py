@@ -1,10 +1,11 @@
-"""Zakładka „Mówcy”: sugestia AI, imiona dla SPEAKER_XX i odsłuch próbek głosu."""
+"""Zakładka „Mówcy”: rozpoznane głosy, sugestia AI, imiona dla SPEAKER_XX i odsłuch próbek głosu."""
 import os
 from typing import Callable
 
 from gi.repository import Adw, Gtk
 
-from ..session import Session
+from .. import voices
+from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping, save_speaker_mapping
 from .player import SnippetPlayer
 from .text import format_minutes, format_timestamp
@@ -17,11 +18,15 @@ SAMPLE_TEXT_LIMIT = 220
 
 class SpeakersPage(Adw.Bin):
     def __init__(self, player: SnippetPlayer, on_suggest: Callable[[Session], None],
-                 on_saved: Callable[[Session], None]):
+                 on_saved: Callable[[Session], None], start_task: Callable[[str, list[str]], None]):
         super().__init__()
         self._player = player
         self._on_suggest = on_suggest
         self._on_saved = on_saved
+        self._start_task = start_task
+        self._voice_button: Gtk.Button | None = None
+        self._voice_suggestions: dict[str, voices.Suggestion] = {}
+        self._prefilled = False
         self._session: Session | None = None
         self._entries: dict[str, Adw.EntryRow] = {}
         self._saved: dict[str, str] = {}
@@ -44,21 +49,23 @@ class SpeakersPage(Adw.Bin):
         return bool(self._entries) and self.edits() != self._saved
 
     def save(self, notify: bool = True) -> bool:
-        if self._session is None or not self.dirty:
+        if self._session is None or not (self.dirty or self._prefilled):
             return False
         mapping = {spk: name for spk, name in self.edits().items() if name}
         if not mapping:
             return False
         save_speaker_mapping(self._session.txt_path, mapping)
         self._saved = self.edits()
+        self._prefilled = False
         self._update_save_button()
         if notify:
             self._on_saved(self._session)
         return True
 
     def set_busy(self, busy: bool) -> None:
-        if self._suggest_button is not None:
-            self._suggest_button.set_sensitive(not busy)
+        for button in (self._suggest_button, self._voice_button):
+            if button is not None:
+                button.set_sensitive(not busy)
 
     # --- budowa widoku ---
 
@@ -66,7 +73,8 @@ class SpeakersPage(Adw.Bin):
                      keep_edits: dict[str, str] | None = None) -> None:
         self._session = session
         self._entries, self._saved, self._play_buttons = {}, {}, []
-        self._save_button = self._suggest_button = None
+        self._save_button = self._suggest_button = self._voice_button = None
+        self._voice_suggestions, self._prefilled = {}, False
 
         if transcript is None:
             self.set_child(Adw.StatusPage(
@@ -80,6 +88,10 @@ class SpeakersPage(Adw.Bin):
             return
 
         page = Adw.PreferencesPage()
+        sessions = list_sessions()
+        self._voice_suggestions = voices.suggest_for_session(session, sessions)
+        voice_group = self._voice_group(session, sessions)
+        page.add(voice_group)
         page.add(self._suggestion_group(session))
 
         mapping = load_speaker_mapping(session.txt_path)
@@ -89,6 +101,17 @@ class SpeakersPage(Adw.Bin):
             count, seconds = stats.get(spk, (0, 0.0))
             page.add(self._speaker_group(session, transcript, spk, mapping.get(spk, ""), count, seconds))
         self._saved = self.edits()
+
+        # Nowa sesja bez imion: wpisujemy pewne rozpoznania głosu (zapis dopiero po zatwierdzeniu)
+        if not session.has_speakers and not keep_edits:
+            filled = self._fill_recognized()
+            if filled:
+                # Wpisane, ale niezapisane: nie liczą się jako zmiany użytkownika (bez autozapisu przy zmianie
+                # sesji), a przycisk „Zapisz” pozostaje aktywny dzięki _prefilled
+                self._saved = self.edits()
+                self._prefilled = True
+                voice_group.set_description(f"Wpisano {filled} rozpoznanych imion - sprawdź (odsłuchaj w razie "
+                                            "wątpliwości) i zapisz.")
 
         if keep_edits:
             for spk, text in keep_edits.items():
@@ -105,6 +128,50 @@ class SpeakersPage(Adw.Bin):
 
         self._update_save_button()
         self.set_child(page)
+
+    def _voice_group(self, session: Session, sessions: list[Session]) -> Adw.PreferencesGroup:
+        group = Adw.PreferencesGroup(title="Rozpoznawanie głosów")
+        to_compute = [s for s in voices.learning_candidates(session.campaign, sessions) if s.name != session.name]
+        if session.audio_path and not voices.has_voiceprints(session):
+            to_compute.insert(0, session)
+
+        if to_compute:
+            self._voice_button = Gtk.Button(label="Policz odciski głosu", valign=Gtk.Align.CENTER)
+            self._voice_button.add_css_class("suggested-action")
+            names = [s.name for s in to_compute]
+            self._voice_button.connect("clicked", lambda _b: self._start_task(
+                f"Odciski głosu ({len(names)} sesji)", ["voices", "--no-suggest", *names]))
+            group.set_header_suffix(self._voice_button)
+            others = len(to_compute) - (to_compute[0] is session)
+            parts = []
+            if to_compute[0] is session:
+                parts.append("Ta sesja nie ma jeszcze policzonych odcisków głosu.")
+            if others:
+                parts.append(f"{others} nazwanych sesji kampanii nie ma odcisków - z nich program pozna głosy graczy.")
+            group.set_description(" ".join(parts) + " Zajmuje to ok. 10 s na sesję.")
+        elif self._voice_suggestions:
+            confident = sum(s.confident for s in self._voice_suggestions.values())
+            fill = Gtk.Button(label="Wpisz rozpoznane", valign=Gtk.Align.CENTER,
+                              tooltip_text="Wpisz pewne rozpoznania w puste pola")
+            fill.add_css_class("flat")
+            fill.connect("clicked", lambda _b: self._fill_recognized())
+            group.set_header_suffix(fill)
+            group.set_description(f"Rozpoznano po głosie: {confident} pewnie, "
+                                  f"{len(self._voice_suggestions) - confident} możliwie (podpowiedzi przy mówcach).")
+        else:
+            group.set_description("Nazwij mówców w kilku sesjach tej kampanii - w kolejnych program rozpozna "
+                                  "graczy po głosie i sam podpowie imiona.")
+        return group
+
+    def _fill_recognized(self) -> int:
+        """Wpisuje pewne rozpoznania głosu w puste pola; zwraca ich liczbę."""
+        filled = 0
+        for spk, suggestion in self._voice_suggestions.items():
+            entry = self._entries.get(spk)
+            if entry is not None and suggestion.confident and not entry.get_text().strip():
+                entry.set_text(suggestion.name)
+                filled += 1
+        return filled
 
     def _suggestion_group(self, session: Session) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Sugestia AI")
@@ -130,13 +197,28 @@ class SpeakersPage(Adw.Bin):
 
     def _speaker_group(self, session: Session, transcript: Transcript, spk: str, name: str,
                        count: int, seconds: float) -> Adw.PreferencesGroup:
-        group = Adw.PreferencesGroup(title=spk, description=f"{count} wypowiedzi · {format_minutes(seconds)} mówienia")
+        description = f"{count} wypowiedzi · {format_minutes(seconds)} mówienia"
+        group = Adw.PreferencesGroup(title=spk)
+        voice = self._voice_suggestions.get(spk)
+        if voice is not None:
+            if voice.confident:
+                description += f" · głos: {voice.name} ({voice.score:.0%})"
+            else:
+                description += f" · głos: może {voice.name} ({voice.score:.0%})"
+            if voice.alternatives:
+                description += ", albo " + ", ".join(f"{n} ({s:.0%})" for n, s in voice.alternatives)
+        group.set_description(description)
 
         entry = Adw.EntryRow(title="Imię postaci lub rola (np. MG, Hans)", text=name)
         entry.connect("changed", lambda _e: self._update_save_button())
         entry.connect("entry-activated", lambda _e: self.save())
         self._entries[spk] = entry
-        entry.add_suffix(_names_menu(session, entry))
+        entry.add_suffix(_names_menu(session, entry, self._voice_suggestions))
+        if voice is not None and not voice.confident:
+            use = Gtk.Button(label=f"Użyj: {voice.name}", valign=Gtk.Align.CENTER)
+            use.add_css_class("flat")
+            use.connect("clicked", lambda _b: entry.set_text(voice.name))
+            group.set_header_suffix(use)
 
         samples = transcript.speaker_samples(spk, SAMPLE_COUNT)
         if samples:
@@ -177,7 +259,7 @@ class SpeakersPage(Adw.Bin):
 
     def _update_save_button(self) -> None:
         if self._save_button is not None:
-            self._save_button.set_sensitive(self.dirty and any(self.edits().values()))
+            self._save_button.set_sensitive((self.dirty or self._prefilled) and any(self.edits().values()))
 
 
 def _read_text(path: str) -> str:
@@ -188,9 +270,13 @@ def _read_text(path: str) -> str:
         return ""
 
 
-def _names_menu(session: Session, entry: Adw.EntryRow) -> Gtk.MenuButton:
-    """Lista do wyboru: MG i postacie graczy z kampanii (okno „Kampanie”)."""
+def _names_menu(session: Session, entry: Adw.EntryRow, voice_suggestions: dict) -> Gtk.MenuButton:
+    """Lista do wyboru: MG, postacie graczy z kampanii (okno „Kampanie”) i imiona znane z rozpoznawania głosu."""
     names = ["MG", *session.campaign.player_characters]
+    for suggestion in voice_suggestions.values():
+        for name in (suggestion.name, *(n for n, _ in suggestion.alternatives)):
+            if name.casefold() not in {n.casefold() for n in names}:
+                names.append(name)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
     popover = Gtk.Popover(child=box)
     for name in names:

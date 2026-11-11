@@ -159,7 +159,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_content(self) -> Adw.NavigationPage:
         self.view_stack = Adw.ViewStack()
         self.transcript_page = Adw.Bin()
-        self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved)
+        self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved, self.start_task)
         self.summary_page = Adw.Bin()
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
                                              "text-x-generic-symbolic")
