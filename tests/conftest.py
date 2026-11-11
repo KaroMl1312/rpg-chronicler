@@ -1,6 +1,11 @@
-import pytest
+import os
 
-from rpg_chronicler import campaigns, session, summary
+# Testy nie mogą zależeć od ustawień użytkownika z ~/.config (wczytywanych przy imporcie config.py)
+os.environ["RPG_CHRONICLER_SETTINGS"] = os.devnull + ".nie-istnieje"
+
+import pytest  # noqa: E402
+
+from rpg_chronicler import campaigns, session, summary  # noqa: E402
 
 
 class FakeLLM:

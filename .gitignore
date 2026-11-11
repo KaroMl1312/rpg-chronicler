@@ -13,6 +13,7 @@ dist/
 # IDE
 .idea/
 .vscode/
+*.code-workspace
 
 # Dane lokalne (audio, transkrypcje)
 data/

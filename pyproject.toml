@@ -25,7 +25,7 @@ rpg-chronicler = "rpg_chronicler.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-rpg_chronicler = ["prompts/*.md"]
+rpg_chronicler = ["prompts/*.md", "gui/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

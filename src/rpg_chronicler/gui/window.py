@@ -1,18 +1,21 @@
 """Główne okno: lista sesji, szczegóły (transkrypcja / mówcy / kronika) i pasek zadań."""
+import os
+import sys
 import time
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
+from .. import settings
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
 from .player import SnippetPlayer
+from .settings_dialog import PROVIDERS, SettingsDialog
 from .speakers_page import SpeakersPage
 from .tasks import TaskRunner
 from .text import (estimate_remaining, format_minutes, format_timestamp, markdown_spans,
                    session_signature, session_stage, transcript_blocks)
 
-PROVIDERS = [("claude-code", "Claude Code (plan Pro/Max)"), ("anthropic", "Claude API"), ("gemini", "Gemini")]
 SPEAKER_COLORS = ["#3584e4", "#e66100", "#26a269", "#9141ac", "#c64600", "#1c71d8", "#a51d2d", "#865e3c"]
 TASK_ACTIONS = ("sync", "upload", "run", "run-offline")
 
@@ -62,12 +65,21 @@ class MainWindow(Adw.ApplicationWindow):
         add("run-offline", lambda: self.start_task(
             "Przebieg bez Google Drive", ["run", "--offline", "--no-interactive", *self._provider_args()]))
         add("show-log", self.show_log)
+        add("preferences", self.show_settings)
+        add("restart", self.restart)
         add("cancel", self.runner.cancel)
 
         self.provider_action = Gio.SimpleAction.new_stateful(
             "provider", GLib.VariantType.new("s"), GLib.Variant.new_string(LLM_PROVIDER))
-        self.provider_action.connect("activate", lambda a, v: a.set_state(v))
+        self.provider_action.connect("activate", self._on_provider_activated)
         self.add_action(self.provider_action)
+
+    def _on_provider_activated(self, action, value) -> None:
+        action.set_state(value)
+        try:
+            settings.update({"ai.dostawca": value.get_string()})
+        except OSError as e:
+            self.toast(f"Nie można zapisać ustawień: {e}")
 
     @property
     def provider(self) -> str:
@@ -109,6 +121,7 @@ class MainWindow(Adw.ApplicationWindow):
             providers.append_item(item)
         menu.append_section("Dostawca AI", providers)
         other = Gio.Menu()
+        other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
         menu.append_section(None, other)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu,
@@ -515,6 +528,26 @@ class MainWindow(Adw.ApplicationWindow):
         body = Adw.ToolbarView(content=scrolled)
         body.add_top_bar(Adw.HeaderBar())
         Adw.Dialog(title="Log zadań", child=body, content_width=900, content_height=600).present(self)
+
+    def show_settings(self) -> None:
+        def provider_changed(key: str) -> None:
+            self.provider_action.set_state(GLib.Variant.new_string(key))
+
+        def folders_changed() -> None:
+            toast = Adw.Toast(title="Zmieniono foldery – zadziałają po ponownym uruchomieniu",
+                              button_label="Uruchom ponownie", action_name="win.restart", timeout=0)
+            self.toasts.add_toast(toast)
+
+        SettingsDialog(self.provider, provider_changed, folders_changed).present(self)
+
+    def restart(self) -> None:
+        """Uruchamia GUI od nowa w tym samym procesie (np. po zmianie folderów)."""
+        if self.runner.running:
+            self.toast("Poczekaj na koniec zadania albo je przerwij")
+            return
+        self._autosave_speakers()
+        self.player.stop()
+        os.execv(sys.executable, [sys.executable, "-m", "rpg_chronicler.gui"])
 
     def toast(self, text: str) -> None:
         self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text)))

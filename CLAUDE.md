@@ -23,6 +23,7 @@ python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev,anthropic,gemini]"  
 .venv/bin/python -m rpg_chronicler status
 .venv/bin/python -m pytest               # testy (szybkie, bez modeli i sieci)
 ./rpg-chronicler-gui                     # GUI (systemowy Python, patrz niżej)
+./rpg-chronicler-gui --instaluj          # wpis w menu GNOME (~/.local/share), --odinstaluj usuwa
 ```
 
 Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
@@ -34,6 +35,7 @@ kampanie.toml                 # konfiguracja kampanii: [Prefiks] system=..., kon
 .env / .env.example           # sekrety: HUGGINGFACE_TOKEN, GEMINI_API_KEY, ANTHROPIC_API_KEY, LLM_PROVIDER
 src/rpg_chronicler/
   config.py                   # WSZYSTKIE stałe: ścieżki, remote'y rclone, modele, wątki, retry; własny loader .env
+  settings.py                 # ustawienia użytkownika ~/.config/rpg-chronicler/ustawienia.toml (z GUI)
   cli.py                      # argparse, podkomendy cmd_*; ciężkie importy leniwie wewnątrz cmd_*
   session.py                  # Session (nazwa + ścieżki pochodne), list_sessions(), SessionNotFound
   campaigns.py                # Campaign, campaign_for(nazwa_sesji) na podstawie kampanie.toml
@@ -44,6 +46,8 @@ src/rpg_chronicler/
   gui/                        # GTK4 + libadwaita, uruchamiane systemowym Pythonem (skrypt ./rpg-chronicler-gui)
     app.py, window.py         #   Adw.Application, główne okno (lista sesji, zakładki, pasek zadań)
     speakers_page.py          #   zakładka „Mówcy”: sugestia AI, imiona, odsłuch próbek
+    settings_dialog.py        #   okno ustawień (Adw.PreferencesDialog), zapis od razu przy zmianie
+    desktop.py                #   APP_ID, instalacja .desktop + ikony (pl.rpgchronicler.Kronikarz.svg)
     tasks.py                  #   TaskRunner: uruchamia .venv/bin/rpg-chronicler (Gio.Subprocess), czyta postęp
     player.py                 #   SnippetPlayer: odsłuch fragmentu nagrania (Gtk.MediaFile/GStreamer)
     text.py                   #   logika bez GTK (stan sesji, formatowanie, prosty Markdown) - testowana pytestem
@@ -84,6 +88,12 @@ Stan przetwarzania wynika **wyłącznie z istnienia plików** (`Session.has_*`) 
 `summarize_sessions` → dla sesji z transkrypcją bez podsumowania: wczytaj mapowanie mówców → jeśli brak i tryb interaktywny, zapytaj i wywołaj `identify_speakers`; jeśli nieinteraktywny i brak `--allow-unnamed`, pomiń → `render("summary", ...)` z `transcript.compact_for_llm(mapping)` (bez czasów, sklejone wypowiedzi — oszczędność tokenów) → `with_retry(client.generate)` → zapis.
 
 Klient LLM tworzony leniwie (`_LazyClient`), więc brak klucza API nie przeszkadza, gdy nic nie ma do zrobienia.
+
+## Ustawienia
+
+`config.py` przy imporcie wczytuje `settings.load()`; klucze z pliku (np. `transkrypcja.watki`, `foldery.nagrania`, `ai.dostawca`) nadpisują wartości domyślne. Plik zawiera tylko zmienione klucze; lista dozwolonych kluczy i typów to `settings.FIELDS` (błędne wpisy są pomijane z ostrzeżeniem). `ai.dostawca` ma pierwszeństwo przed `LLM_PROVIDER` z `.env`, a `--provider` przed oboma. Ścieżkę pliku zmienia `RPG_CHRONICLER_SETTINGS` — `tests/conftest.py` ustawia ją na nieistniejący plik, żeby testy nie zależały od ustawień użytkownika.
+
+Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py` przez `_setting()`, pole w `gui/settings_dialog.py`. Procesy CLI czytają ustawienia przy starcie, więc działają od następnego zadania; wartości używane przez samo GUI (foldery) wymagają restartu (`win.restart` → `os.execv`).
 
 ## GUI
 

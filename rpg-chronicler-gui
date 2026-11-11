@@ -1,5 +1,9 @@
 #!/bin/sh
 # GUI działa na systemowym Pythonie (PyGObject, GTK 4, libadwaita z Fedory);
 # transkrypcję i kroniki zleca komendzie .venv/bin/rpg-chronicler.
-ROOT="$(dirname "$(readlink -f "$0")")"
+#   ./rpg-chronicler-gui               uruchom
+#   ./rpg-chronicler-gui --instaluj    dodaj do menu aplikacji GNOME (--odinstaluj usuwa)
+SELF="$(readlink -f "$0")"
+ROOT="$(dirname "$SELF")"
+export RPG_CHRONICLER_LAUNCHER="$SELF"
 PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m rpg_chronicler.gui "$@"
