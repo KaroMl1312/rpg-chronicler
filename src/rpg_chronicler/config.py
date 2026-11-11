@@ -60,6 +60,8 @@ LLM_RETRY_DELAY = 65  # sekundy między próbami
 CLAUDE_CODE_MODEL = _setting("ai.model_claude_code", "") or None  # None = domyślny model konta; np. "sonnet"
 # Po każdej nowej kronice AI proponuje nowe nazwy do słownika kampanii (do zatwierdzenia w GUI)
 GLOSSARY_PROPOSALS = _setting("ai.propozycje_slownika", True)
+# Po każdej nowej kronice AI pisze jej skrót (kilka punktów z najważniejszymi wydarzeniami)
+CHRONICLE_BRIEF = _setting("ai.skrot_kroniki", True)
 
 CLAUDE_CODE_TIMEOUT = 900    # sekundy na jedno wywołanie
 

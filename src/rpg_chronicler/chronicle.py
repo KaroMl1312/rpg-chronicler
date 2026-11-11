@@ -1,6 +1,7 @@
 """Kronika sesji do udostępnienia graczom: tytuł, zapowiedź, PDF i stan wysyłki na Discord.
 
 Pliki leżą obok kroniki w SUMMARY_DIR (synchronizują się z Drive):
+  <sesja>_skrot.txt      - skrót kroniki: najważniejsze wydarzenia w jednym akapicie (AI)
   <sesja>_zapowiedz.txt  - 2-3 zdania zapowiedzi (AI albo wpisane ręcznie)
   <sesja>_kronika.pdf    - kronika w PDF (chronicle_pdf.py)
   <sesja>_discord.json   - kiedy i dokąd wysłano
@@ -16,6 +17,26 @@ from .campaigns import session_date
 from .session import Session
 
 MARKDOWN_MARKS_RE = re.compile(r"[*_`#]+")
+
+
+def brief_path(session: Session) -> str:
+    return session.summary_path.replace("_podsumowanie.txt", "_skrot.txt")
+
+
+def read_brief(session: Session) -> str:
+    try:
+        with open(brief_path(session), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+def brief_is_current(session: Session) -> bool:
+    """Skrót istnieje i jest nowszy niż kronika (po ponownym wygenerowaniu kroniki trzeba go odświeżyć)."""
+    try:
+        return os.path.getmtime(brief_path(session)) >= os.path.getmtime(session.summary_path)
+    except OSError:
+        return False
 
 
 def teaser_path(session: Session) -> str:
@@ -67,9 +88,12 @@ def save_teaser(session: Session, text: str) -> None:
 
 
 def pdf_is_current(session: Session) -> bool:
-    """PDF istnieje i jest nowszy niż kronika."""
+    """PDF istnieje i jest nowszy niż kronika i jej skrót (skrót jest w PDF jako „W skrócie”)."""
     try:
-        return os.path.getmtime(pdf_path(session)) >= os.path.getmtime(session.summary_path)
+        pdf_time = os.path.getmtime(pdf_path(session))
+        if pdf_time < os.path.getmtime(session.summary_path):
+            return False
+        return not os.path.exists(brief_path(session)) or pdf_time >= os.path.getmtime(brief_path(session))
     except OSError:
         return False
 

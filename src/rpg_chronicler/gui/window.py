@@ -40,6 +40,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._campaigns_dialog: CampaignsDialog | None = None
         self._discord_dialog: DiscordDialog | None = None
         self._open_pdf_after: str | None = None
+        self._chronicle_mode = "kronika"  # przełącznik „Kronika / Skrót” w zakładce Kronika
         self._proposal_counts: dict[str, int] = {}
 
         self.runner = TaskRunner()
@@ -368,25 +369,22 @@ class MainWindow(Adw.ApplicationWindow):
             return Adw.StatusPage(icon_name="dialog-information-symbolic", title="Nie można odczytać kroniki",
                                   description=str(e))
 
-        buffer = Gtk.TextBuffer()
-        tags = {
-            "h1": buffer.create_tag("h1", weight=Pango.Weight.BOLD, scale=1.5, pixels_below_lines=8),
-            "h2": buffer.create_tag("h2", weight=Pango.Weight.BOLD, scale=1.25, pixels_above_lines=10),
-            "h3": buffer.create_tag("h3", weight=Pango.Weight.BOLD, scale=1.1, pixels_above_lines=6),
-            "bold": buffer.create_tag("bold", weight=Pango.Weight.BOLD),
-        }
-        end = buffer.get_end_iter()
-        for line in content.splitlines():
-            style, spans = markdown_spans(line)
-            if style == "rule":
-                continue  # sekcje i tak oddzielają nagłówki
-            for text, span_style in spans:
-                applied = [tags[t] for t in (style, span_style) if t]
-                if applied:
-                    buffer.insert_with_tags(end, text, *applied)
-                else:
-                    buffer.insert(end, text)
-            buffer.insert(end, "\n")
+        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
+        stack.add_named(_text_view(_markdown_buffer(content)), "kronika")
+        stack.add_named(self._brief_view(session), "skrot")
+        stack.set_visible_child_name(self._chronicle_mode)
+
+        toggles = Adw.ToggleGroup(valign=Gtk.Align.CENTER)
+        toggles.add(Adw.Toggle(label="Kronika", name="kronika"))
+        toggles.add(Adw.Toggle(label="Skrót", name="skrot",
+                               tooltip="Najważniejsze wydarzenia w jednym akapicie"))
+        toggles.set_active_name(self._chronicle_mode)
+
+        def toggled(group, _pspec):
+            self._chronicle_mode = group.get_active_name()
+            stack.set_visible_child_name(self._chronicle_mode)
+
+        toggles.connect("notify::active-name", toggled)
 
         regenerate = Gtk.Button(label="Generuj ponownie")
         regenerate.connect("clicked", lambda _b: self.summarize(session, force=True))
@@ -402,7 +400,38 @@ class MainWindow(Adw.ApplicationWindow):
         sent = chronicle.sent_text(session)
         info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
-        return _text_page(buffer, info, [open_button, pdf_button, discord_button, regenerate])
+        return _text_page(stack, info, [open_button, pdf_button, discord_button, regenerate], leading=toggles)
+
+    def _brief_view(self, session: Session) -> Gtk.Widget:
+        """Skrót kroniki (jeden akapit) albo zachęta do jego napisania."""
+        def write(force: bool):
+            args = ["brief", session.name, *self._provider_args()] + (["--force"] if force else [])
+            self.start_task(f"Skrót kroniki {session.name}", args)
+
+        brief = chronicle.read_brief(session)
+        if not brief:
+            status = Adw.StatusPage(icon_name="view-list-bullet-symbolic", title="Brak skrótu",
+                                    description="AI przeczyta kronikę i opowie w jednym akapicie, co najważniejszego "
+                                                "się wydarzyło - bez zbędnych szczegółów. Trwa to kilkanaście sekund.")
+            status.set_child(self._task_button("Napisz skrót", lambda: write(False)))
+            return status
+
+        current = chronicle.brief_is_current(session)
+        label = Gtk.Label(label="Skrót kroniki" if current else "Skrót jest starszy niż kronika - napisz go ponownie",
+                          xalign=0, hexpand=True, wrap=True)
+        label.add_css_class("dim-label" if current else "warning")
+        again = Gtk.Button(label="Napisz ponownie", valign=Gtk.Align.CENTER)
+        again.add_css_class("flat" if current else "suggested-action")
+        again.connect("clicked", lambda _b: write(True))
+        self._register_task_button(again)
+        bar = Gtk.Box(spacing=6, margin_top=10, margin_start=24, margin_end=12)
+        bar.append(label)
+        bar.append(again)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(bar)
+        box.append(_text_view(_markdown_buffer(brief)))
+        return box
 
     def _register_task_button(self, button: Gtk.Button) -> None:
         """Przycisk uruchamiający zadanie - nieaktywny, gdy inne zadanie jest w toku."""
@@ -718,15 +747,47 @@ def _icon_button(icon: str, tooltip: str, action: str) -> Gtk.Button:
     return Gtk.Button(icon_name=icon, tooltip_text=tooltip, action_name=action)
 
 
-def _text_page(buffer: Gtk.TextBuffer, info: str, buttons: list[Gtk.Widget] | None = None) -> Gtk.Widget:
-    """Tekst tylko do odczytu z paskiem informacji (i opcjonalnymi przyciskami) nad nim."""
+def _markdown_buffer(content: str) -> Gtk.TextBuffer:
+    """Tekst kroniki/skrótu z prostym formatowaniem Markdown (nagłówki, pogrubienia, punkty)."""
+    buffer = Gtk.TextBuffer()
+    tags = {
+        "h1": buffer.create_tag("h1", weight=Pango.Weight.BOLD, scale=1.5, pixels_below_lines=8),
+        "h2": buffer.create_tag("h2", weight=Pango.Weight.BOLD, scale=1.25, pixels_above_lines=10),
+        "h3": buffer.create_tag("h3", weight=Pango.Weight.BOLD, scale=1.1, pixels_above_lines=6),
+        "bold": buffer.create_tag("bold", weight=Pango.Weight.BOLD),
+    }
+    end = buffer.get_end_iter()
+    for line in content.splitlines():
+        style, spans = markdown_spans(line)
+        if style == "rule":
+            continue  # sekcje i tak oddzielają nagłówki
+        for text, span_style in spans:
+            applied = [tags[t] for t in (style, span_style) if t]
+            if applied:
+                buffer.insert_with_tags(end, text, *applied)
+            else:
+                buffer.insert(end, text)
+        buffer.insert(end, "\n")
+    return buffer
+
+
+def _text_view(buffer: Gtk.TextBuffer) -> Gtk.Widget:
     view = Gtk.TextView(buffer=buffer, editable=False, cursor_visible=False, wrap_mode=Gtk.WrapMode.WORD_CHAR,
                         top_margin=18, bottom_margin=24, left_margin=24, right_margin=24, pixels_below_lines=6)
-    scrolled = Gtk.ScrolledWindow(child=view, vexpand=True)
+    return Gtk.ScrolledWindow(child=view, vexpand=True)
+
+
+def _text_page(content: Gtk.TextBuffer | Gtk.Widget, info: str, buttons: list[Gtk.Widget] | None = None,
+               leading: Gtk.Widget | None = None) -> Gtk.Widget:
+    """Tekst tylko do odczytu (bufor albo gotowy widżet) z paskiem informacji i przyciskami nad nim."""
+    scrolled = _text_view(content) if isinstance(content, Gtk.TextBuffer) else content
 
     label = Gtk.Label(label=info, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
     label.add_css_class("dim-label")
     bar = Gtk.Box(spacing=6, margin_top=6, margin_bottom=6, margin_start=24, margin_end=12)
+    if leading is not None:
+        leading.set_margin_end(6)
+        bar.append(leading)
     bar.append(label)
     for button in buttons or []:
         button.add_css_class("flat")

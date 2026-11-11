@@ -2,7 +2,8 @@ import os
 
 from . import glossary, progress
 from .campaigns import campaign_key, session_date
-from .config import GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR
+from .chronicle import brief_path
+from .config import CHRONICLE_BRIEF, GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR
 from .llm import LLMClient, LLMError, get_client, with_retry
 from .prompts import render
 from .session import Session, list_sessions
@@ -171,8 +172,43 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
         with open(session.summary_path, "w", encoding="utf-8") as f:
             f.write(summary)
         print(f"[SUKCES] Zapisano kronikę ({session.system_name}) w: {session.summary_path}")
+        if CHRONICLE_BRIEF:
+            try:
+                write_brief(client, session, summary)
+            except LLMError as e:
+                print(f"[OSTRZEŻENIE] Nie udało się napisać skrótu kroniki: {e} "
+                      f"(spróbuj: rpg-chronicler brief {session.name})")
         if GLOSSARY_PROPOSALS:
             propose_glossary(client, session, summary)
+
+
+def write_brief(client: LLMClient, session: Session, chronicle: str) -> str:
+    """Skrót kroniki: najważniejsze wydarzenia w jednym akapicie. Rzuca LLMError."""
+    progress.report("skrót kroniki", session.name)
+    prompt = render("brief", system_name=session.system_name, chronicle=chronicle)
+    print(f"[{client.name}] Pisanie skrótu kroniki {session.name}...")
+    brief = with_retry(lambda: client.generate(prompt), f"skrót {session.name}").strip()
+    with open(brief_path(session), "w", encoding="utf-8") as f:
+        f.write(brief + "\n")
+    print(f"[SUKCES] Zapisano skrót kroniki w: {brief_path(session)}")
+    return brief
+
+
+def brief_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
+    """Skróty dla kronik, które go nie mają (albo mają starszy niż kronika); `force` - wszystkie wskazane."""
+    from .chronicle import brief_is_current, read_chronicle
+    pending = [s for s in sessions if s.has_summary and (force or not brief_is_current(s))]
+    if not pending:
+        print("Wszystkie kroniki mają aktualne skróty.")
+        return
+    llm = _LazyClient(provider)
+    for session in pending:
+        try:
+            write_brief(llm.get(), session, read_chronicle(session))
+        except LLMError as e:
+            print(f"[OSTRZEŻENIE] {session.name}: {e}")
+            if not e.retryable:
+                return
 
 
 def propose_glossary(client: LLMClient, session: Session, chronicle: str) -> None:

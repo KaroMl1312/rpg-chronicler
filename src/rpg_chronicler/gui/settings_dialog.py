@@ -70,6 +70,13 @@ class SettingsDialog(Adw.PreferencesDialog):
             active=self._value("ai.propozycje_slownika", config.GLOSSARY_PROPOSALS))
         proposals.connect("notify::active", lambda row, _p: self._save("ai.propozycje_slownika", row.get_active()))
         group.add(proposals)
+        brief = Adw.SwitchRow(
+            title="Skrót kroniki",
+            subtitle="Po każdej nowej kronice AI streszcza najważniejsze wydarzenia w jednym akapicie "
+                     "(dodatkowe krótkie zapytanie)",
+            active=self._value("ai.skrot_kroniki", config.CHRONICLE_BRIEF))
+        brief.connect("notify::active", lambda row, _p: self._save("ai.skrot_kroniki", row.get_active()))
+        group.add(brief)
         return group
 
     def _provider_selected(self, key: str) -> None:

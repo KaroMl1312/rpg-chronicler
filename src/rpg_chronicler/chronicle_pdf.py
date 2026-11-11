@@ -7,7 +7,7 @@ import html
 import re
 
 from .campaigns import campaign_key
-from .chronicle import chronicle_title, read_chronicle, session_date_text
+from .chronicle import brief_is_current, chronicle_title, read_brief, read_chronicle, session_date_text
 from .session import Session
 
 EMOJI_RE = re.compile(
@@ -48,6 +48,15 @@ li { margin-bottom: 0.35em; }
 li::marker { color: #8b4513; }
 strong { color: #3d2a1a; }
 blockquote { margin: 0.8em 1.5em; font-style: italic; color: #5a4a3a; }
+.brief {
+    background: #f6efe3; border-left: 3pt solid #8b4513; padding: 0.7em 1.1em 0.4em;
+    margin: 0 0 1.6em; font-size: 10.5pt; break-inside: avoid;
+}
+.brief h2 {
+    margin: 0 0 0.4em; padding: 0; border: none; font-size: 9pt; letter-spacing: 0.15em;
+    text-transform: uppercase; color: #8b4513;
+}
+.brief ul { margin-bottom: 0.5em; }
 """
 
 
@@ -76,11 +85,15 @@ def chronicle_html(text: str, session: Session) -> str:
             campaign_key(session.name).casefold()):
         campaign_line = campaign.system  # „Warhammer Fantasy Roleplay · Warhammer” - bez powtórzenia
     date = session_date_text(session)
+    brief = ""
+    if brief_is_current(session) and read_brief(session):
+        brief_body = markdown.markdown(strip_emoji(read_brief(session)), extensions=["sane_lists"])
+        brief = f'<section class="brief"><h2>W skrócie</h2>{brief_body}</section>'
     return (f'<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
             f"</head><body><header><div class=\"campaign\">{html.escape(campaign_line)}</div>"
             f"<h1>{html.escape(title)}</h1>"
             + (f'<div class="date">Sesja z {html.escape(date)}</div>' if date else "")
-            + f"</header>{body}</body></html>")
+            + f"</header>{brief}{body}</body></html>")
 
 
 def write_pdf(session: Session, path: str) -> None:

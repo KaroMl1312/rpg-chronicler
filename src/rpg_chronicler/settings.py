@@ -16,6 +16,7 @@ FIELDS: dict[str, type] = {
     "ai.dostawca": str,
     "ai.model_claude_code": str,
     "ai.propozycje_slownika": bool,
+    "ai.skrot_kroniki": bool,
     "transkrypcja.model": str,
     "transkrypcja.watki": int,
     "transkrypcja.pomijanie_ciszy": bool,

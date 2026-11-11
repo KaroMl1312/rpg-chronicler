@@ -27,7 +27,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu GNOME (~/.local/share), --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -91,6 +91,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>.mowcy-sugestia.md` | `TXT_DIR` | ostatnia sugestia AI co do mówców (`.md`, żeby nie była brana za transkrypcję) |
 | `<nazwa>_podsumowanie.txt` | `SUMMARY_DIR` | kronika wygenerowana przez LLM |
 | `<nazwa>.glosy.json` | `TXT_DIR` | odciski głosu mówców (wektory wespeaker) do rozpoznawania graczy |
+| `<nazwa>_skrot.txt` | `SUMMARY_DIR` | skrót kroniki: jeden akapit opowieści o najważniejszych wydarzeniach (AI) |
 | `<nazwa>_zapowiedz.txt`, `_kronika.pdf`, `_discord.json` | `SUMMARY_DIR` | zapowiedź na Discord, PDF kroniki, kiedy wysłano |
 | `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw (synchronizowany z Drive) |
 
@@ -114,6 +115,10 @@ Słownik budowany z AI: `glossary KAMPANIA` (wszystkie kroniki) i automatycznie 
 Po transkrypcji (`transcribe_sessions`) liczą się odciski głosu każdego `SPEAKER_XX` (średnia ważona odcisków jego najdłuższych wypowiedzi, do 120 s mowy; ~10 s na sesję); dla starszych sesji `voices`. Profile głosów kampanii (`voices.campaign_profiles`) powstają na bieżąco z sesji tej kampanii, które mają `.mowcy.json` i `.glosy.json` — nie ma osobnego magazynu, więc poprawki imion od razu zmieniają profile. `NameResolver` ujednolica nazwy (wielkość liter, literówki ≥ 0.85 podobieństwa, gracz z `postacie_graczy` → jego postać). Kilka etykiet może dostać to samo imię (diaryzacja dzieli osoby).
 
 Progi w `voices.py` dobrano testem „każda sesja na podstawie pozostałych” na nazwanych sesjach użytkownika (Warhammer + Fallout, 65 etykiet): „pewne” (najbliższy odcisk ≥ 0.65 i przewaga ≥ 0.10) ~96% trafnych przy ~40% etykiet; „możliwe” (miara łączona ≥ 0.5) ~78%. Zmieniając progi, powtórz taki test. GUI wpisuje pewne rozpoznania w pustej sesji, ale zapisuje je dopiero po zatwierdzeniu (bez autozapisu); terminalowe `speakers` przyjmuje pewną podpowiedź Enterem.
+
+## Skrót kroniki
+
+Po każdej nowej kronice (`ai.skrot_kroniki`, domyślnie włączone) AI pisze skrót z `prompts/brief.md`: **jeden akapit ciągłej opowieści** (6–10 zdań, ~1000 znaków), chronologicznie, z wydarzeniami łączonymi przyczyną i skutkiem, prostym językiem, kończący się tym, gdzie drużyna była na końcu sesji. Tak chce użytkownik — lista punktów („co się stało” w wyliczance) mu nie odpowiadała. Przykład stylu w prompcie jest celowo z wymyślonej kampanii, żeby AI nie przenosiło treści między kampaniami. Skrót jest nieaktualny, gdy kronika jest od niego nowsza (`chronicle.brief_is_current`); `brief` bez `--force` uzupełnia tylko brakujące/nieaktualne. W GUI przełącznik „Kronika / Skrót” w zakładce Kronika; w PDF ramka „W skrócie” na początku (PDF jest nieaktualny także, gdy skrót jest od niego nowszy).
 
 ## Udostępnianie kronik (PDF, Discord)
 

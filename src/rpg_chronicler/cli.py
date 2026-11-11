@@ -187,6 +187,11 @@ def _ensure_pdf(session, force: bool = False) -> str:
     return path
 
 
+def cmd_brief(args):
+    from .summary import brief_sessions
+    brief_sessions(list_sessions(args.sessions), args.provider, force=args.force)
+
+
 def cmd_pdf(args):
     for name in args.sessions:
         _ensure_pdf(_chronicle_session(name), force=True)
@@ -398,6 +403,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="policz ponownie istniejące odciski")
     p.add_argument("--no-suggest", action="store_true", help="nie pokazuj podpowiedzi imion po policzeniu")
     p.set_defaults(func=cmd_voices)
+
+    p = sub.add_parser("brief", help="napisz skrót kroniki (najważniejsze wydarzenia w jednym akapicie)")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie z kroniką bez aktualnego skrótu)")
+    provider_arg(p)
+    p.add_argument("--force", action="store_true", help="napisz ponownie, nawet jeśli skrót jest aktualny")
+    p.set_defaults(func=cmd_brief)
 
     p = sub.add_parser("pdf", help="zapisz kronikę jako PDF (obok kroniki, w folderze kronik)")
     p.add_argument("sessions", nargs="+", metavar="SESJA")
