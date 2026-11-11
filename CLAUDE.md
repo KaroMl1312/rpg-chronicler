@@ -15,10 +15,11 @@ Ma też GUI (GTK4 + libadwaita) — patrz sekcja „GUI”.
 
 ## Uruchamianie i testy
 
-Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` to 3.15, a dla niego nie ma `onnxruntime`, którego wymaga faster-whisper). Zawsze używaj `.venv/bin/...`:
+Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` to 3.15, a dla niego nie ma `onnxruntime`, którego wymaga faster-whisper). Torch, torchaudio i **torchcodec** muszą być w wersji **CPU** z indeksu PyTorch — zwykły `pip install` ściąga wersje z CUDA (~4 GB więcej), a torchcodec z PyPI wymaga bibliotek CUDA (`libnvrtc`) i bez nich pyannote nie odczyta plików. Zawsze używaj `.venv/bin/...`:
 
 ```bash
-python3.11 -m venv .venv && .venv/bin/pip install -e ".[dev,anthropic,gemini]"   # (od)tworzenie środowiska
+./sprawdz-srodowisko                     # sprawdza GUI, .venv, narzędzia i konfigurację (np. po aktualizacji Fedory)
+./sprawdz-srodowisko --napraw            # odtwarza .venv: python3.11, torch/torchaudio/torchcodec CPU, potem -e .[dev,anthropic,gemini]
 .venv/bin/rpg-chronicler                 # = rpg-chronicler run (sync → transkrypcja → podsumowania → upload)
 .venv/bin/python -m rpg_chronicler status
 .venv/bin/python -m pytest               # testy (szybkie, bez modeli i sieci)
@@ -45,6 +46,7 @@ src/rpg_chronicler/
   speakers.py                 # identify_speakers(): sugestia LLM + input() użytkownika
   summary.py                  # name_speakers(), summarize_sessions(), _LazyClient
   audio_trim.py               # wykrywanie ciszy (ffmpeg silencedetect) i przycinanie nagrań; tylko stdlib + ffmpeg
+  doctor.py                   # ./sprawdz-srodowisko: diagnostyka i naprawa .venv (systemowy Python, tylko stdlib)
   progress.py                 # protokół postępu dla GUI: linie `@@postep {json}` gdy RPG_CHRONICLER_PROGRESS=json
   gui/                        # GTK4 + libadwaita, uruchamiane systemowym Pythonem (skrypt ./rpg-chronicler-gui)
     app.py, window.py         #   Adw.Application, główne okno (lista sesji, zakładki, pasek zadań)
@@ -126,6 +128,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 - Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `voices`, `audio_trim`, `progress` (`glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
 - Interakcja z użytkownikiem w GUI zamiast `input()`: sugestia mówców przez `speakers --suggest-only` (zapis do `.mowcy-sugestia.md`), imiona zapisuje GUI bezpośrednio (`save_speaker_mapping`).
 - Nowy długi etap w CLI → wołaj `progress.report(etap, sesja, zrobione, razem)`; bez zmiennej środowiskowej nic nie wypisuje. Wyjście `\r` (np. rclone -P) GUI pokazuje tylko w pasku stanu, nie w logu.
+- Przy starcie GUI sprawdza w tle, czy `.venv` importuje faster-whisper/pyannote/torchcodec; jeśli nie, pokazuje `Adw.Banner` z instrukcją `./sprawdz-srodowisko --napraw`. Wynik `audio_trim.has_duration_header` (ffprobe) jest zapamiętywany per wersja pliku (ścieżka, rozmiar, data).
 - Logikę, którą da się testować bez GTK, umieszczaj w `gui/text.py` (testy: `tests/test_gui_text.py`). Okno można sprawdzić bez ekranu: `gtk4-broadwayd :5 &` i `GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 PYTHONPATH=src /usr/bin/python3 -m rpg_chronicler.gui`.
 
 ## Zasady przy zmianach

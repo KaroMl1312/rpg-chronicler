@@ -1,0 +1,11 @@
+#!/bin/sh
+# Sprawdza GUI (systemowy Python), .venv (transkrypcja), programy zewnętrzne i konfigurację.
+# Warto uruchomić po aktualizacji systemu (np. nowej wersji Fedory).
+#   ./sprawdz-srodowisko            sprawdź
+#   ./sprawdz-srodowisko --napraw   odtwórz .venv (torch w wersji CPU) i sprawdź ponownie
+ROOT="$(dirname "$(readlink -f "$0")")"
+if [ ! -x /usr/bin/python3 ]; then
+    echo "[BŁĄD] Brak systemowego Pythona (/usr/bin/python3) - sudo dnf install python3" >&2
+    exit 1
+fi
+PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}" exec /usr/bin/python3 -m rpg_chronicler.doctor "$@"

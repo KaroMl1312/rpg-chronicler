@@ -107,3 +107,20 @@ def test_flac_without_duration_header_is_measured_and_fixed_by_trim(tmp_path):
     a = audio_trim.detect_silences(str(audio))
     audio_trim.trim_audio(str(audio), audio_trim.keep_segments(a, *audio_trim.suggest_range(a)))
     assert audio_trim.has_duration_header(str(audio))
+
+
+def test_duration_header_check_is_cached_per_file_version(tmp_path, monkeypatch):
+    audio = tmp_path / "Zakon_1.flac"
+    audio.write_bytes(b"abc")
+    calls = []
+
+    class Result:
+        stdout = "12.5\n"
+
+    monkeypatch.setattr(audio_trim.shutil, "which", lambda _tool: "/usr/bin/ffprobe")
+    monkeypatch.setattr(audio_trim.subprocess, "run", lambda *a, **k: calls.append(a) or Result())
+    assert audio_trim.has_duration_header(str(audio)) and audio_trim.has_duration_header(str(audio))
+    assert len(calls) == 1
+    audio.write_bytes(b"abcdef")  # inny plik (np. po przycięciu) - sprawdzamy ponownie
+    audio_trim.has_duration_header(str(audio))
+    assert len(calls) == 2

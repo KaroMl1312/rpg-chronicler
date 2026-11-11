@@ -6,7 +6,7 @@ import time
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
 from .. import glossary, settings
-from ..config import LLM_PROVIDER
+from ..config import LLM_PROVIDER, PROJECT_ROOT
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
 from .campaigns_dialog import CampaignsDialog
@@ -52,6 +52,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._setup_actions()
         self._build_ui()
         self.refresh()
+        self._check_environment()
         self.connect("notify::is-active", lambda w, _p: w.is_active() and self.refresh())
         self.connect("close-request", self._on_close_request)
 
@@ -102,6 +103,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.split.set_content(self._build_content())
 
         outer = Adw.ToolbarView(content=self.split)
+        self.env_banner = Adw.Banner(button_label="Jak naprawić")
+        self.env_banner.connect("button-clicked", lambda _b: self._show_environment_help())
+        self._environment_error = ""
+        outer.add_top_bar(self.env_banner)
         outer.add_bottom_bar(self._build_task_bar())
 
         self.toasts = Adw.ToastOverlay(child=outer)
@@ -562,6 +567,51 @@ class MainWindow(Adw.ApplicationWindow):
         body = Adw.ToolbarView(content=scrolled)
         body.add_top_bar(Adw.HeaderBar())
         Adw.Dialog(title="Log zadań", child=body, content_width=900, content_height=600).present(self)
+
+    # ------------------------------------------------------------ środowisko
+
+    def _check_environment(self) -> None:
+        """W tle: czy .venv (transkrypcja, AI) działa - np. po aktualizacji systemu może wskazywać na
+        odinstalowanego Pythona. Pełne sprawdzenie: ./sprawdz-srodowisko."""
+        venv_python = PROJECT_ROOT / ".venv" / "bin" / "python"
+        if not venv_python.exists():
+            self._show_environment_error("brak działającego interpretera w .venv")
+            return
+        launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
+        launcher.unsetenv("PYTHONPATH")
+        try:
+            process = launcher.spawnv([str(venv_python), "-c",
+                                       "import faster_whisper, pyannote.audio, torchcodec.decoders"])
+        except GLib.Error as e:
+            self._show_environment_error(e.message)
+            return
+
+        def done(proc, result):
+            try:
+                _ok, output, _err = proc.communicate_utf8_finish(result)
+            except GLib.Error as e:
+                output = e.message
+            if not proc.get_successful():
+                lines = [line for line in (output or "").splitlines() if line.strip()]
+                self._show_environment_error(lines[-1] if lines else "nieznany błąd")
+
+        process.communicate_utf8_async(None, None, done)
+
+    def _show_environment_error(self, details: str) -> None:
+        self._environment_error = details
+        self.env_banner.set_title("Środowisko transkrypcji (.venv) nie działa - transkrypcja, odciski głosu "
+                                  "i kroniki są niedostępne")
+        self.env_banner.set_revealed(True)
+
+    def _show_environment_help(self) -> None:
+        dialog = Adw.AlertDialog(
+            heading="Napraw środowisko transkrypcji",
+            body="Najczęściej to skutek aktualizacji systemu (zmiana wersji Pythona). W terminalu, w katalogu "
+                 f"programu ({PROJECT_ROOT}), uruchom:\n\n./sprawdz-srodowisko --napraw\n\n"
+                 "Odtworzy to .venv (kilka minut, pobiera ok. 1 GB). Potem uruchom aplikację ponownie.\n\n"
+                 f"Szczegóły: {self._environment_error}")
+        dialog.add_response("ok", "Zamknij")
+        dialog.present(self)
 
     def show_campaigns(self, key: str | None) -> None:
         if self._campaigns_dialog is not None:

@@ -120,19 +120,32 @@ def decoded_duration(path: str) -> float:
     return times[-1] / 1e6
 
 
+_header_cache: dict[tuple[str, int, float], bool] = {}
+
+
 def has_duration_header(path: str) -> bool:
     """Czy plik ma zapisaną długość (bez niej pyannote/torchcodec nie odczyta nagrania).
 
-    Bez ffprobe nie da się tego sprawdzić - wtedy zakładamy, że tak.
+    Wynik jest zapamiętywany dla danej wersji pliku (ścieżka, rozmiar, data) - GUI pyta o to przy każdym
+    wyświetleniu sesji. Bez ffprobe nie da się tego sprawdzić - wtedy zakładamy, że tak.
     """
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return False
+    key = (os.path.abspath(path), stat.st_size, stat.st_mtime)
+    if key in _header_cache:
+        return _header_cache[key]
     if shutil.which("ffprobe") is None:
         return True
     proc = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
                           capture_output=True, text=True)
     try:
-        return float(proc.stdout.strip()) > 0
+        result = float(proc.stdout.strip()) > 0
     except ValueError:
-        return False
+        result = False
+    _header_cache[key] = result
+    return result
 
 
 def _run_ffmpeg(args: list[str], stage: str, session_name: str | None, total: float,
