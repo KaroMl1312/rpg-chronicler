@@ -6,6 +6,7 @@ from pyannote.audio import Pipeline
 from tqdm import tqdm
 
 from .. import progress
+from ..audio_trim import has_duration_header
 from ..config import (
     DIARIZATION_MODEL,
     HUGGINGFACE_TOKEN,
@@ -99,6 +100,11 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
     for session in pending:
         filename = os.path.basename(session.audio_path)
         print(f"\n[PRZETWARZANIE] {filename}...")
+        if not has_duration_header(session.audio_path):
+            print(f"[BŁĄD] {filename} nie ma zapisanej długości (częste przy nagraniach z dyktafonów), "
+                  "więc rozpoznawanie głosów go nie odczyta. Przytnij nagranie - to zapisze plik od nowa: "
+                  f"rpg-chronicler trim {session.name} (albo w GUI: Wykryj ciszę → Przytnij).")
+            continue
         try:
             # 1. Wykrywanie głosów (Diarization)
             print("Analizowanie głosów uczestników...")

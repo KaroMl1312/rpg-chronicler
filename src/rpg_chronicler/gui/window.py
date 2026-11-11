@@ -10,6 +10,7 @@ from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
 from .player import SnippetPlayer
+from .recording_page import RecordingPanel
 from .settings_dialog import PROVIDERS, SettingsDialog
 from .speakers_page import SpeakersPage
 from .tasks import TaskRunner
@@ -33,6 +34,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._stage_started = 0.0
         self._pulse_id = 0
         self._session_task_buttons: list[Gtk.Button] = []
+        self.recording_panel: RecordingPanel | None = None
 
         self.runner = TaskRunner()
         self.runner.connect("line", self._on_task_line)
@@ -290,16 +292,14 @@ class MainWindow(Adw.ApplicationWindow):
             self.view_stack.set_visible_child_name(page)
 
     def _transcript_view(self, session: Session, transcript: Transcript | None) -> Gtk.Widget:
+        self.recording_panel = None
         if transcript is None:
-            status = Adw.StatusPage(icon_name="text-x-generic-symbolic", title="Brak transkrypcji")
             if session.audio_path:
-                status.set_description("Transkrypcja z rozpoznawaniem głosów działa na procesorze i trwa zwykle "
-                                       "około czasu trwania nagrania. Możesz w tym czasie korzystać z komputera.")
-                status.set_child(self._task_button("Transkrybuj", lambda: self.start_task(
-                    f"Transkrypcja {session.name}", ["transcribe", session.name])))
-            else:
-                status.set_description("Brak lokalnego nagrania - pobierz je z Google Drive.")
-            return status
+                self.recording_panel = RecordingPanel(session, self.player, self.start_task,
+                                                      self._register_task_button, self.runner.running)
+                return self.recording_panel
+            return Adw.StatusPage(icon_name="text-x-generic-symbolic", title="Brak transkrypcji",
+                                  description="Brak lokalnego nagrania - pobierz je z Google Drive.")
 
         mapping = load_speaker_mapping(session.txt_path)
         buffer = Gtk.TextBuffer()
@@ -376,6 +376,11 @@ class MainWindow(Adw.ApplicationWindow):
         regenerate.set_sensitive(not self.runner.running)
         return _text_page(buffer, f"{session.system_name} · {self._provider_label()} przy ponownym generowaniu",
                           [open_button, regenerate])
+
+    def _register_task_button(self, button: Gtk.Button) -> None:
+        """Przycisk uruchamiający zadanie - nieaktywny, gdy inne zadanie jest w toku."""
+        button.set_sensitive(not self.runner.running)
+        self._session_task_buttons.append(button)
 
     def _task_button(self, label: str, callback) -> Gtk.Button:
         button = Gtk.Button(label=label, halign=Gtk.Align.CENTER)
@@ -474,6 +479,8 @@ class MainWindow(Adw.ApplicationWindow):
         for button in self._session_task_buttons:
             button.set_sensitive(not busy)
         self.speakers_page.set_busy(busy)
+        if self.recording_panel is not None:
+            self.recording_panel.set_busy(busy)
 
     def _on_task_line(self, _runner, line: str) -> None:
         self.log_buffer.insert(self.log_buffer.get_end_iter(), line + "\n")
@@ -498,6 +505,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_task_finished(self, _runner, title: str, success: bool, description: str) -> None:
         self._stop_pulse()
+        self.player.close_file()
         self.task_revealer.set_reveal_child(False)
         self._set_busy(False)
         elapsed = format_minutes(time.monotonic() - self._task_started)

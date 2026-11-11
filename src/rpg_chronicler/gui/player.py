@@ -54,6 +54,11 @@ class SnippetPlayer(GObject.Object):
             self.current_key = None
             self.emit("changed")
 
+    def close_file(self) -> None:
+        """Zamyka otwarte nagranie (np. po przycięciu plik na dysku jest już inny)."""
+        self.stop()
+        self._media, self._path = None, None
+
     def _on_prepared(self, media, _pspec) -> None:
         if media is self._media and media.is_prepared() and self._pending:
             self._start_pending()

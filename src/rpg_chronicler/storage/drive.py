@@ -12,9 +12,9 @@ from ..config import (
 )
 
 
-def rclone_copy(src: str, dst: str, quiet: bool = False) -> None:
+def rclone_copy(src: str, dst: str, quiet: bool = False, extra: tuple[str, ...] = ()) -> None:
     """Kopiuje pliki rclone'em; rzuca CalledProcessError przy niepowodzeniu."""
-    subprocess.run(["rclone", "copy", src, dst, "--quiet" if quiet else "-P"], check=True)
+    subprocess.run(["rclone", "copy", src, dst, "--quiet" if quiet else "-P", *extra], check=True)
 
 
 def sync_from_gdrive():
@@ -30,7 +30,8 @@ def sync_from_gdrive():
             print(f"[OSTRZEŻENIE] Nie udało się pobrać {remote}: {e}")
 
     try:
-        rclone_copy(RCLONE_AUDIO_REMOTE, AUDIO_DIR)
+        # --ignore-existing: nie nadpisujemy lokalnych nagrań (np. przyciętych) oryginałami z Drive
+        rclone_copy(RCLONE_AUDIO_REMOTE, AUDIO_DIR, extra=("--ignore-existing",))
         print("Pobieranie zakończone z sukcesem.")
     except Exception as e:
         print(f"[OSTRZEŻENIE] Błąd podczas pobierania rclone: {e}")

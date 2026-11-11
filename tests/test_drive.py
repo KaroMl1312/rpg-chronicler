@@ -22,6 +22,8 @@ def test_sync_pulls_transcripts_summaries_and_audio(monkeypatch, tmp_path):
     drive.sync_from_gdrive()
     sources = [cmd[2] for cmd in calls]
     assert sources == [drive.RCLONE_TXT_REMOTE, drive.RCLONE_SUMMARY_REMOTE, drive.RCLONE_AUDIO_REMOTE]
+    # lokalnych (np. przyciętych) nagrań nie nadpisujemy wersją z Drive
+    assert "--ignore-existing" in calls[2] and "--ignore-existing" not in calls[0]
 
 
 def test_upload_continues_after_failure(monkeypatch, capsys):

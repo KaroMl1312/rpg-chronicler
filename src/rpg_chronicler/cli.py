@@ -85,6 +85,62 @@ def cmd_benchmark(args):
                   diarization_models=args.diarization_models)
 
 
+def _audio_session(name: str):
+    session = list_sessions([name])[0]
+    if not session.audio_path:
+        raise SessionNotFound(f"Sesja '{session.name}' nie ma lokalnego nagrania.")
+    return session
+
+
+def _analysis(session, args, force: bool):
+    from . import audio_trim
+    analysis = None if force else audio_trim.load_analysis(session.name, session.audio_path)
+    if analysis is None or (analysis.noise_db, analysis.min_silence) != (args.noise, args.min_silence):
+        print(f"Wykrywanie ciszy w {os.path.basename(session.audio_path)} (może potrwać kilka minut)...")
+        analysis = audio_trim.detect_silences(session.audio_path, session.name, args.noise, args.min_silence)
+        audio_trim.save_analysis(session.name, analysis)
+    return analysis
+
+
+def cmd_silence(args):
+    from . import audio_trim
+    session = _audio_session(args.session)
+    analysis = _analysis(session, args, args.force)
+    fmt = audio_trim.format_timestamp
+    print(f"\nNagranie: {fmt(analysis.duration)}, cisza łącznie: {fmt(analysis.silence_total)} "
+          f"(fragmenty ≥ {analysis.min_silence:g} s, poniżej {analysis.noise_db:g} dB)")
+    for start, end in analysis.silences:
+        print(f"  cisza {fmt(start)} – {fmt(end)}  ({fmt(end - start)})")
+    start, end = audio_trim.suggest_range(analysis)
+    segments = audio_trim.keep_segments(analysis, start, end)
+    print("\nPropozycja: " + audio_trim.describe_plan(analysis, segments))
+    print(f"Przytnij: rpg-chronicler trim {session.name}  (albo --start/--end/--cut-gaps)")
+
+
+def cmd_trim(args):
+    from . import audio_trim
+    session = _audio_session(args.session)
+    if session.has_transcript and not args.force:
+        raise audio_trim.TrimError(
+            f"Sesja '{session.name}' ma już transkrypcję - po przycięciu czasy przestałyby pasować do nagrania. "
+            "Użyj --force, jeśli na pewno chcesz.")
+    analysis = _analysis(session, args, force=False)
+    start, end = audio_trim.suggest_range(analysis)
+    start = audio_trim.parse_timestamp(args.start) if args.start else start
+    end = audio_trim.parse_timestamp(args.end) if args.end else end
+    segments = audio_trim.keep_segments(analysis, start, end, args.cut_gaps)
+    print(audio_trim.describe_plan(analysis, segments))
+    if len(segments) == 1 and segments[0][0] <= 0.5 and segments[0][1] >= analysis.duration - 0.5:
+        if audio_trim.has_duration_header(session.audio_path):
+            print("Nie ma czego przycinać.")
+            return
+        print("Nie ma czego przycinać, ale plik nie ma zapisanej długości - zapisuję go od nowa (bez straty jakości).")
+    if args.dry_run:
+        return
+    backup = audio_trim.trim_audio(session.audio_path, segments, session.name)
+    print(f"[SUKCES] Przycięto {os.path.basename(session.audio_path)}. Oryginał: {backup}")
+
+
 def cmd_run(args):
     from .storage.drive import sync_from_gdrive, upload_to_gdrive
     from .summary import summarize_sessions
@@ -182,6 +238,28 @@ def build_parser() -> argparse.ArgumentParser:
                    help="pomiń pomiar Whispera")
     p.set_defaults(func=cmd_benchmark)
 
+    def silence_args(p):
+        p.add_argument("session", metavar="SESJA", help="sesja z lokalnym nagraniem")
+        p.add_argument("--noise", type=float, default=-40.0, metavar="DB",
+                       help="próg ciszy w dB (domyślnie -40; wyżej, np. -35, przy szumach w tle)")
+        p.add_argument("--min-silence", type=float, default=30.0, metavar="S",
+                       help="najkrótsza wykrywana cisza w sekundach (domyślnie 30)")
+
+    p = sub.add_parser("silence", help="wykryj ciszę w nagraniu i zaproponuj przycięcie")
+    silence_args(p)
+    p.add_argument("--force", action="store_true", help="wykryj ponownie, nawet jeśli jest zapisana analiza")
+    p.set_defaults(func=cmd_silence)
+
+    p = sub.add_parser("trim", help="przytnij ciszę na początku/końcu nagrania (oryginał trafia do oryginaly/)")
+    silence_args(p)
+    p.add_argument("--start", metavar="GG:MM:SS", help="początek zachowanego fragmentu (domyślnie: koniec ciszy)")
+    p.add_argument("--end", metavar="GG:MM:SS", help="koniec zachowanego fragmentu (domyślnie: początek ciszy)")
+    p.add_argument("--cut-gaps", type=float, default=0, metavar="MIN",
+                   help="wytnij też przerwy w środku dłuższe niż MIN minut (domyślnie 0 = nie wycinaj)")
+    p.add_argument("--force", action="store_true", help="przytnij mimo istniejącej transkrypcji")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż plan")
+    p.set_defaults(func=cmd_trim)
+
     p = sub.add_parser("migrate", help="zamień starsze transkrypcje .txt na format JSON")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie zrobione")
@@ -200,6 +278,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args.func(args)
     except SessionNotFound as e:
+        print(f"[BŁĄD] {e}", file=sys.stderr)
+        return 1
+    except Exception as e:
+        from .audio_trim import TrimError
+        if not isinstance(e, (TrimError, ValueError)) or args.func not in (cmd_silence, cmd_trim):
+            raise
         print(f"[BŁĄD] {e}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
