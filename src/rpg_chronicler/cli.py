@@ -169,6 +169,87 @@ def _print_voice_suggestions(session):
         print(f"  {spk}: {s.name} ({s.score:.0%}, {kind})" + (f"   [inne: {others}]" if others else ""))
 
 
+def _chronicle_session(name: str):
+    session = list_sessions([name])[0]
+    if not session.has_summary:
+        raise SessionNotFound(f"Sesja '{session.name}' nie ma jeszcze kroniki.")
+    return session
+
+
+def _ensure_pdf(session, force: bool = False) -> str:
+    from . import chronicle
+    from .chronicle_pdf import write_pdf
+    path = chronicle.pdf_path(session)
+    if force or not chronicle.pdf_is_current(session):
+        progress.report("PDF", session.name)
+        write_pdf(session, path)
+        print(f"[SUKCES] PDF: {path}")
+    return path
+
+
+def cmd_pdf(args):
+    for name in args.sessions:
+        _ensure_pdf(_chronicle_session(name), force=True)
+
+
+def cmd_discord(args):
+    from . import chronicle, discord
+    from .llm import LLMError, get_client, with_retry
+    from .prompts import render
+
+    session = _chronicle_session(args.session)
+    text = chronicle.read_chronicle(session)
+    teaser = chronicle.read_teaser(session)
+    if not teaser or args.new_teaser:
+        progress.report("zapowiedź", session.name)
+        prompt = render("teaser", system_name=session.system_name, chronicle=text)
+        try:
+            client = get_client(args.provider)
+            print(f"[{client.name}] Pisanie zapowiedzi kroniki...")
+            teaser = with_retry(lambda: client.generate(prompt), "zapowiedź kroniki").strip().strip('"„”')
+        except LLMError as e:
+            raise SessionNotFound(f"Nie udało się napisać zapowiedzi: {e}")
+        chronicle.save_teaser(session, teaser)
+        print(f"Zapowiedź:\n{teaser}\n")
+    pdf = _ensure_pdf(session)
+    if args.prepare:
+        return
+
+    webhook = chronicle.webhook_for(session.campaign.key)
+    if not webhook:
+        raise SessionNotFound(f"Kampania '{session.campaign.key}' nie ma ustawionego webhooka Discorda "
+                              "(GUI: Kampanie → Discord).")
+    if chronicle.load_sent(session) and not args.force:
+        raise SessionNotFound(f"Kronikę wysłano już {chronicle.sent_text(session)} - użyj --force, żeby wysłać ponownie.")
+    footer = " · ".join(p for p in (session.system_name, chronicle.session_date_text(session) or session.name) if p)
+    message = discord.build_message(chronicle.chronicle_title(text), teaser, footer, os.path.basename(pdf))
+    progress.report("wysyłanie na Discord", session.name)
+    try:
+        message_id = discord.send(webhook, message, pdf)
+    except discord.DiscordError as e:
+        raise SessionNotFound(str(e))
+    chronicle.save_sent(session, message_id)
+    print(f"[SUKCES] Wysłano kronikę {session.name} na Discord.")
+
+
+def cmd_discord_test(args):
+    from . import chronicle, discord
+    from .campaigns import campaign_for
+
+    campaign = campaign_for(f"{args.campaign}_")
+    webhook = chronicle.webhook_for(campaign.key)
+    if not webhook:
+        raise SessionNotFound(f"Kampania '{args.campaign}' nie ma ustawionego webhooka Discorda.")
+    message = discord.build_message(f"Kronikarz kampanii {campaign.key} melduje się!",
+                                    "To wiadomość testowa - tutaj będą trafiać kroniki kolejnych sesji.",
+                                    campaign.system, None)
+    try:
+        discord.send(webhook, message)
+    except discord.DiscordError as e:
+        raise SessionNotFound(str(e))
+    print("[SUKCES] Wysłano wiadomość testową.")
+
+
 def cmd_glossary(args):
     from . import glossary
     from .campaigns import campaign_for
@@ -317,6 +398,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="policz ponownie istniejące odciski")
     p.add_argument("--no-suggest", action="store_true", help="nie pokazuj podpowiedzi imion po policzeniu")
     p.set_defaults(func=cmd_voices)
+
+    p = sub.add_parser("pdf", help="zapisz kronikę jako PDF (obok kroniki, w folderze kronik)")
+    p.add_argument("sessions", nargs="+", metavar="SESJA")
+    p.set_defaults(func=cmd_pdf)
+
+    p = sub.add_parser("discord", help="wyślij kronikę na kanał Discord kampanii (zapowiedź + PDF)")
+    p.add_argument("session", metavar="SESJA")
+    provider_arg(p)
+    p.add_argument("--przygotuj", dest="prepare", action="store_true",
+                   help="tylko przygotuj zapowiedź i PDF, bez wysyłania")
+    p.add_argument("--nowa-zapowiedz", dest="new_teaser", action="store_true", help="napisz zapowiedź od nowa (AI)")
+    p.add_argument("--force", action="store_true", help="wyślij ponownie, nawet jeśli już wysłano")
+    p.set_defaults(func=cmd_discord)
+
+    p = sub.add_parser("discord-test", help="wyślij wiadomość testową na kanał Discord kampanii")
+    p.add_argument("campaign", metavar="KAMPANIA")
+    p.set_defaults(func=cmd_discord_test)
 
     p = sub.add_parser("glossary", help="AI proponuje słownik kampanii (nazwy) na podstawie jej kronik")
     p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")

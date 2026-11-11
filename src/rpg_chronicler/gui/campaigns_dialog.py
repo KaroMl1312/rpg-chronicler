@@ -7,7 +7,7 @@ from typing import Callable
 
 from gi.repository import Adw, GLib, Gtk
 
-from .. import glossary
+from .. import chronicle, discord, glossary
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          load_campaigns, update_campaign)
 from ..session import list_sessions
@@ -115,6 +115,9 @@ class CampaignsDialog(Adw.Dialog):
         self._rebuild_list()
         return True
 
+    def start_task(self, title: str, args: list[str]) -> None:
+        self._start_task(title, args)
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -151,6 +154,7 @@ class CampaignPage(Adw.NavigationPage):
         box.append(self._general_group(campaign))
         box.append(self._proposals_group(campaign))
         box.append(self._characters_group(campaign))
+        box.append(self._discord_group())
         for category, label in GLOSSARY_CATEGORIES.items():
             box.append(self._names_group(campaign, category, label))
         self._scrolled.set_child(Adw.Clamp(child=box, maximum_size=720))
@@ -256,6 +260,46 @@ class CampaignPage(Adw.NavigationPage):
         added = sum(len(v) if isinstance(v, list) else 1 for v in accepted.values())
         self.dialog.toast(f"Dodano do słownika: {added}" if added else "Odrzucono propozycje")
         self.dialog.reload()
+
+    # --- Discord ---
+
+    def _discord_group(self) -> Gtk.Widget:
+        webhook = chronicle.webhook_for(self.key)
+        group = Adw.PreferencesGroup(
+            title="Discord",
+            description="Kanał, na który trafiają kroniki tej kampanii. Na Discordzie: ustawienia kanału → "
+                        "Integracje → Webhooki → Nowy webhook → Kopiuj adres URL. Adres zostaje tylko na tym "
+                        "komputerze (nie trafia na Google Drive).")
+        entry = Adw.PasswordEntryRow(title="Adres webhooka", text=webhook, show_apply_button=True)
+        entry.connect("apply", lambda e: self._save_webhook(e))
+        group.add(entry)
+        if webhook:
+            test = Gtk.Button(label="Wyślij test", valign=Gtk.Align.CENTER,
+                              tooltip_text="Wyślij na kanał krótką wiadomość testową")
+            test.add_css_class("flat")
+            test.connect("clicked", lambda _b: self.dialog.start_task(f"Test Discorda {self.key}",
+                                                                      ["discord-test", self.key]))
+            self.dialog.register_task_button(test)
+            remove = _delete_button("Usuń webhook", lambda: self._remove_webhook())
+            buttons = Gtk.Box(spacing=6)
+            buttons.append(test)
+            buttons.append(remove)
+            group.set_header_suffix(buttons)
+        return group
+
+    def _save_webhook(self, entry: Adw.PasswordEntryRow) -> None:
+        url = entry.get_text().strip()
+        if not discord.is_valid_webhook(url):
+            entry.add_css_class("error")
+            self.dialog.toast("To nie jest adres webhooka Discorda (https://discord.com/api/webhooks/…)")
+            return
+        chronicle.set_webhook(self.key, url)
+        self.dialog.toast("Zapisano webhook")
+        self.reload()
+
+    def _remove_webhook(self) -> None:
+        chronicle.set_webhook(self.key, None)
+        self.reload()
 
     # --- postacie graczy ---
 

@@ -11,6 +11,8 @@ dependencies = [
     "faster-whisper>=1.2",
     "pyannote.audio>=4.0",
     "torch",
+    "weasyprint>=60",
+    "markdown>=3.5",
 ]
 
 [project.optional-dependencies]

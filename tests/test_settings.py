@@ -53,3 +53,12 @@ def test_config_uses_user_settings(tmp_path, monkeypatch):
         monkeypatch.undo()
         importlib.reload(config)
     assert config.MODEL_SIZE == "medium"
+
+
+def test_discord_webhooks_per_campaign(tmp_path):
+    path = tmp_path / "ustawienia.toml"
+    url = "https://discord.com/api/webhooks/1/abc"
+    settings.update({"discord.Warhammer": url, "discord.Kampania z spacją": url, "ai.dostawca": "gemini"}, path)
+    loaded = settings.load(path)
+    assert loaded["discord.Warhammer"] == url and loaded["discord.Kampania z spacją"] == url
+    assert settings.update({"discord.Warhammer": None}, path).get("discord.Warhammer") is None

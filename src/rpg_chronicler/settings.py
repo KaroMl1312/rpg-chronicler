@@ -28,6 +28,19 @@ FIELDS: dict[str, type] = {
     "google_drive.podsumowania": str,
 }
 
+# Sekcje z dowolnymi kluczami: [discord] Warhammer = "https://discord.com/api/webhooks/..."
+# (adresy webhooków są poufne - kto je zna, może pisać na kanał - dlatego tylko lokalnie, nie na Drive)
+DYNAMIC_SECTIONS: dict[str, type] = {
+    "discord": str,
+}
+
+
+def field_type(key: str) -> type | None:
+    if key in FIELDS:
+        return FIELDS[key]
+    section, _, name = key.partition(".")
+    return DYNAMIC_SECTIONS.get(section) if name else None
+
 
 def settings_path() -> Path:
     if os.environ.get(ENV_VAR):
@@ -54,7 +67,7 @@ def load(path: Path | None = None) -> dict:
             continue
         for name, value in entries.items():
             key = f"{section}.{name}"
-            expected = FIELDS.get(key)
+            expected = field_type(key)
             if expected is None:
                 print(f"[OSTRZEŻENIE] Nieznane ustawienie '{key}' w {path} - pomijam.")
             elif type(value) is not expected:  # bool to podklasa int - stąd dokładne porównanie typów
@@ -68,11 +81,14 @@ def save(values: dict, path: Path | None = None) -> None:
     """Zapisuje ustawienia (atomowo). Wartość None usuwa klucz, czyli przywraca domyślną."""
     path = path or settings_path()
     sections: dict[str, list[str]] = {}
-    for key in FIELDS:  # stała kolejność, tylko znane klucze
+    dynamic = sorted(k for k in values if k not in FIELDS and field_type(k) is not None)
+    for key in [*FIELDS, *dynamic]:  # stała kolejność, tylko znane klucze
         value = values.get(key)
         if value is None:
             continue
         section, name = key.split(".", 1)
+        name = name if name.replace("_", "").replace("-", "").isalnum() and name.isascii() \
+            else json.dumps(name, ensure_ascii=False)
         sections.setdefault(section, []).append(f"{name} = {_toml_value(value)}")
 
     lines = ["# Ustawienia rpg-chronicler (zmieniane z GUI). Brakujące klucze = wartości domyślne z config.py."]

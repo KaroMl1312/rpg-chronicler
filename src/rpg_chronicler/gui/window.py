@@ -5,11 +5,12 @@ import time
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .. import glossary, settings
+from .. import chronicle, glossary, settings
 from ..config import LLM_PROVIDER, PROJECT_ROOT
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
 from .campaigns_dialog import CampaignsDialog
+from .discord_dialog import DiscordDialog
 from .player import SnippetPlayer
 from .recording_page import RecordingPanel
 from .settings_dialog import PROVIDERS, SettingsDialog
@@ -37,6 +38,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._session_task_buttons: list[Gtk.Button] = []
         self.recording_panel: RecordingPanel | None = None
         self._campaigns_dialog: CampaignsDialog | None = None
+        self._discord_dialog: DiscordDialog | None = None
+        self._open_pdf_after: str | None = None
         self._proposal_counts: dict[str, int] = {}
 
         self.runner = TaskRunner()
@@ -390,10 +393,16 @@ class MainWindow(Adw.ApplicationWindow):
         open_button = Gtk.Button(label="Otwórz w edytorze")
         open_button.connect("clicked", lambda _b: Gtk.FileLauncher.new(
             Gio.File.new_for_path(session.summary_path)).launch(self, None, None))
-        self._session_task_buttons.append(regenerate)
-        regenerate.set_sensitive(not self.runner.running)
-        return _text_page(buffer, f"{session.system_name} · {self._provider_label()} przy ponownym generowaniu",
-                          [open_button, regenerate])
+        pdf_button = Gtk.Button(label="PDF", tooltip_text="Otwórz kronikę jako PDF (utworzy go, jeśli trzeba)")
+        pdf_button.connect("clicked", lambda _b: self.open_pdf(session))
+        discord_button = Gtk.Button(label="Wyślij na Discord")
+        discord_button.connect("clicked", lambda _b: self.show_discord(session))
+        for button in (regenerate, pdf_button, discord_button):
+            self._register_task_button(button)
+        sent = chronicle.sent_text(session)
+        info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
+                                               else f"{self._provider_label()} przy ponownym generowaniu")
+        return _text_page(buffer, info, [open_button, pdf_button, discord_button, regenerate])
 
     def _register_task_button(self, button: Gtk.Button) -> None:
         """Przycisk uruchamiający zadanie - nieaktywny, gdy inne zadanie jest w toku."""
@@ -537,7 +546,14 @@ class MainWindow(Adw.ApplicationWindow):
         self.refresh(force=True)
         if self._campaigns_dialog is not None:
             self._campaigns_dialog.reload()
+        if self._discord_dialog is not None:
+            self._discord_dialog.reload()
         self._notify_new_proposals()
+        pdf_session, self._open_pdf_after = self._open_pdf_after, None
+        if success and pdf_session:
+            session = next((s for s in self.sessions if s.name == pdf_session), None)
+            if session is not None and chronicle.pdf_is_current(session):
+                Gtk.FileLauncher.new(Gio.File.new_for_path(chronicle.pdf_path(session))).launch(self, None, None)
 
     def _notify_new_proposals(self) -> None:
         """Toast, gdy zadanie (kronika, „Uzupełnij z kronik”) dodało propozycje do słownika kampanii."""
@@ -611,6 +627,28 @@ class MainWindow(Adw.ApplicationWindow):
                  "Odtworzy to .venv (kilka minut, pobiera ok. 1 GB). Potem uruchom aplikację ponownie.\n\n"
                  f"Szczegóły: {self._environment_error}")
         dialog.add_response("ok", "Zamknij")
+        dialog.present(self)
+
+    def open_pdf(self, session: Session) -> None:
+        """Otwiera aktualny PDF kroniki; jeśli go nie ma albo jest starszy niż kronika - najpierw go tworzy."""
+        if chronicle.pdf_is_current(session):
+            Gtk.FileLauncher.new(Gio.File.new_for_path(chronicle.pdf_path(session))).launch(self, None, None)
+            return
+        self._open_pdf_after = session.name
+        self.start_task(f"PDF {session.name}", ["pdf", session.name])
+
+    def show_discord(self, session: Session) -> None:
+        if self._discord_dialog is not None:
+            self._discord_dialog.force_close()
+        dialog = DiscordDialog(session, self.start_task, lambda: self.provider, self._register_task_button,
+                               self.show_campaigns)
+
+        def closed(_d):
+            if self._discord_dialog is dialog:
+                self._discord_dialog = None
+
+        dialog.connect("closed", closed)
+        self._discord_dialog = dialog
         dialog.present(self)
 
     def show_campaigns(self, key: str | None) -> None:

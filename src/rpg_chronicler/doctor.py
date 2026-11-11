@@ -29,7 +29,7 @@ VENV_PROBE = r"""
 import json, sys
 result = {"python": sys.version.split()[0], "moduly": {}}
 for name in ("torch", "torchaudio", "torchcodec.decoders", "faster_whisper", "ctranslate2", "onnxruntime",
-             "pyannote.audio", "anthropic", "google.genai"):
+             "pyannote.audio", "weasyprint", "markdown", "anthropic", "google.genai"):
     try:
         module = __import__(name, fromlist=["_"])
         result["moduly"][name] = getattr(module, "__version__", "ok")
@@ -117,7 +117,7 @@ def check_venv(report: Report) -> None:
     report.add(OK, f"Python {data['python']} w .venv")
 
     required = ["torch", "torchaudio", "torchcodec.decoders", "faster_whisper", "ctranslate2", "onnxruntime",
-                "pyannote.audio"]
+                "pyannote.audio", "weasyprint", "markdown"]
     for name in required:
         version = data["moduly"].get(name, "brak")
         report.add(ERROR if version.startswith("BŁĄD") or version == "brak" else OK, name, version)
