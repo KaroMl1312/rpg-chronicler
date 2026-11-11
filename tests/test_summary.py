@@ -79,3 +79,30 @@ def test_select_sessions_by_name_or_filename(workspace):
     workspace.add_audio("Fallout_2")
     assert [s.name for s in list_sessions(["Fallout_2.m4a"])] == ["Fallout_2"]
     assert [s.name for s in list_sessions()] == ["Fallout_2", "Warhammer_1"]
+
+
+def test_previous_chronicle_of_same_campaign_goes_into_prompt(workspace):
+    workspace.add_transcript("Fallout_16_09_2026", LEGACY)
+    workspace.add_transcript("Fallout_260930", LEGACY)
+    workspace.add_transcript("Fallout_261014", LEGACY)
+    workspace.add_transcript("Warhammer_261001", LEGACY)
+    for name, text in (("Fallout_16_09_2026", "STARA KRONIKA"), ("Fallout_260930", "POPRZEDNIA KRONIKA"),
+                       ("Warhammer_261001", "INNA KAMPANIA")):
+        (workspace.dirs["summary"] / f"{name}_podsumowanie.txt").write_text(name and text, encoding="utf-8")
+
+    summary.summarize_sessions(list_sessions(["Fallout_261014"]), interactive=False)
+    prompt = workspace.llm.prompts[0]
+    assert "POPRZEDNIA KRONIKA" in prompt and "Fallout_260930" in prompt
+    assert "STARA KRONIKA" not in prompt and "INNA KAMPANIA" not in prompt
+
+
+def test_glossary_proposals_after_new_chronicle(workspace, monkeypatch):
+    from rpg_chronicler import glossary
+    monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", True)
+    responses = iter(["KRONIKA o Altdorfie", '{"npc": ["Eustachy"], "miejsca": ["Altdorf"], "opis": "Imperium."}'])
+    workspace.llm.generate = lambda prompt: workspace.llm.prompts.append(prompt) or next(responses)
+    workspace.add_transcript("Warhammer_261001", LEGACY)
+
+    summary.summarize_sessions(list_sessions(), interactive=False)
+    assert "KRONIKA o Altdorfie" in workspace.llm.prompts[1]  # kronika trafiła do zapytania o słownik
+    assert glossary.load_proposals("Warhammer") == {"npc": ["Eustachy"], "miejsca": ["Altdorf"], "opis": "Imperium."}

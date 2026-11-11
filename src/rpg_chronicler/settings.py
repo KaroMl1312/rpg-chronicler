@@ -15,9 +15,11 @@ ENV_VAR = "RPG_CHRONICLER_SETTINGS"
 FIELDS: dict[str, type] = {
     "ai.dostawca": str,
     "ai.model_claude_code": str,
+    "ai.propozycje_slownika": bool,
     "transkrypcja.model": str,
     "transkrypcja.watki": int,
     "transkrypcja.pomijanie_ciszy": bool,
+    "transkrypcja.podpowiedz_nazw": bool,
     "foldery.nagrania": str,
     "foldery.transkrypcje": str,
     "foldery.podsumowania": str,

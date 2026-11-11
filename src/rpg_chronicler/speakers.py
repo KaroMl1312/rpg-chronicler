@@ -1,12 +1,23 @@
+from .campaigns import Campaign
 from .llm import LLMClient, LLMError, with_retry
 from .prompts import render
 from .transcript import Transcript
 
 
-def suggest_speakers(llm: LLMClient, transcript: Transcript, system_name: str) -> str:
+def campaign_info(campaign: Campaign) -> str:
+    """Postacie graczy z kampanii - AI może wtedy przypisać mówców do konkretnych postaci."""
+    if not campaign.player_characters:
+        return ""
+    names = ", ".join(campaign.player_characters)
+    return (f"- W tej kampanii gracze prowadzą postacie: {names}. Jeśli rozpoznasz, którą postać prowadzi "
+            "dany mówca, napisz to wprost, używając dokładnie tej pisowni imienia.\n")
+
+
+def suggest_speakers(llm: LLMClient, transcript: Transcript, campaign: Campaign) -> str:
     """Prosi AI o charakterystykę mówców. Rzuca LLMError, gdy się nie uda."""
     prompt = render("speaker_identification",
-                    system_name=system_name,
+                    system_name=campaign.system,
+                    campaign_info=campaign_info(campaign),
                     transcript=transcript.compact_for_llm())
     print(f"\n[{llm.name}] Analizowanie transkrypcji w celu rozpoznania ról...")
     return with_retry(lambda: llm.generate(prompt), "rozpoznawanie mówców")
@@ -23,7 +34,7 @@ def ask_speaker_names(transcript: Transcript) -> dict[str, str]:
     return mapping
 
 
-def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str,
+def identify_speakers(llm: LLMClient, transcript: Transcript, campaign: Campaign,
                       suggestion_path: str | None = None) -> dict[str, str]:
     """Prosi AI o charakterystykę mówców, a potem pyta użytkownika o ich imiona/role."""
     if not transcript.speakers:
@@ -31,7 +42,7 @@ def identify_speakers(llm: LLMClient, transcript: Transcript, system_name: str,
         return {}
 
     try:
-        suggestion = suggest_speakers(llm, transcript, system_name)
+        suggestion = suggest_speakers(llm, transcript, campaign)
     except LLMError:
         print("[PORAŻKA] Nie udało się uzyskać sugestii mówców. Możesz spróbować ponownie przy następnym uruchomieniu.")
         return {}

@@ -1,0 +1,36 @@
+# PRZYKŁAD formatu pliku kampanii. Właściwy plik to kampanie.toml w folderze transkrypcji
+# (domyślnie ~/Documents/Transkrypcje/kampanie.toml) - synchronizuje się z Google Drive,
+# a najwygodniej edytować go w GUI (menu → Kampanie).
+#
+# Nazwa sekcji = prefiks nazwy pliku nagrania (część przed pierwszym "_"),
+# np. "Warhammer_261015.m4a" -> [Warhammer].
+#
+#   system          - nazwa systemu RPG (styl i słownictwo kroniki)
+#   kontekst        - opis świata/kampanii dla AI
+#   postacie_graczy - postać = "gracz" (gracz opcjonalny)
+#   npc, miejsca, przedmioty, inne - słownik nazw: poprawna pisownia w transkrypcji i kronikach
+
+[Warhammer]
+system = "Warhammer Fantasy Roleplay"
+kontekst = '''
+Imperium, rok 2512. Drużyna podróżuje po Reiklandzie i tropi kult Nurgla,
+który rozsiewa zarazę w okolicach Ubersreiku.
+'''
+npc = [
+    "Eustachy",
+    "Matka Helga",
+]
+miejsca = [
+    "Altdorf",
+    "Ubersreik",
+]
+przedmioty = [
+    "Sygnet Rodowy",
+]
+inne = [
+    "Zakon Mora",
+]
+
+[Warhammer.postacie_graczy]
+Fen = "Ania"
+"Sir Amos" = ""

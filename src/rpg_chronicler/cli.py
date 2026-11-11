@@ -3,6 +3,7 @@ import argparse
 import os
 import sys
 
+from . import progress
 from .config import DIARIZATION_MODEL, LLM_PROVIDER, WHISPER_CPU_THREADS
 from .session import SessionNotFound, list_sessions
 
@@ -141,6 +142,30 @@ def cmd_trim(args):
     print(f"[SUKCES] Przycięto {os.path.basename(session.audio_path)}. Oryginał: {backup}")
 
 
+def cmd_glossary(args):
+    from . import glossary
+    from .campaigns import campaign_for
+    from .llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    chronicles = glossary.chronicles_for(campaign.key, list_sessions())
+    if not chronicles:
+        raise SessionNotFound(f"Kampania '{args.campaign}' nie ma jeszcze żadnych kronik.")
+    progress.report("propozycje słownika", campaign.key)
+    try:
+        proposals = glossary.extract_proposals(get_client(args.provider), campaign, chronicles)
+    except (LLMError, glossary.GlossaryError) as e:
+        raise SessionNotFound(f"Nie udało się zaproponować słownika: {e}")
+    pending = glossary.add_proposals(campaign, proposals)
+    for category in glossary.CATEGORIES:
+        if proposals.get(category):
+            print(f"{category}: {', '.join(proposals[category])}")
+    if proposals.get(glossary.DESCRIPTION):
+        print(f"opis: {proposals[glossary.DESCRIPTION]}")
+    print(f"\n[SUKCES] Nowe propozycje: {glossary.count_proposals(proposals)}, oczekuje łącznie: "
+          f"{glossary.count_proposals(pending)}. Zatwierdź je w GUI (Kampanie).")
+
+
 def cmd_run(args):
     from .storage.drive import sync_from_gdrive, upload_to_gdrive
     from .summary import summarize_sessions
@@ -259,6 +284,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="przytnij mimo istniejącej transkrypcji")
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż plan")
     p.set_defaults(func=cmd_trim)
+
+    p = sub.add_parser("glossary", help="AI proponuje słownik kampanii (nazwy) na podstawie jej kronik")
+    p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")
+    provider_arg(p)
+    p.set_defaults(func=cmd_glossary)
 
     p = sub.add_parser("migrate", help="zamień starsze transkrypcje .txt na format JSON")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")

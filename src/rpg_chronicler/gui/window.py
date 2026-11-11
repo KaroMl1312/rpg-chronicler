@@ -5,10 +5,11 @@ import time
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .. import settings
+from .. import glossary, settings
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
+from .campaigns_dialog import CampaignsDialog
 from .player import SnippetPlayer
 from .recording_page import RecordingPanel
 from .settings_dialog import PROVIDERS, SettingsDialog
@@ -35,6 +36,8 @@ class MainWindow(Adw.ApplicationWindow):
         self._pulse_id = 0
         self._session_task_buttons: list[Gtk.Button] = []
         self.recording_panel: RecordingPanel | None = None
+        self._campaigns_dialog: CampaignsDialog | None = None
+        self._proposal_counts: dict[str, int] = {}
 
         self.runner = TaskRunner()
         self.runner.connect("line", self._on_task_line)
@@ -68,6 +71,7 @@ class MainWindow(Adw.ApplicationWindow):
             "Przebieg bez Google Drive", ["run", "--offline", "--no-interactive", *self._provider_args()]))
         add("show-log", self.show_log)
         add("preferences", self.show_settings)
+        add("campaigns", lambda: self.show_campaigns(None))
         add("restart", self.restart)
         add("cancel", self.runner.cancel)
 
@@ -123,6 +127,7 @@ class MainWindow(Adw.ApplicationWindow):
             providers.append_item(item)
         menu.append_section("Dostawca AI", providers)
         other = Gio.Menu()
+        other.append("Kampanie", "win.campaigns")
         other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
         menu.append_section(None, other)
@@ -163,6 +168,10 @@ class MainWindow(Adw.ApplicationWindow):
 
         self.content_header = Adw.HeaderBar(
             title_widget=Adw.ViewSwitcher(stack=self.view_stack, policy=Adw.ViewSwitcherPolicy.WIDE))
+        self.campaign_button = Gtk.Button(tooltip_text="Opis świata, postacie graczy i słownik nazw tej kampanii")
+        self.campaign_button.connect("clicked", lambda _b: self.current and self.show_campaigns(
+            self.current.campaign.key or None))
+        self.content_header.pack_end(self.campaign_button)
         session_view = Adw.ToolbarView(content=self.view_stack)
         session_view.add_top_bar(self.content_header)
 
@@ -265,6 +274,10 @@ class MainWindow(Adw.ApplicationWindow):
 
         self._detail_signature = session_signature(session)
         self.content_page.set_title(session.name)
+        key = session.campaign.key
+        self.campaign_button.set_visible(bool(key))
+        pending = glossary.count_proposals(glossary.pending_for(session.campaign)) if key else 0
+        self.campaign_button.set_label(f"Kampania {key}" + (f" ({pending})" if pending else ""))
         self.content_stack.set_visible_child_name("session")
 
         transcript = None
@@ -463,6 +476,7 @@ class MainWindow(Adw.ApplicationWindow):
             self.toast(error)
             return
         self._task_started = time.monotonic()
+        self._proposal_counts = self._snapshot_proposals()
         self._stage_key = None
         self.task_title.set_text(title)
         self.task_detail.set_text("Uruchamianie…")
@@ -516,6 +530,18 @@ class MainWindow(Adw.ApplicationWindow):
             toast.connect("button-clicked", lambda _t: self.show_log())
             self.toasts.add_toast(toast)
         self.refresh(force=True)
+        if self._campaigns_dialog is not None:
+            self._campaigns_dialog.reload()
+        self._notify_new_proposals()
+
+    def _notify_new_proposals(self) -> None:
+        """Toast, gdy zadanie (kronika, „Uzupełnij z kronik”) dodało propozycje do słownika kampanii."""
+        for key, count in self._snapshot_proposals().items():
+            if count > self._proposal_counts.get(key, 0):
+                toast = Adw.Toast(title=GLib.markup_escape_text(f"Nowe propozycje do słownika kampanii {key}: {count}"),
+                                  button_label="Przejrzyj", timeout=0)
+                toast.connect("button-clicked", lambda _t, k=key: self.show_campaigns(k))
+                self.toasts.add_toast(toast)
 
     def _start_pulse(self) -> None:
         if not self._pulse_id:
@@ -536,6 +562,25 @@ class MainWindow(Adw.ApplicationWindow):
         body = Adw.ToolbarView(content=scrolled)
         body.add_top_bar(Adw.HeaderBar())
         Adw.Dialog(title="Log zadań", child=body, content_width=900, content_height=600).present(self)
+
+    def show_campaigns(self, key: str | None) -> None:
+        if self._campaigns_dialog is not None:
+            self._campaigns_dialog.force_close()
+        dialog = CampaignsDialog(self.start_task, lambda: self.provider, self._register_task_button, key)
+
+        def closed(_d):
+            self._campaigns_dialog = None
+            self.refresh(force=True)  # zmiany w kampanii (system, imiona) widać w liście i transkrypcji
+
+        dialog.connect("closed", closed)
+        self._campaigns_dialog = dialog
+        dialog.present(self)
+
+    def _snapshot_proposals(self) -> dict[str, int]:
+        counts = {}
+        for path in glossary.proposals_dir().glob("*.json"):
+            counts[path.stem] = glossary.count_proposals(glossary.load_proposals(path.stem))
+        return counts
 
     def show_settings(self) -> None:
         def provider_changed(key: str) -> None:

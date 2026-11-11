@@ -1,10 +1,11 @@
 import os
 
-from . import progress
-from .config import LLM_PROVIDER, SUMMARY_DIR
+from . import glossary, progress
+from .campaigns import campaign_key, session_date
+from .config import GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR
 from .llm import LLMClient, LLMError, get_client, with_retry
 from .prompts import render
-from .session import Session
+from .session import Session, list_sessions
 from .speakers import identify_speakers, save_suggestion, suggest_speakers
 from .transcript import load_speaker_mapping, save_speaker_mapping
 
@@ -17,9 +18,37 @@ def speaker_mapping_info(mapping: dict[str, str]) -> str:
             + "\nUżywaj tych imion i ról przy opisywaniu akcji konkretnych bohaterów!")
 
 
+PREVIOUS_CHRONICLE_LIMIT = 20000  # znaków - dłuższą poprzednią kronikę przycinamy
+
+
+def previous_session(session: Session) -> Session | None:
+    """Ostatnia wcześniejsza sesja tej samej kampanii, która ma już kronikę (wg daty w nazwie)."""
+    key, date = campaign_key(session.name), session_date(session.name)
+    if key is None or date is None:
+        return None
+    candidates = [(d, s) for s in list_sessions() if s.name != session.name and s.has_summary
+                  and campaign_key(s.name) == key and (d := session_date(s.name)) is not None and d < date]
+    return max(candidates, key=lambda item: item[0])[1] if candidates else None
+
+
 def campaign_context(session: Session) -> str:
-    context = session.campaign.context
-    return f"\n\nKontekst kampanii (użyj go, by poprawnie zapisywać imiona i nazwy):\n{context}" if context else ""
+    """Opis kampanii, postacie graczy, słownik nazw i poprzednia kronika - dla ciągłości i poprawnej pisowni."""
+    parts = []
+    info = session.campaign.prompt_info()
+    if info:
+        parts.append(f"Informacje o kampanii (użyj ich, by poprawnie zapisywać imiona i nazwy):\n{info}")
+    previous = previous_session(session)
+    if previous is not None:
+        try:
+            with open(previous.summary_path, encoding="utf-8") as f:
+                text = f.read().strip()[:PREVIOUS_CHRONICLE_LIMIT]
+        except OSError:
+            text = ""
+        if text:
+            parts.append(f"Kronika poprzedniej sesji ({previous.name}) - tylko dla ciągłości fabuły, wątków i imion; "
+                         f"nie streszczaj jej ponownie, opisuj wyłącznie wydarzenia z nowej transkrypcji:\n"
+                         f"<poprzednia_kronika>\n{text}\n</poprzednia_kronika>")
+    return "".join(f"\n\n{part}" for part in parts)
 
 
 def _print_header(session: Session) -> None:
@@ -60,12 +89,12 @@ def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: 
         progress.report("sugestia mówców", session.name)
         try:
             if suggest_only:
-                suggestion = suggest_speakers(llm.get(), transcript, session.system_name)
+                suggestion = suggest_speakers(llm.get(), transcript, session.campaign)
                 save_suggestion(session.speaker_suggestion_path, suggestion)
                 print(suggestion)
                 print(f"[SUKCES] Zapisano sugestię mówców w: {session.speaker_suggestion_path}")
                 continue
-            mapping = identify_speakers(llm.get(), transcript, session.system_name,
+            mapping = identify_speakers(llm.get(), transcript, session.campaign,
                                         session.speaker_suggestion_path)
         except LLMError as e:
             print(f"[OSTRZEŻENIE] {e}")
@@ -107,7 +136,7 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             user_choice = input(f"Czy chcesz spróbować nadać imiona dla wykrytych mówców w {session.name}? (y/n): ").strip().lower()
             if user_choice == "y":
                 try:
-                    mapping = identify_speakers(llm.get(), transcript, session.system_name,
+                    mapping = identify_speakers(llm.get(), transcript, session.campaign,
                                                 session.speaker_suggestion_path)
                 except LLMError as e:
                     print(f"[OSTRZEŻENIE] {e}")
@@ -141,3 +170,22 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
         with open(session.summary_path, "w", encoding="utf-8") as f:
             f.write(summary)
         print(f"[SUKCES] Zapisano kronikę ({session.system_name}) w: {session.summary_path}")
+        if GLOSSARY_PROPOSALS:
+            propose_glossary(client, session, summary)
+
+
+def propose_glossary(client: LLMClient, session: Session, chronicle: str) -> None:
+    """Po nowej kronice: AI proponuje nowe nazwy do słownika kampanii. Błąd nie przerywa pracy."""
+    campaign = session.campaign
+    if not campaign.key:
+        return
+    progress.report("propozycje słownika", session.name)
+    try:
+        proposals = glossary.extract_proposals(client, campaign, [(session.name, chronicle)])
+    except (LLMError, glossary.GlossaryError) as e:
+        print(f"[OSTRZEŻENIE] Nie udało się zaproponować nazw do słownika: {e}")
+        return
+    pending = glossary.add_proposals(campaign, proposals)
+    if proposals:
+        print(f"[INFO] Nowe propozycje do słownika kampanii {campaign.key}: {glossary.count_proposals(proposals)} "
+              f"(oczekuje {glossary.count_proposals(pending)}) - przejrzyj je w GUI (Kampanie).")

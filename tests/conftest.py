@@ -31,6 +31,8 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "SUMMARY_DIR", str(dirs["summary"]))
     monkeypatch.setattr(summary, "SUMMARY_DIR", str(dirs["summary"]))
     monkeypatch.setattr(campaigns, "load_campaigns", lambda: {})
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))  # analizy ciszy, propozycje słownika
+    monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", False)       # testy włączają je jawnie
 
     llm = FakeLLM()
     monkeypatch.setattr(summary, "get_client", lambda provider: llm)

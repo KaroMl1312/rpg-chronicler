@@ -25,7 +25,8 @@ def sync_from_gdrive():
     # Pobieramy też gotowe transkrypcje (z .mowcy.json) i podsumowania, żeby wiedzieć co już zostało zrobione
     for remote, local in ((RCLONE_TXT_REMOTE, TXT_DIR), (RCLONE_SUMMARY_REMOTE, SUMMARY_DIR)):
         try:
-            rclone_copy(remote, local, quiet=True)
+            # --update: nie nadpisujemy nowszych plików zmienionych lokalnie (kampanie.toml, mówcy) starszymi z Drive
+            rclone_copy(remote, local, quiet=True, extra=("--update",))
         except Exception as e:
             print(f"[OSTRZEŻENIE] Nie udało się pobrać {remote}: {e}")
 
@@ -42,14 +43,14 @@ def upload_to_gdrive():
 
     print("Wysyłanie transkrypcji...")
     try:
-        rclone_copy(TXT_DIR, RCLONE_TXT_REMOTE)
+        rclone_copy(TXT_DIR, RCLONE_TXT_REMOTE, extra=("--update",))
         print("Transkrypcje wysłane z sukcesem.")
     except Exception as e:
         print(f"[BŁĄD] Nie udało się wysłać transkrypcji: {e}")
 
     print("Wysyłanie podsumowań AI...")
     try:
-        rclone_copy(SUMMARY_DIR, RCLONE_SUMMARY_REMOTE)
+        rclone_copy(SUMMARY_DIR, RCLONE_SUMMARY_REMOTE, extra=("--update",))
         print("Podsumowania wysłane z sukcesem.")
     except Exception as e:
         print(f"[BŁĄD] Nie udało się wysłać podsumowań: {e}")

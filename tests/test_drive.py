@@ -24,6 +24,7 @@ def test_sync_pulls_transcripts_summaries_and_audio(monkeypatch, tmp_path):
     assert sources == [drive.RCLONE_TXT_REMOTE, drive.RCLONE_SUMMARY_REMOTE, drive.RCLONE_AUDIO_REMOTE]
     # lokalnych (np. przyciętych) nagrań nie nadpisujemy wersją z Drive
     assert "--ignore-existing" in calls[2] and "--ignore-existing" not in calls[0]
+    assert "--update" in calls[0] and "--update" in calls[1]  # nie nadpisujemy nowszych lokalnych zmian
 
 
 def test_upload_continues_after_failure(monkeypatch, capsys):

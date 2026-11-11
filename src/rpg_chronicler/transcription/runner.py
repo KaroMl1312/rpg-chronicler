@@ -14,6 +14,7 @@ from ..config import (
     TXT_DIR,
     WHISPER_BATCH_SIZE,
     WHISPER_CPU_THREADS,
+    WHISPER_NAME_HINTS,
     WHISPER_VAD,
 )
 from ..session import Session
@@ -60,13 +61,16 @@ def diarize(pipeline: Pipeline, audio, session_name: str | None = None) -> list[
 
 def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_VAD,
                      batch_size: int = WHISPER_BATCH_SIZE, show_progress: bool = True,
-                     session_name: str | None = None):
-    """Zwraca (lista segmentów, info). `audio` to ścieżka albo tablica numpy 16 kHz."""
+                     session_name: str | None = None, hotwords: str | None = None):
+    """Zwraca (lista segmentów, info). `audio` to ścieżka albo tablica numpy 16 kHz.
+
+    `hotwords`: nazwy podpowiadane modelowi (słownik kampanii) - poprawiają pisownię imion i miejsc.
+    """
     if batch_size > 0:
         segments_iter, info = BatchedInferencePipeline(whisper_model).transcribe(
-            audio, language="pl", batch_size=batch_size)
+            audio, language="pl", batch_size=batch_size, hotwords=hotwords)
     else:
-        segments_iter, info = whisper_model.transcribe(audio, language="pl", vad_filter=vad)
+        segments_iter, info = whisper_model.transcribe(audio, language="pl", vad_filter=vad, hotwords=hotwords)
 
     # Segmenty powstają w trakcie iterowania - stąd postęp liczony po czasie nagrania
     segments = []
@@ -79,6 +83,14 @@ def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_
             if report:
                 progress.report("transkrypcja", session_name, min(segment.end, info.duration), info.duration)
     return segments, info
+
+
+def name_hints(session: Session) -> str | None:
+    """Słownik kampanii jako podpowiedź dla Whispera (Whisper sam przytnie zbyt długą listę)."""
+    if not WHISPER_NAME_HINTS:
+        return None
+    names = session.campaign.all_names()
+    return ", ".join(names) if names else None
 
 
 def transcribe_sessions(sessions: list[Session]) -> bool:
@@ -118,7 +130,12 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             print("Transkrypcja mowy...")
             started = time.perf_counter()
             progress.report("transkrypcja", session.name)
-            segments, info = transcribe_audio(whisper_model, session.audio_path, session_name=session.name)
+            hints = name_hints(session)
+            if hints:
+                print(f"[INFO] Podpowiedź nazw z kampanii {session.campaign.key}: {hints[:120]}"
+                      + ("…" if len(hints) > 120 else ""))
+            segments, info = transcribe_audio(whisper_model, session.audio_path, session_name=session.name,
+                                              hotwords=hints)
             transcription_time = time.perf_counter() - started
             print(f"[CZAS] Transkrypcja: {format_duration(transcription_time)} "
                   f"(nagranie: {format_duration(info.duration)})")

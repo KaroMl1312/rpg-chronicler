@@ -37,11 +37,13 @@ AUDIO_DIR = os.path.expanduser(_setting("foldery.nagrania", "~/Documents/Audio_s
 TXT_DIR = os.path.expanduser(_setting("foldery.transkrypcje", "~/Documents/Transkrypcje"))
 SUMMARY_DIR = os.path.expanduser(_setting("foldery.podsumowania", "~/Documents/Podsumowania"))
 
-CAMPAIGNS_FILE = PROJECT_ROOT / "kampanie.toml"
+# Kampanie leżą w folderze transkrypcji, więc synchronizują się z Google Drive (patrz campaigns.py)
+CAMPAIGNS_FILENAME = "kampanie.toml"
 
 MODEL_SIZE = _setting("transkrypcja.model", "medium")
 WHISPER_CPU_THREADS = _setting("transkrypcja.watki", max(1, (os.cpu_count() or 2) // 2))  # rdzenie fizyczne
 WHISPER_VAD = _setting("transkrypcja.pomijanie_ciszy", False)  # szybciej, mniej "zmyślonych" zdań w ciszy
+WHISPER_NAME_HINTS = _setting("transkrypcja.podpowiedz_nazw", True)  # słownik kampanii jako hotwords Whispera
 WHISPER_BATCH_SIZE = 0       # >0 = tryb wsadowy BatchedInferencePipeline (zawsze z VAD)
 DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
 SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
@@ -56,6 +58,9 @@ LLM_MAX_RETRIES = 3
 LLM_RETRY_DELAY = 65  # sekundy między próbami
 
 CLAUDE_CODE_MODEL = _setting("ai.model_claude_code", "") or None  # None = domyślny model konta; np. "sonnet"
+# Po każdej nowej kronice AI proponuje nowe nazwy do słownika kampanii (do zatwierdzenia w GUI)
+GLOSSARY_PROPOSALS = _setting("ai.propozycje_slownika", True)
+
 CLAUDE_CODE_TIMEOUT = 900    # sekundy na jedno wywołanie
 
 ANTHROPIC_MODEL = "claude-opus-5-5"

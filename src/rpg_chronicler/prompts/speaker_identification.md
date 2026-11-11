@@ -3,6 +3,6 @@ Przeanalizuj wypowiedzi poszczególnych mówców (np. SPEAKER_00, SPEAKER_01 itd
 Twoim zadaniem jest podanie krótkiej charakterystyki każdego z nich w 2-3 zdaniach:
 - Wskaż, który mówca to Mistrz Gry (MG) / Prowadzący (wystarczy krótka adnotacja, że to MG).
 - Dla pozostałych mówców (graczy) opisz kim jest ich postać (np. klasa, profesja, zachowanie, kluczowe akcje, imię jeśli padło w grze).
-
+{campaign_info}
 Oto treść transkrypcji (format: „MÓWCA: wypowiedź”):
 {transcript}

@@ -136,6 +136,7 @@ class SpeakersPage(Adw.Bin):
         entry.connect("changed", lambda _e: self._update_save_button())
         entry.connect("entry-activated", lambda _e: self.save())
         self._entries[spk] = entry
+        entry.add_suffix(_names_menu(session, entry))
 
         samples = transcript.speaker_samples(spk, SAMPLE_COUNT)
         if samples:
@@ -185,3 +186,31 @@ def _read_text(path: str) -> str:
             return f.read().strip()
     except OSError:
         return ""
+
+
+def _names_menu(session: Session, entry: Adw.EntryRow) -> Gtk.MenuButton:
+    """Lista do wyboru: MG i postacie graczy z kampanii (okno „Kampanie”)."""
+    names = ["MG", *session.campaign.player_characters]
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+    popover = Gtk.Popover(child=box)
+    for name in names:
+        player = session.campaign.player_characters.get(name, "")
+        button = Gtk.Button(label=f"{name} ({player})" if player else name)
+        button.add_css_class("flat")
+        button.get_child().set_xalign(0)
+
+        def choose(_b, n=name):
+            entry.set_text(n)
+            popover.popdown()
+
+        button.connect("clicked", choose)
+        box.append(button)
+    if len(names) == 1:
+        hint = Gtk.Label(label="Dodaj postacie graczy w oknie\nKampanie (Ctrl+K)", margin_top=6,
+                         margin_bottom=6, margin_start=6, margin_end=6)
+        hint.add_css_class("dim-label")
+        box.append(hint)
+    menu = Gtk.MenuButton(icon_name="pan-down-symbolic", popover=popover, valign=Gtk.Align.CENTER,
+                          tooltip_text="Wybierz postać gracza z kampanii")
+    menu.add_css_class("flat")
+    return menu

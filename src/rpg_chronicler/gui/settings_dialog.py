@@ -64,6 +64,12 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(self._combo("Model w Claude Code", "Dotyczy tylko dostawcy Claude Code", CLAUDE_CODE_MODELS,
                               self._value("ai.model_claude_code", config.CLAUDE_CODE_MODEL or ""),
                               lambda key: self._save("ai.model_claude_code", key)))
+        proposals = Adw.SwitchRow(
+            title="Propozycje do słownika kampanii",
+            subtitle="Po każdej nowej kronice AI wypisuje nowe nazwy do zatwierdzenia (dodatkowe krótkie zapytanie)",
+            active=self._value("ai.propozycje_slownika", config.GLOSSARY_PROPOSALS))
+        proposals.connect("notify::active", lambda row, _p: self._save("ai.propozycje_slownika", row.get_active()))
+        group.add(proposals)
         return group
 
     def _provider_selected(self, key: str) -> None:
@@ -95,6 +101,13 @@ class SettingsDialog(Adw.PreferencesDialog):
                             active=self._value("transkrypcja.pomijanie_ciszy", config.WHISPER_VAD))
         vad.connect("notify::active", lambda row, _p: self._save("transkrypcja.pomijanie_ciszy", row.get_active()))
         group.add(vad)
+
+        hints = Adw.SwitchRow(title="Podpowiadaj nazwy z kampanii",
+                              subtitle="Whisper dostaje słownik kampanii (postacie, miejsca…) i poprawniej zapisuje "
+                                       "imiona. Wyłącz, jeśli nazwy zaczną pojawiać się w transkrypcji bez powodu.",
+                              active=self._value("transkrypcja.podpowiedz_nazw", config.WHISPER_NAME_HINTS))
+        hints.connect("notify::active", lambda row, _p: self._save("transkrypcja.podpowiedz_nazw", row.get_active()))
+        group.add(hints)
         return group
 
     def _folders_group(self) -> Adw.PreferencesGroup:

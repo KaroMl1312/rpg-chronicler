@@ -16,6 +16,7 @@ class Application(Adw.Application):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
         self.set_accels_for_action("win.refresh", ["<Control>r", "F5"])
         self.set_accels_for_action("win.preferences", ["<Control>comma"])
+        self.set_accels_for_action("win.campaigns", ["<Control>k"])
         self.set_accels_for_action("window.close", ["<Control>w"])
         self.set_accels_for_action("app.quit", ["<Control>q"])
         quit_action = Gio.SimpleAction.new("quit", None)

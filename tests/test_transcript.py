@@ -64,7 +64,7 @@ def test_prompts_render_with_braces_in_transcript():
     prompt = render("summary", system_name="Warhammer", speaker_mapping_info="", campaign_context="",
                     transcript=Transcript.from_txt(TRANSCRIPT).compact_for_llm())
     assert "**Warhammer**" in prompt and "{nawias}" in prompt
-    assert "Warhammer" in render("speaker_identification", system_name="Warhammer", transcript="x")
+    assert "Warhammer" in render("speaker_identification", system_name="Warhammer", campaign_info="", transcript="x")
 
 
 def test_speaker_samples_merge_consecutive_segments_and_pick_longest():
