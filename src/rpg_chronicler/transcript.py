@@ -106,6 +106,24 @@ class Transcript:
         longest = sorted(turns, key=lambda s: s.end - s.start, reverse=True)[:limit]
         return sorted(longest, key=lambda s: s.start)
 
+    def split_parts(self, target_seconds: float, min_tail: float = 0.4) -> list["Transcript"]:
+        """Dzieli transkrypcję na części po ok. `target_seconds` nagrania (do kroniki w dwóch krokach).
+
+        Cięcie wypada przy pierwszej zmianie mówcy po przekroczeniu długości (nie w połowie wypowiedzi);
+        końcówka krótsza niż `min_tail` × `target_seconds` dołącza do poprzedniej części.
+        """
+        parts: list[list[Segment]] = [[]]
+        for s in self.segments:
+            current = parts[-1]
+            if (current and s.start - current[0].start >= target_seconds
+                    and (s.speaker != current[-1].speaker or s.speaker is None)):
+                parts.append([])
+            parts[-1].append(s)
+        if len(parts) > 1 and parts[-1] and parts[-1][-1].end - parts[-1][0].start < min_tail * target_seconds:
+            parts[-2].extend(parts.pop())
+        return [Transcript(segments=p, audio=self.audio, language=self.language, model=self.model)
+                for p in parts if p]
+
     def compact_for_llm(self, mapping: dict[str, str] | None = None) -> str:
         """Tekst bez znaczników czasu: kolejne wypowiedzi tego samego mówcy sklejone, z imionami z mapowania.
 

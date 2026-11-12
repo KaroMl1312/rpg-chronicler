@@ -62,6 +62,11 @@ CLAUDE_CODE_MODEL = _setting("ai.model_claude_code", "") or None  # None = domy�
 GLOSSARY_PROPOSALS = _setting("ai.propozycje_slownika", True)
 # Po każdej nowej kronice AI pisze jej skrót (kilka punktów z najważniejszymi wydarzeniami)
 CHRONICLE_BRIEF = _setting("ai.skrot_kroniki", True)
+# Kronika w dwóch krokach: z każdej części transkrypcji (~45 min) lista wydarzeń, potem kronika z tych list
+CHRONICLE_TWO_STEP = _setting("ai.kronika_etapami", True)
+CHRONICLE_PART_SECONDS = 45 * 60
+# Po każdej nowej kronice AI proponuje zaktualizowany stan kampanii (wątki, BN-i, zasoby; do zatwierdzenia)
+CAMPAIGN_MEMORY = _setting("ai.pamiec_kampanii", True)
 
 CLAUDE_CODE_TIMEOUT = 900    # sekundy na jedno wywołanie
 

@@ -1,4 +1,4 @@
-"""Okno „Kampanie”: system, opis świata, postacie graczy, słownik nazw i propozycje AI.
+"""Okno „Kampanie”: system, opis świata, pamięć kampanii, postacie graczy, słownik nazw i propozycje AI.
 
 Każda zmiana zapisuje się od razu do kampanie.toml (folder transkrypcji, na Drive trafia przy wysyłaniu).
 """
@@ -7,7 +7,7 @@ from typing import Callable
 
 from gi.repository import Adw, GLib, Gtk
 
-from .. import chronicle, discord, glossary
+from .. import chronicle, discord, glossary, memory
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          load_campaigns, update_campaign)
 from ..session import list_sessions
@@ -63,6 +63,8 @@ class CampaignsDialog(Adw.Dialog):
             details = [campaign.system, f"{len(campaign.all_names())} nazw"]
             if pending:
                 details.append(f"{pending} propozycji AI do przejrzenia")
+            if memory.load_proposal(key) is not None:
+                details.append("nowy stan kampanii do przejrzenia")
             row = Adw.ActionRow(title=key, subtitle=" · ".join(details), use_markup=False, activatable=True)
             row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
             row.connect("activated", lambda _r, k=key: self.open_campaign(k))
@@ -118,6 +120,9 @@ class CampaignsDialog(Adw.Dialog):
     def start_task(self, title: str, args: list[str]) -> None:
         self._start_task(title, args)
 
+    def start_memory(self, key: str) -> None:
+        self._start_task(f"Stan kampanii {key}", ["memory", key, "--rebuild", "--provider", self._provider()])
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -152,6 +157,7 @@ class CampaignPage(Adw.NavigationPage):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
                       margin_top=24, margin_bottom=24, margin_start=12, margin_end=12)
         box.append(self._general_group(campaign))
+        box.append(self._memory_group())
         box.append(self._proposals_group(campaign))
         box.append(self._characters_group(campaign))
         box.append(self._discord_group())
@@ -188,6 +194,83 @@ class CampaignPage(Adw.NavigationPage):
         box.append(save)
         group.add(box)
         return group
+
+    # --- pamięć kampanii ---
+
+    def _memory_group(self) -> Gtk.Widget:
+        state, proposal = memory.load_state(self.key), memory.load_proposal(self.key)
+        group = Adw.PreferencesGroup(title="Pamięć kampanii" + (" - nowa propozycja AI" if proposal else ""))
+        build = Gtk.Button(label="Zbuduj z kronik", valign=Gtk.Align.CENTER,
+                           tooltip_text="AI przeczyta wszystkie kroniki tej kampanii i opisze jej obecny stan")
+        build.add_css_class("flat" if state or proposal else "suggested-action")
+        build.connect("clicked", lambda _b: self.dialog.start_memory(self.key))
+        self.dialog.register_task_button(build)
+        group.set_header_suffix(build)
+
+        shown = proposal or state
+        if proposal is not None:
+            group.set_description(f"AI zaktualizowało stan po sesji {proposal.session}. Popraw, co trzeba, i przyjmij "
+                                  "- dopiero wtedy trafi do kolejnych kronik.")
+        elif state is not None:
+            after = f"po sesji {state.session}" if state.session else "wpisany ręcznie"
+            group.set_description(f"Stan {after}: drużyna, zasoby, otwarte wątki i BN-i. Dostaje go AI piszące "
+                                  "kronikę następnej sesji. Po każdej nowej kronice AI proponuje aktualizację.")
+        else:
+            group.set_description("Notatka o stanie kampanii (drużyna, zasoby, otwarte wątki, BN-i) dla AI piszącego "
+                                  "kroniki. Zbuduj ją z kronik albo wpisz ręcznie; potem aktualizuje się po każdej "
+                                  "nowej kronice (do zatwierdzenia).")
+
+        buffer = Gtk.TextBuffer(text=shown.text if shown else "")
+        view = Gtk.TextView(buffer=buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=10, bottom_margin=10,
+                            left_margin=12, right_margin=12, accepts_tab=False, monospace=True)
+        view.add_css_class("card")
+        scrolled = Gtk.ScrolledWindow(child=view, min_content_height=160, max_content_height=420,
+                                      propagate_natural_height=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        buttons = Gtk.Box(spacing=12, halign=Gtk.Align.END, margin_top=6)
+        if proposal is not None:
+            reject = Gtk.Button(label="Odrzuć")
+            reject.add_css_class("flat")
+            reject.connect("clicked", lambda _b: self._reject_state())
+            accept = Gtk.Button(label="Przyjmij")
+            accept.add_css_class("suggested-action")
+            accept.connect("clicked", lambda _b: self._accept_state(_buffer_text(buffer)))
+            buttons.append(reject)
+            buttons.append(accept)
+        else:
+            save = Gtk.Button(label="Zapisz stan", sensitive=False)
+            save.add_css_class("suggested-action")
+            original = shown.text if shown else ""
+            buffer.connect("changed", lambda b: save.set_sensitive(_buffer_text(b).strip() != original))
+            save.connect("clicked", lambda _b: self._save_state(_buffer_text(buffer), state))
+            buttons.append(save)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_top=6)
+        box.append(scrolled)
+        box.append(buttons)
+        group.add(box)
+        return group
+
+    def _accept_state(self, text: str) -> None:
+        try:
+            memory.accept_proposal(self.key, text)
+        except OSError as e:
+            self.dialog.toast(f"Nie można zapisać stanu kampanii: {e}")
+            return
+        self.dialog.toast("Przyjęto stan kampanii")
+        self.dialog.reload()
+
+    def _reject_state(self) -> None:
+        memory.discard_proposal(self.key)
+        self.dialog.toast("Odrzucono propozycję stanu kampanii")
+        self.dialog.reload()
+
+    def _save_state(self, text: str, previous: memory.State | None) -> None:
+        try:
+            memory.save_state(self.key, text, previous.session if previous else None)
+        except OSError as e:
+            self.dialog.toast(f"Nie można zapisać stanu kampanii: {e}")
+            return
+        self.dialog.toast("Zapisano stan kampanii")
+        self.reload()
 
     # --- propozycje AI ---
 

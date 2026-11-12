@@ -1,14 +1,18 @@
+import hashlib
 import os
+from pathlib import Path
 
-from . import glossary, progress
+from . import glossary, memory, progress
 from .campaigns import campaign_key, session_date
 from .chronicle import brief_path
-from .config import CHRONICLE_BRIEF, GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR
+from .config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_PART_SECONDS, CHRONICLE_TWO_STEP,
+                     GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR)
 from .llm import LLMClient, LLMError, get_client, with_retry
 from .prompts import render
 from .session import Session, list_sessions
 from .speakers import identify_speakers, save_suggestion, suggest_speakers
-from .transcript import load_speaker_mapping, save_speaker_mapping
+from .quality import format_time
+from .transcript import Transcript, load_speaker_mapping, save_speaker_mapping
 from .voices import suggest_for_session
 
 
@@ -33,13 +37,19 @@ def previous_session(session: Session) -> Session | None:
     return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
-def campaign_context(session: Session) -> str:
-    """Opis kampanii, postacie graczy, słownik nazw i poprzednia kronika - dla ciągłości i poprawnej pisowni."""
+def campaign_context(session: Session, include_previous: bool = True) -> str:
+    """Opis kampanii, słownik nazw, stan kampanii sprzed sesji i poprzednia kronika - ciągłość i pisownia."""
     parts = []
     info = session.campaign.prompt_info()
     if info:
         parts.append(f"Informacje o kampanii (użyj ich, by poprawnie zapisywać imiona i nazwy):\n{info}")
-    previous = previous_session(session)
+    state = memory.state_for_prompt(session.campaign.key, session.name)
+    if state is not None:
+        after = f" po sesji {state.session}" if state.session else ""
+        parts.append(f"Stan kampanii{after} (pamięć kampanii: drużyna, zasoby, otwarte wątki, BN-i) - "
+                     f"tło dla ciągłości; opisuj wyłącznie wydarzenia z nowej sesji:\n"
+                     f"<stan_kampanii>\n{state.text}\n</stan_kampanii>")
+    previous = previous_session(session) if include_previous else None
     if previous is not None:
         try:
             with open(previous.summary_path, encoding="utf-8") as f:
@@ -51,6 +61,73 @@ def campaign_context(session: Session) -> str:
                          f"nie streszczaj jej ponownie, opisuj wyłącznie wydarzenia z nowej transkrypcji:\n"
                          f"<poprzednia_kronika>\n{text}\n</poprzednia_kronika>")
     return "".join(f"\n\n{part}" for part in parts)
+
+
+# --- kronika w dwóch krokach ---
+
+PREVIOUS_EVENTS_LIMIT = 8000  # znaków z listy wydarzeń poprzedniej części (kontekst dla następnej)
+
+
+def events_path(session: Session) -> str:
+    """Lista wydarzeń sesji (krok pośredni kroniki) - obok kroniki, do wglądu."""
+    return os.path.join(SUMMARY_DIR, f"{session.name}_wydarzenia.md")
+
+
+def events_cache_dir(session: Session) -> Path:
+    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return Path(cache_home) / "rpg-chronicler" / "wydarzenia" / session.name
+
+
+def session_events(client: LLMClient, session: Session, transcript: Transcript, mapping: dict[str, str],
+                   parts: list[Transcript]) -> str:
+    """Krok 1: lista wydarzeń z każdej części transkrypcji. Rzuca LLMError.
+
+    Wynik każdej części jest zapamiętywany (klucz = treść zapytania), więc przerwany przebieg albo ponowne
+    pisanie kroniki (--force) nie powtarza zapytań, dopóki nie zmieni się transkrypcja, mówcy lub prompt.
+    """
+    cache_dir = events_cache_dir(session)
+    context = campaign_context(session, include_previous=False)
+    mapping_info = speaker_mapping_info(mapping)
+    sections, previous = [], ""
+    for index, part in enumerate(parts, 1):
+        time_range = f"{format_time(part.segments[0].start)}–{format_time(part.segments[-1].end)}"
+        previous_block = ""
+        if previous:
+            previous_block = ("\n\nWydarzenia z poprzedniej części (tylko kontekst - nie powtarzaj ich):\n"
+                              f"<poprzednia_czesc>\n{previous[-PREVIOUS_EVENTS_LIMIT:]}\n</poprzednia_czesc>")
+        prompt = render("events", system_name=session.system_name, part=str(index), parts=str(len(parts)),
+                        time_range=time_range, speaker_mapping_info=mapping_info, campaign_context=context,
+                        previous_events=previous_block, transcript=part.compact_for_llm(mapping))
+        cache = cache_dir / f"{hashlib.sha1(prompt.encode('utf-8')).hexdigest()}.md"
+        try:
+            text = cache.read_text(encoding="utf-8")
+            print(f"[INFO] Wydarzenia części {index}/{len(parts)} ({time_range}) z pamięci podręcznej.")
+        except OSError:
+            progress.report("wydarzenia", session.name, index - 1, len(parts))
+            print(f"[{client.name}] Wydarzenia części {index}/{len(parts)} ({time_range})...")
+            text = with_retry(lambda: client.generate(prompt), f"wydarzenia {session.name} {index}/{len(parts)}")
+            text = text.strip()
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            cache.write_text(text, encoding="utf-8")
+        sections.append(f"## Część {index} z {len(parts)} ({time_range})\n\n{text}")
+        previous = text
+    events = "\n\n".join(sections)
+    with open(events_path(session), "w", encoding="utf-8") as f:
+        f.write(f"# Wydarzenia sesji {session.name}\n\n{events}\n")
+    return events
+
+
+def chronicle_source(client: LLMClient, session: Session, transcript: Transcript,
+                     mapping: dict[str, str]) -> str:
+    """Materiał dla kroniki: lista wydarzeń (dwa kroki, długie sesje) albo cała transkrypcja. Rzuca LLMError."""
+    parts = transcript.split_parts(CHRONICLE_PART_SECONDS) if CHRONICLE_TWO_STEP else []
+    if len(parts) > 1:
+        events = session_events(client, session, transcript, mapping, parts)
+        return (f"Oto szczegółowa, chronologiczna lista wydarzeń z całej sesji, sporządzona z transkrypcji "
+                f"w {len(parts)} częściach. Opieraj się wyłącznie na niej - zawiera wszystkie fakty, imiona "
+                f"i najlepsze cytaty (możesz je przytaczać). Napisz jedną spójną kronikę całej sesji, "
+                f"bez dzielenia jej na te części:\n<wydarzenia>\n{events}\n</wydarzenia>")
+    return f"Oto treść transkrypcji (format: „MÓWCA: wypowiedź”):\n{transcript.compact_for_llm(mapping)}"
 
 
 def _print_header(session: Session) -> None:
@@ -156,14 +233,15 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             print(f"[OSTRZEŻENIE] {e}")
             return
 
-        progress.report("kronika", session.name)
-        print(f"\n[{client.name}] Generowanie podsumowania {session.name} w klimacie '{session.system_name}'...")
-        prompt = render("summary",
-                        system_name=session.system_name,
-                        speaker_mapping_info=speaker_mapping_info(mapping),
-                        campaign_context=campaign_context(session),
-                        transcript=transcript.compact_for_llm(mapping))
         try:
+            source = chronicle_source(client, session, transcript, mapping)
+            progress.report("kronika", session.name)
+            print(f"\n[{client.name}] Generowanie podsumowania {session.name} w klimacie '{session.system_name}'...")
+            prompt = render("summary",
+                            system_name=session.system_name,
+                            speaker_mapping_info=speaker_mapping_info(mapping),
+                            campaign_context=campaign_context(session),
+                            source=source)
             summary = with_retry(lambda: client.generate(prompt), f"podsumowanie {session.name}")
         except LLMError:
             print(f"[PORAŻKA] Pomijam {session.name}.")
@@ -180,6 +258,29 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
                       f"(spróbuj: rpg-chronicler brief {session.name})")
         if GLOSSARY_PROPOSALS:
             propose_glossary(client, session, summary)
+        if CAMPAIGN_MEMORY:
+            update_campaign_memory(client, session, summary)
+
+
+def update_campaign_memory(client: LLMClient, session: Session, chronicle: str) -> None:
+    """Po nowej kronice: propozycja stanu kampanii (od zera z wszystkich kronik, gdy stanu jeszcze nie ma)."""
+    campaign = session.campaign
+    if not campaign.key:
+        return
+    progress.report("pamięć kampanii", session.name)
+    try:
+        if memory.load_state(campaign.key) is None and memory.load_proposal(campaign.key) is None:
+            proposal = memory.propose_from_chronicles(client, campaign,
+                                                      glossary.chronicles_for(campaign.key, list_sessions()))
+        else:
+            proposal = memory.propose_update(client, campaign, session.name, chronicle)
+    except LLMError as e:
+        print(f"[OSTRZEŻENIE] Nie udało się zaktualizować stanu kampanii: {e} "
+              f"(spróbuj: rpg-chronicler memory {campaign.key} --rebuild)")
+        return
+    if proposal is not None:
+        print(f"[INFO] Nowa propozycja stanu kampanii {campaign.key} (po sesji {proposal.session}) - przejrzyj ją "
+              f"w GUI (Kampanie) albo: rpg-chronicler memory {campaign.key} --accept")
 
 
 def write_brief(client: LLMClient, session: Session, chronicle: str) -> str:

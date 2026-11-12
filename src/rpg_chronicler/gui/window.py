@@ -5,7 +5,7 @@ import time
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .. import chronicle, glossary, quality, settings
+from .. import chronicle, glossary, memory, quality, settings
 from ..config import LLM_PROVIDER, PROJECT_ROOT
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
@@ -42,6 +42,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._open_pdf_after: str | None = None
         self._chronicle_mode = "kronika"  # przełącznik „Kronika / Skrót” w zakładce Kronika
         self._proposal_counts: dict[str, int] = {}
+        self._memory_mtimes: dict[str, float] = {}
 
         self.runner = TaskRunner()
         self.runner.connect("line", self._on_task_line)
@@ -286,6 +287,7 @@ class MainWindow(Adw.ApplicationWindow):
         key = session.campaign.key
         self.campaign_button.set_visible(bool(key))
         pending = glossary.count_proposals(glossary.pending_for(session.campaign)) if key else 0
+        pending += 1 if key and memory.load_proposal(key) is not None else 0
         self.campaign_button.set_label(f"Kampania {key}" + (f" ({pending})" if pending else ""))
         self.content_stack.set_visible_child_name("session")
 
@@ -521,6 +523,7 @@ class MainWindow(Adw.ApplicationWindow):
             return
         self._task_started = time.monotonic()
         self._proposal_counts = self._snapshot_proposals()
+        self._memory_mtimes = self._snapshot_memory()
         self._stage_key = None
         self.task_title.set_text(title)
         self.task_detail.set_text("Uruchamianie…")
@@ -586,7 +589,13 @@ class MainWindow(Adw.ApplicationWindow):
                 Gtk.FileLauncher.new(Gio.File.new_for_path(chronicle.pdf_path(session))).launch(self, None, None)
 
     def _notify_new_proposals(self) -> None:
-        """Toast, gdy zadanie (kronika, „Uzupełnij z kronik”) dodało propozycje do słownika kampanii."""
+        """Toast, gdy zadanie (kronika, „Uzupełnij z kronik”) dodało propozycje do słownika lub stanu kampanii."""
+        for key, mtime in self._snapshot_memory().items():
+            if mtime != self._memory_mtimes.get(key):
+                toast = Adw.Toast(title=GLib.markup_escape_text(f"Nowy stan kampanii {key} do przejrzenia"),
+                                  button_label="Przejrzyj", timeout=0)
+                toast.connect("button-clicked", lambda _t, k=key: self.show_campaigns(k))
+                self.toasts.add_toast(toast)
         for key, count in self._snapshot_proposals().items():
             if count > self._proposal_counts.get(key, 0):
                 toast = Adw.Toast(title=GLib.markup_escape_text(f"Nowe propozycje do słownika kampanii {key}: {count}"),
@@ -693,6 +702,13 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.connect("closed", closed)
         self._campaigns_dialog = dialog
         dialog.present(self)
+
+    def _snapshot_memory(self) -> dict[str, float]:
+        """Propozycje stanu kampanii: klucz -> czas zmiany pliku (nowa kronika aktualizuje tę samą propozycję)."""
+        try:
+            return {path.stem: path.stat().st_mtime for path in memory.proposals_dir().glob("*.json")}
+        except OSError:
+            return {}
 
     def _snapshot_proposals(self) -> dict[str, int]:
         counts = {}

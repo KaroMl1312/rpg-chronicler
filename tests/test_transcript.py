@@ -62,9 +62,23 @@ def test_save_and_load_json_and_txt():
 
 def test_prompts_render_with_braces_in_transcript():
     prompt = render("summary", system_name="Warhammer", speaker_mapping_info="", campaign_context="",
-                    transcript=Transcript.from_txt(TRANSCRIPT).compact_for_llm())
+                    source=Transcript.from_txt(TRANSCRIPT).compact_for_llm())
     assert "**Warhammer**" in prompt and "{nawias}" in prompt
     assert "Warhammer" in render("speaker_identification", system_name="Warhammer", campaign_info="", transcript="x")
+    events = render("events", system_name="Warhammer", part="1", parts="2", time_range="0:00:00–0:45:00",
+                    speaker_mapping_info="", campaign_context="", previous_events="", transcript="{x}")
+    assert "część 1 z 2" in events and "{x}" in events
+    state = render("campaign_state", system_name="Warhammer", campaign_info="", previous_state="", chronicles="{k}")
+    assert "## Otwarte wątki" in state and "{k}" in state
+
+
+def test_split_parts_cuts_at_speaker_change_and_merges_short_tail():
+    segments = [Segment(i * 60.0, i * 60.0 + 50, f"t{i}", f"SPEAKER_0{i // 4 % 2}") for i in range(100)]
+    parts = Transcript(segments=segments).split_parts(45 * 60)
+    assert [len(p.segments) for p in parts] == [48, 52]   # cięcie przy zmianie mówcy po 45 min, krótka końcówka dołączona
+    assert parts[0].segments[-1].speaker != parts[1].segments[0].speaker
+    assert sum(len(p.segments) for p in parts) == 100
+    assert len(Transcript(segments=segments[:30]).split_parts(45 * 60)) == 1
 
 
 def test_speaker_samples_merge_consecutive_segments_and_pick_longest():

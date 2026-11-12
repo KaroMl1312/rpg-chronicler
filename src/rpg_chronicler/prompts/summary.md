@@ -16,5 +16,4 @@ Podsumowanie powinno zawierać:
 
 Styl: Klimatyczny, narracyjny, angażujący, pisany bezpośrednio do graczy ("Dotarliście...", "Odkryliście...").
 
-Oto treść transkrypcji (format: „MÓWCA: wypowiedź”):
-{transcript}
+{source}

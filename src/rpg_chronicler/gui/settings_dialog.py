@@ -77,6 +77,20 @@ class SettingsDialog(Adw.PreferencesDialog):
             active=self._value("ai.skrot_kroniki", config.CHRONICLE_BRIEF))
         brief.connect("notify::active", lambda row, _p: self._save("ai.skrot_kroniki", row.get_active()))
         group.add(brief)
+        two_step = Adw.SwitchRow(
+            title="Kronika w dwóch krokach",
+            subtitle="Najpierw lista wydarzeń z każdych ~45 minut nagrania, potem kronika z tych list - mniej "
+                     "pominięć w długich sesjach (kilka zapytań więcej)",
+            active=self._value("ai.kronika_etapami", config.CHRONICLE_TWO_STEP))
+        two_step.connect("notify::active", lambda row, _p: self._save("ai.kronika_etapami", row.get_active()))
+        group.add(two_step)
+        memory = Adw.SwitchRow(
+            title="Pamięć kampanii",
+            subtitle="Po każdej nowej kronice AI aktualizuje stan kampanii (drużyna, zasoby, wątki, BN-i) - do "
+                     "zatwierdzenia w oknie Kampanie; kolejne kroniki z niego korzystają",
+            active=self._value("ai.pamiec_kampanii", config.CAMPAIGN_MEMORY))
+        memory.connect("notify::active", lambda row, _p: self._save("ai.pamiec_kampanii", row.get_active()))
+        group.add(memory)
         return group
 
     def _provider_selected(self, key: str) -> None:
