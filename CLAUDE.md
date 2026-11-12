@@ -27,7 +27,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -45,6 +45,8 @@ src/rpg_chronicler/
   transcript.py               # Segment, Transcript (JSON ⇄ .txt), compact_for_llm(), mapowanie mówców
   speakers.py                 # identify_speakers(): sugestia LLM + input() użytkownika
   summary.py                  # name_speakers(), summarize_sessions(), _LazyClient
+  quality.py                  # kontrola jakości transkrypcji: mało tekstu, dziury, pętle Whispera, kopie sesji; stdlib
+  archive.py                  # archiwizacja sesji do podfolderów archiwum/ (lokalnie; Drive w storage/drive.py); stdlib
   audio_trim.py               # wykrywanie ciszy (ffmpeg silencedetect) i przycinanie nagrań; tylko stdlib + ffmpeg
   chronicle.py                # kronika do udostępnienia: tytuł, data sesji, zapowiedź, stan wysyłki, webhooki; stdlib
   chronicle_pdf.py            # PDF kroniki (markdown → HTML → WeasyPrint, CSS w module); tylko .venv
@@ -73,7 +75,7 @@ src/rpg_chronicler/
     benchmark.py              # pomiar szybkości na fragmencie nagrania
     voiceprints.py            # liczenie odcisków głosu (pyannote/wespeaker) z nagrania i czasów z transkrypcji
   storage/drive.py            # rclone copy w obie strony
-tests/                        # pytest; conftest.py: fixture `workspace` (tmp katalogi + FakeLLM, cache w tmp, propozycje słownika wyłączone)
+tests/                        # pytest; conftest.py: HOME/XDG_* zawsze w tmp (autouse), fixture `workspace` (tmp katalogi + FakeLLM, cache w tmp, propozycje słownika wyłączone)
 ```
 
 ## Model danych i konwencje plików
@@ -98,6 +100,10 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówców) `[12.34s -> 15.67s] tekst`. `load_transcript` preferuje JSON, a w razie braku parsuje .txt. Komenda `migrate` tworzy JSON z .txt, nie ruszając .txt.
 
 **Przycinanie ciszy** (`silence`/`trim`, panel w zakładce Transkrypcja przed transkrypcją): analiza zapisuje się w `~/.cache/rpg-chronicler/cisza/<nazwa>.json` (ważna, dopóki nie zmieni się rozmiar/data pliku nagrania). `trim` zastępuje nagranie przyciętą wersją, a oryginał przenosi do `AUDIO_DIR/oryginaly/` (`list_sessions` nie widzi podfolderów ani ukrytych plików tymczasowych `.<nazwa>.przycinanie.*`). AAC/MP3 są cięte bez kodowania (concat + `-c copy`), formaty bezstratne filtrem `aselect` tym samym kodekiem — **nie** używaj `-c copy` dla FLAC (zostaje stary nagłówek, cięcie nie działa) ani wielu gałęzi `atrim` (buforują gigabajty przy długich plikach). `trim` odmawia, gdy sesja ma już transkrypcję (czasy by się rozjechały), chyba że `--force`. Nagrania z dyktafonów bywają FLAC-ami **bez długości w nagłówku**: `ffprobe` nie zwraca `duration` (wtedy `audio_trim.probe` mierzy ją dekodując), a pyannote/torchcodec zwraca `None` i diaryzacja się nie uda — `transcribe` pomija taki plik z komunikatem, a `trim` (też bez zmiany granic) zapisuje go od nowa z poprawnym nagłówkiem. Pobieranie nagrań w `sync` używa `rclone --ignore-existing`, więc przycięte pliki nie są nadpisywane oryginałami z Drive.
+
+**Kontrola jakości** (`quality.py`): `status` pokazuje `!` przy podejrzanych transkrypcjach, `check` podaje szczegóły (z długością nagrania z ffprobe), GUI — ikona ostrzeżenia nad transkrypcją. Progi dobrane na sesjach użytkownika: zwykle 82–107 słów/min i przerwy ≤ 3 min; pętla Whispera = ≥ 8 identycznych wypowiedzi (≥ 3 słowa) pod rząd (krótkie „nie, nie” powtarzają się naturalnie); kopia sesji = ta sama treść tekstu.
+
+**Archiwizacja** (`archive`): pliki sesji (`<nazwa>.*` w folderach nagrań/transkrypcji, `<nazwa>_<rodzaj>.*` w kronikach) trafiają do podfolderu `archiwum/`, lokalnie i na Drive (`rclone move --files-from-raw`) — inaczej `sync` pobrałby je z powrotem. `list_sessions` nie widzi podfolderów.
 
 Stan przetwarzania wynika **wyłącznie z istnienia plików** (`Session.has_*`) — nie ma bazy danych. Każdy krok pomija sesje już przetworzone (chyba że `--force`). `sync` pobiera też gotowe transkrypcje/podsumowania z Drive, żeby nie powtarzać pracy.
 
@@ -141,7 +147,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 ## GUI
 
 - **Dwa interpretery:** GUI działa na systemowym `/usr/bin/python3` (Fedora: PyGObject, GTK 4, libadwaita), bo PyGObject nie ma w `.venv`. Ciężką pracę (transkrypcja, LLM, rclone) zleca procesowi `.venv/bin/rpg-chronicler` z `--no-interactive` i `RPG_CHRONICLER_PROGRESS=json`.
-- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `voices`, `chronicle`, `discord`, `audio_trim`, `progress` (`glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
+- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `voices`, `chronicle`, `discord`, `audio_trim`, `progress`, `quality`, `archive` (`glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
 - Interakcja z użytkownikiem w GUI zamiast `input()`: sugestia mówców przez `speakers --suggest-only` (zapis do `.mowcy-sugestia.md`), imiona zapisuje GUI bezpośrednio (`save_speaker_mapping`).
 - Nowy długi etap w CLI → wołaj `progress.report(etap, sesja, zrobione, razem)`; bez zmiennej środowiskowej nic nie wypisuje. Wyjście `\r` (np. rclone -P) GUI pokazuje tylko w pasku stanu, nie w logu.
 - Przy starcie GUI sprawdza w tle, czy `.venv` importuje faster-whisper/pyannote/torchcodec; jeśli nie, pokazuje `Adw.Banner` z instrukcją `./sprawdz-srodowisko --napraw`. Wynik `audio_trim.has_duration_header` (ffprobe) jest zapamiętywany per wersja pliku (ścieżka, rozmiar, data).

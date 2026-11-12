@@ -54,3 +54,33 @@ def upload_to_gdrive():
         print("Podsumowania wysłane z sukcesem.")
     except Exception as e:
         print(f"[BŁĄD] Nie udało się wysłać podsumowań: {e}")
+
+
+def archive_on_gdrive(name: str, dry_run: bool = False) -> int:
+    """Przenosi pliki sesji na Drive do podfolderu archiwum/ (inaczej `sync` pobrałby je z powrotem).
+
+    Zwraca liczbę przeniesionych (w podglądzie: znalezionych) plików.
+    """
+    import tempfile
+
+    from ..archive import ARCHIVE_DIR_NAME, remote_files
+
+    total = 0
+    for remote, in_summary in ((RCLONE_AUDIO_REMOTE, False), (RCLONE_TXT_REMOTE, False),
+                               (RCLONE_SUMMARY_REMOTE, True)):
+        listing = subprocess.run(["rclone", "lsf", remote, "--files-only"], check=True,
+                                 capture_output=True, text=True).stdout.splitlines()
+        files = remote_files(listing, name, in_summary)
+        for f in files:
+            print(f"  {'[PODGLĄD] ' if dry_run else ''}{remote}/{f} -> {ARCHIVE_DIR_NAME}/")
+        total += len(files)
+        if dry_run or not files:
+            continue
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as lst:
+            lst.write("\n".join(files) + "\n")
+        try:
+            subprocess.run(["rclone", "move", remote, f"{remote.rstrip('/')}/{ARCHIVE_DIR_NAME}",
+                            "--files-from-raw", lst.name, "--quiet"], check=True)
+        finally:
+            os.unlink(lst.name)
+    return total

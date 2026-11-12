@@ -11,20 +11,44 @@ PROVIDERS = ["claude-code", "anthropic", "gemini"]
 
 
 def cmd_status(args):
+    from .quality import check_sessions
+
     sessions = list_sessions(args.sessions)
     if not sessions:
         print("Brak sesji (nagrań ani transkrypcji).")
         return
+    issues = check_sessions(sessions)
     width = max(len(s.name) for s in sessions)
     system_width = max(len("SYSTEM"), *(len(s.system_name) for s in sessions))
     mark = lambda ok: "✓" if ok else "-"
     transcript_mark = lambda s: "✓" if s.has_json else ("txt" if s.has_transcript else "-")
-    print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE")
+    print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE  UWAGI")
     for s in sessions:
+        count = len(issues.get(s.name, []))
         print(f"{s.name.ljust(width)}  {s.system_name.ljust(system_width)}  {mark(s.audio_path):^5}  "
-              f"{transcript_mark(s):^12}  {mark(s.has_speakers):^5}  {mark(s.has_summary):^12}")
+              f"{transcript_mark(s):^12}  {mark(s.has_speakers):^5}  {mark(s.has_summary):^12}  "
+              f"{'!' * min(count, 3) if count else ''}")
+    if any(issues.values()):
+        print("\n! = podejrzane miejsca w transkrypcji; szczegóły: rpg-chronicler check")
     if any(s.has_transcript and not s.has_json for s in sessions):
         print("\ntxt = starszy format transkrypcji; zamień na JSON komendą: rpg-chronicler migrate")
+
+
+def cmd_check(args):
+    from .quality import check_sessions
+
+    sessions = list_sessions(args.sessions)
+    results = check_sessions(sessions, probe_audio=True)
+    if not results:
+        print("Brak transkrypcji do sprawdzenia.")
+        return
+    bad = {name: issues for name, issues in results.items() if issues}
+    for name, issues in bad.items():
+        print(f"\n{name}:")
+        for issue in issues:
+            print(f"  [OSTRZEŻENIE] {issue.message}")
+    ok = len(results) - len(bad)
+    print(f"\nSprawdzono {len(results)} transkrypcji: {ok} bez uwag, {len(bad)} z uwagami.")
 
 
 def cmd_migrate(args):
@@ -47,6 +71,34 @@ def cmd_migrate(args):
         with open(s.json_path, "w", encoding="utf-8") as f:
             json.dump(transcript.to_dict(), f, ensure_ascii=False, indent=1)
         print(f"[SUKCES] {s.name}: {len(transcript.segments)} segmentów -> {os.path.basename(s.json_path)}")
+
+
+def cmd_archive(args):
+    from .archive import ArchiveError, archive_local
+
+    failed = False
+    for s in list_sessions(args.sessions):
+        prefix = "[PODGLĄD] " if args.dry_run else ""
+        try:
+            moves = archive_local(s.name, dry_run=args.dry_run)
+        except ArchiveError as e:
+            print(f"[BŁĄD] {e}")
+            failed = True
+            continue
+        for move in moves:
+            print(f"  {prefix}{move.src} -> {os.path.relpath(move.dst, os.path.dirname(move.src))}")
+        if not args.offline:
+            from .storage.drive import archive_on_gdrive
+            try:
+                archive_on_gdrive(s.name, dry_run=args.dry_run)
+            except Exception as e:
+                print(f"[OSTRZEŻENIE] Nie udało się przenieść plików {s.name} na Google Drive: {e}. "
+                      "Bez tego `sync` pobierze je z powrotem - powtórz komendę albo przenieś je ręcznie.")
+                failed = True
+                continue
+        if not args.dry_run:
+            print(f"[SUKCES] {s.name}: zarchiwizowano ({len(moves)} plików lokalnie).")
+    return 1 if failed else 0
 
 
 def cmd_sync(args):
@@ -340,6 +392,10 @@ def build_parser() -> argparse.ArgumentParser:
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
     p.set_defaults(func=cmd_status)
 
+    p = sub.add_parser("check", help="sprawdź transkrypcje: dziury, pętle Whispera, mało tekstu, kopie sesji")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
+    p.set_defaults(func=cmd_check)
+
     p = sub.add_parser("sync", help="pobierz nagrania, transkrypcje i podsumowania z Google Drive")
     p.set_defaults(func=cmd_sync)
 
@@ -437,6 +493,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie zrobione")
     p.set_defaults(func=cmd_migrate)
 
+    p = sub.add_parser("archive", help="ukryj sesję: przenieś jej pliki do archiwum/ (lokalnie i na Google Drive)")
+    p.add_argument("sessions", nargs="+", metavar="SESJA")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie przeniesione")
+    p.add_argument("--offline", action="store_true", help="tylko lokalnie, bez Google Drive")
+    p.set_defaults(func=cmd_archive)
+
     p = sub.add_parser("upload", help="wyślij transkrypcje i podsumowania na Google Drive")
     p.set_defaults(func=cmd_upload)
 
@@ -448,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.interactive is None:
         args.interactive = sys.stdin.isatty()
     try:
-        args.func(args)
+        code = args.func(args)
     except SessionNotFound as e:
         print(f"[BŁĄD] {e}", file=sys.stderr)
         return 1
@@ -461,4 +523,4 @@ def main(argv: list[str] | None = None) -> int:
     except KeyboardInterrupt:
         print("\nPrzerwano.", file=sys.stderr)
         return 130
-    return 0
+    return code or 0

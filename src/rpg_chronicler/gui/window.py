@@ -5,7 +5,7 @@ import time
 
 from gi.repository import Adw, Gio, GLib, Gtk, Pango
 
-from .. import chronicle, glossary, settings
+from .. import chronicle, glossary, quality, settings
 from ..config import LLM_PROVIDER, PROJECT_ROOT
 from ..session import Session, list_sessions
 from ..transcript import Transcript, load_speaker_mapping
@@ -349,7 +349,8 @@ class MainWindow(Adw.ApplicationWindow):
             info.append(f"{len(transcript.speakers)} mówców")
         if not session.has_json:
             info.append("starszy format .txt")
-        return _text_page(buffer, " · ".join(info))
+        issues = quality.check(transcript)
+        return _text_page(buffer, " · ".join(info), leading=_issues_button(issues) if issues else None)
 
     def _summary_view(self, session: Session) -> Gtk.Widget:
         if not session.has_summary:
@@ -745,6 +746,22 @@ class MainWindow(Adw.ApplicationWindow):
 
 def _icon_button(icon: str, tooltip: str, action: str) -> Gtk.Button:
     return Gtk.Button(icon_name=icon, tooltip_text=tooltip, action_name=action)
+
+
+def _issues_button(issues: list[quality.Issue]) -> Gtk.Widget:
+    """Ikona ostrzeżenia z listą podejrzanych miejsc w transkrypcji (kontrola jakości)."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12,
+                  margin_start=12, margin_end=12)
+    title = Gtk.Label(label="Podejrzane miejsca w transkrypcji", xalign=0)
+    title.add_css_class("heading")
+    box.append(title)
+    for issue in issues:
+        box.append(Gtk.Label(label=f"• {issue.message}", xalign=0, wrap=True, max_width_chars=60))
+    button = Gtk.MenuButton(icon_name="dialog-warning-symbolic", popover=Gtk.Popover(child=box),
+                            tooltip_text=f"Uwagi do transkrypcji: {len(issues)}")
+    button.add_css_class("flat")
+    button.add_css_class("warning")
+    return button
 
 
 def _markdown_buffer(content: str) -> Gtk.TextBuffer:
