@@ -1,25 +1,29 @@
-"""Główne okno: lista sesji, szczegóły (transkrypcja / mówcy / kronika) i pasek zadań."""
+"""Główne okno: lista sesji, szczegóły (transkrypcja / mówcy / kronika) i pasek zadań.
+
+Zakładki i pasek zadań są w osobnych modułach (transcript_page, speakers_page, chronicle_page, task_bar);
+okno składa je w całość, trzyma listę sesji i uruchamia zadania (TaskRunner).
+"""
 import os
 import sys
-import time
 
-from gi.repository import Adw, Gio, GLib, Gtk, Pango
+from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import chronicle, glossary, memory, quality, settings
-from ..config import LLM_PROVIDER, PROJECT_ROOT
+from .. import chronicle, glossary, memory, settings
+from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
-from ..transcript import Transcript, load_speaker_mapping
 from .campaigns_dialog import CampaignsDialog
+from .chronicle_page import ChroniclePage
 from .discord_dialog import DiscordDialog
+from .environment import EnvironmentBanner
 from .player import SnippetPlayer
-from .recording_page import RecordingPanel
 from .settings_dialog import PROVIDERS, SettingsDialog
 from .speakers_page import SpeakersPage
+from .task_bar import TaskBar
 from .tasks import TaskRunner
-from .text import (estimate_remaining, format_minutes, format_timestamp, markdown_spans,
-                   session_signature, session_stage, transcript_blocks)
+from .text import new_proposals, proposals_snapshot, session_signature, session_stage
+from .transcript_page import TranscriptPage
+from .widgets import icon_button
 
-SPEAKER_COLORS = ["#3584e4", "#e66100", "#26a269", "#9141ac", "#c64600", "#1c71d8", "#a51d2d", "#865e3c"]
 TASK_ACTIONS = ("sync", "upload", "run", "run-offline")
 
 
@@ -31,23 +35,17 @@ class MainWindow(Adw.ApplicationWindow):
         self._list_signature = None
         self._detail_signature = None
         self._rows: dict[str, Adw.ActionRow] = {}
-        self._task_started = 0.0
-        self._stage_key = None
-        self._stage_started = 0.0
-        self._pulse_id = 0
         self._session_task_buttons: list[Gtk.Button] = []
-        self.recording_panel: RecordingPanel | None = None
         self._campaigns_dialog: CampaignsDialog | None = None
         self._discord_dialog: DiscordDialog | None = None
         self._open_pdf_after: str | None = None
-        self._chronicle_mode = "kronika"  # przełącznik „Kronika / Skrót” w zakładce Kronika
-        self._proposal_counts: dict[str, int] = {}
-        self._memory_mtimes: dict[str, float] = {}
+        self._proposals_before: dict = {}
 
         self.runner = TaskRunner()
         self.runner.connect("line", self._on_task_line)
-        self.runner.connect("status", lambda _r, text: self.task_detail.set_text(text))
-        self.runner.connect("progress", self._on_task_progress)
+        self.runner.connect("status", lambda _r, text: self.task_bar.set_detail(text))
+        self.runner.connect("progress", lambda _r, stage, session, fraction:
+                            self.task_bar.show_progress(stage, session, fraction))
         self.runner.connect("finished", self._on_task_finished)
 
         self.player = SnippetPlayer()
@@ -57,7 +55,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._setup_actions()
         self._build_ui()
         self.refresh()
-        self._check_environment()
+        self.env_banner.check()
         self.connect("notify::is-active", lambda w, _p: w.is_active() and self.refresh())
         self.connect("close-request", self._on_close_request)
 
@@ -100,6 +98,9 @@ class MainWindow(Adw.ApplicationWindow):
     def _provider_args(self) -> list[str]:
         return ["--provider", self.provider]
 
+    def _provider_label(self) -> str:
+        return dict(PROVIDERS).get(self.provider, self.provider)
+
     # ---------------------------------------------------------------- budowa UI
 
     def _build_ui(self) -> None:
@@ -108,11 +109,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.split.set_content(self._build_content())
 
         outer = Adw.ToolbarView(content=self.split)
-        self.env_banner = Adw.Banner(button_label="Jak naprawić")
-        self.env_banner.connect("button-clicked", lambda _b: self._show_environment_help())
-        self._environment_error = ""
+        self.env_banner = EnvironmentBanner()
         outer.add_top_bar(self.env_banner)
-        outer.add_bottom_bar(self._build_task_bar())
+        self.task_bar = TaskBar()
+        outer.add_bottom_bar(self.task_bar)
 
         self.toasts = Adw.ToastOverlay(child=outer)
         self.set_content(self.toasts)
@@ -123,7 +123,7 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build_sidebar(self) -> Adw.NavigationPage:
         header = Adw.HeaderBar()
-        header.pack_start(_icon_button("view-refresh-symbolic", "Odśwież listę (Ctrl+R)", "win.refresh"))
+        header.pack_start(icon_button("view-refresh-symbolic", "Odśwież listę (Ctrl+R)", "win.refresh"))
 
         menu = Gio.Menu()
         section = Gio.Menu()
@@ -143,7 +143,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append_section(None, other)
         header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu,
                                        tooltip_text="Menu główne", primary=True))
-        header.pack_end(_icon_button("folder-download-symbolic", "Pobierz nowe nagrania z Google Drive", "win.sync"))
+        header.pack_end(icon_button("folder-download-symbolic", "Pobierz nowe nagrania z Google Drive", "win.sync"))
 
         self.session_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.session_list.add_css_class("navigation-sidebar")
@@ -168,13 +168,16 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build_content(self) -> Adw.NavigationPage:
         self.view_stack = Adw.ViewStack()
-        self.transcript_page = Adw.Bin()
+        self.transcript_page = TranscriptPage(self.player, self.start_task, self._register_task_button)
         self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved, self.start_task)
-        self.summary_page = Adw.Bin()
+        self.chronicle_page = ChroniclePage(
+            summarize=self.summarize, write_brief=self.write_brief, open_pdf=self.open_pdf,
+            show_discord=self.show_discord, provider_label=self._provider_label,
+            register_task_button=self._register_task_button)
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
                                              "text-x-generic-symbolic")
         self.view_stack.add_titled_with_icon(self.speakers_page, "speakers", "Mówcy", "system-users-symbolic")
-        self.view_stack.add_titled_with_icon(self.summary_page, "summary", "Kronika", "x-office-document-symbolic")
+        self.view_stack.add_titled_with_icon(self.chronicle_page, "summary", "Kronika", "x-office-document-symbolic")
 
         self.content_header = Adw.HeaderBar(
             title_widget=Adw.ViewSwitcher(stack=self.view_stack, policy=Adw.ViewSwitcherPolicy.WIDE))
@@ -196,32 +199,6 @@ class MainWindow(Adw.ApplicationWindow):
         self.content_stack.add_named(session_view, "session")
         self.content_page = Adw.NavigationPage(title="RPG Chronicler", child=self.content_stack)
         return self.content_page
-
-    def _build_task_bar(self) -> Gtk.Widget:
-        self.task_title = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        self.task_title.add_css_class("heading")
-        self.task_detail = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
-        self.task_detail.add_css_class("dim-label")
-        self.task_detail.add_css_class("caption")
-        self.task_progress = Gtk.ProgressBar(valign=Gtk.Align.CENTER, hexpand=True)
-
-        labels = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, valign=Gtk.Align.CENTER, width_request=320)
-        labels.append(self.task_title)
-        labels.append(self.task_detail)
-
-        log_button = Gtk.Button(label="Log", action_name="win.show-log", valign=Gtk.Align.CENTER)
-        cancel_button = Gtk.Button(label="Przerwij", action_name="win.cancel", valign=Gtk.Align.CENTER)
-        cancel_button.add_css_class("destructive-action")
-
-        box = Gtk.Box(spacing=12, margin_top=8, margin_bottom=8, margin_start=12, margin_end=12)
-        box.append(labels)
-        box.append(self.task_progress)
-        box.append(log_button)
-        box.append(cancel_button)
-
-        self.task_revealer = Gtk.Revealer(child=box, reveal_child=False,
-                                          transition_type=Gtk.RevealerTransitionType.SLIDE_UP)
-        return self.task_revealer
 
     # ------------------------------------------------------------ lista sesji
 
@@ -303,10 +280,12 @@ class MainWindow(Adw.ApplicationWindow):
                 and self.speakers_page.dirty:
             keep_edits = self.speakers_page.edits()
 
-        self.transcript_page.set_child(self._transcript_view(session, transcript))
+        busy = self.runner.running
+        self.transcript_page.set_busy(busy)
+        self.transcript_page.show_session(session, transcript)
         self.speakers_page.show_session(session, transcript, keep_edits)
-        self.speakers_page.set_busy(self.runner.running)
-        self.summary_page.set_child(self._summary_view(session))
+        self.speakers_page.set_busy(busy)
+        self.chronicle_page.show_session(session)
 
         if not keep_view:
             stage, _ = session_stage(session)
@@ -315,143 +294,10 @@ class MainWindow(Adw.ApplicationWindow):
                 page = "transcript"
             self.view_stack.set_visible_child_name(page)
 
-    def _transcript_view(self, session: Session, transcript: Transcript | None) -> Gtk.Widget:
-        self.recording_panel = None
-        if transcript is None:
-            if session.audio_path:
-                self.recording_panel = RecordingPanel(session, self.player, self.start_task,
-                                                      self._register_task_button, self.runner.running)
-                return self.recording_panel
-            return Adw.StatusPage(icon_name="text-x-generic-symbolic", title="Brak transkrypcji",
-                                  description="Brak lokalnego nagrania - pobierz je z Google Drive.")
-
-        mapping = load_speaker_mapping(session.txt_path)
-        buffer = Gtk.TextBuffer()
-        time_tag = buffer.create_tag("time", foreground="#8a8a8a", scale=0.85)
-        speaker_tags = {}
-        for index, spk in enumerate(transcript.speakers):
-            name = mapping.get(spk, spk)
-            speaker_tags[name] = buffer.create_tag(None, weight=Pango.Weight.BOLD,
-                                                   foreground=SPEAKER_COLORS[index % len(SPEAKER_COLORS)])
-        bold = buffer.create_tag("bold", weight=Pango.Weight.BOLD)
-
-        end = buffer.get_end_iter()
-        for start, speaker, text in transcript_blocks(transcript, mapping):
-            buffer.insert_with_tags(end, f"{format_timestamp(start)}  ", time_tag)
-            if speaker:
-                buffer.insert_with_tags(end, f"{speaker}: ", speaker_tags.get(speaker, bold))
-            buffer.insert(end, text + "\n")
-
-        info = []
-        duration = transcript.duration or (transcript.segments[-1].end if transcript.segments else 0)
-        if duration:
-            info.append(f"nagranie {format_minutes(duration)}")
-        info.append(f"{len(transcript.segments)} segmentów")
-        if transcript.speakers:
-            info.append(f"{len(transcript.speakers)} mówców")
-        if not session.has_json:
-            info.append("starszy format .txt")
-        issues = quality.check(transcript)
-        return _text_page(buffer, " · ".join(info), leading=_issues_button(issues) if issues else None)
-
-    def _summary_view(self, session: Session) -> Gtk.Widget:
-        if not session.has_summary:
-            status = Adw.StatusPage(icon_name="x-office-document-symbolic", title="Brak kroniki")
-            if session.has_transcript:
-                status.set_description(f"AI ({self._provider_label()}) napisze kronikę sesji w klimacie "
-                                       f"systemu {session.system_name}.")
-                status.set_child(self._task_button("Generuj kronikę", lambda: self.summarize(session)))
-            else:
-                status.set_description("Kronikę można wygenerować po transkrypcji nagrania.")
-            return status
-
-        try:
-            with open(session.summary_path, encoding="utf-8") as f:
-                content = f.read()
-        except OSError as e:
-            return Adw.StatusPage(icon_name="dialog-information-symbolic", title="Nie można odczytać kroniki",
-                                  description=str(e))
-
-        stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
-        stack.add_named(_text_view(_markdown_buffer(content)), "kronika")
-        stack.add_named(self._brief_view(session), "skrot")
-        stack.set_visible_child_name(self._chronicle_mode)
-
-        toggles = Adw.ToggleGroup(valign=Gtk.Align.CENTER)
-        toggles.add(Adw.Toggle(label="Kronika", name="kronika"))
-        toggles.add(Adw.Toggle(label="Skrót", name="skrot",
-                               tooltip="Najważniejsze wydarzenia w jednym akapicie"))
-        toggles.set_active_name(self._chronicle_mode)
-
-        def toggled(group, _pspec):
-            self._chronicle_mode = group.get_active_name()
-            stack.set_visible_child_name(self._chronicle_mode)
-
-        toggles.connect("notify::active-name", toggled)
-
-        regenerate = Gtk.Button(label="Generuj ponownie")
-        regenerate.connect("clicked", lambda _b: self.summarize(session, force=True))
-        open_button = Gtk.Button(label="Otwórz w edytorze")
-        open_button.connect("clicked", lambda _b: Gtk.FileLauncher.new(
-            Gio.File.new_for_path(session.summary_path)).launch(self, None, None))
-        pdf_button = Gtk.Button(label="PDF", tooltip_text="Otwórz kronikę jako PDF (utworzy go, jeśli trzeba)")
-        pdf_button.connect("clicked", lambda _b: self.open_pdf(session))
-        discord_button = Gtk.Button(label="Wyślij na Discord")
-        discord_button.connect("clicked", lambda _b: self.show_discord(session))
-        for button in (regenerate, pdf_button, discord_button):
-            self._register_task_button(button)
-        sent = chronicle.sent_text(session)
-        info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
-                                               else f"{self._provider_label()} przy ponownym generowaniu")
-        return _text_page(stack, info, [open_button, pdf_button, discord_button, regenerate], leading=toggles)
-
-    def _brief_view(self, session: Session) -> Gtk.Widget:
-        """Skrót kroniki (jeden akapit) albo zachęta do jego napisania."""
-        def write(force: bool):
-            args = ["brief", session.name, *self._provider_args()] + (["--force"] if force else [])
-            self.start_task(f"Skrót kroniki {session.name}", args)
-
-        brief = chronicle.read_brief(session)
-        if not brief:
-            status = Adw.StatusPage(icon_name="view-list-bullet-symbolic", title="Brak skrótu",
-                                    description="AI przeczyta kronikę i opowie w jednym akapicie, co najważniejszego "
-                                                "się wydarzyło - bez zbędnych szczegółów. Trwa to kilkanaście sekund.")
-            status.set_child(self._task_button("Napisz skrót", lambda: write(False)))
-            return status
-
-        current = chronicle.brief_is_current(session)
-        label = Gtk.Label(label="Skrót kroniki" if current else "Skrót jest starszy niż kronika - napisz go ponownie",
-                          xalign=0, hexpand=True, wrap=True)
-        label.add_css_class("dim-label" if current else "warning")
-        again = Gtk.Button(label="Napisz ponownie", valign=Gtk.Align.CENTER)
-        again.add_css_class("flat" if current else "suggested-action")
-        again.connect("clicked", lambda _b: write(True))
-        self._register_task_button(again)
-        bar = Gtk.Box(spacing=6, margin_top=10, margin_start=24, margin_end=12)
-        bar.append(label)
-        bar.append(again)
-
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        box.append(bar)
-        box.append(_text_view(_markdown_buffer(brief)))
-        return box
-
     def _register_task_button(self, button: Gtk.Button) -> None:
         """Przycisk uruchamiający zadanie - nieaktywny, gdy inne zadanie jest w toku."""
         button.set_sensitive(not self.runner.running)
         self._session_task_buttons.append(button)
-
-    def _task_button(self, label: str, callback) -> Gtk.Button:
-        button = Gtk.Button(label=label, halign=Gtk.Align.CENTER)
-        button.add_css_class("pill")
-        button.add_css_class("suggested-action")
-        button.connect("clicked", lambda _b: callback())
-        button.set_sensitive(not self.runner.running)
-        self._session_task_buttons.append(button)
-        return button
-
-    def _provider_label(self) -> str:
-        return dict(PROVIDERS).get(self.provider, self.provider)
 
     # ------------------------------------------------------------ operacje
 
@@ -495,6 +341,10 @@ class MainWindow(Adw.ApplicationWindow):
         else:
             run(False)
 
+    def write_brief(self, session: Session, force: bool = False) -> None:
+        args = ["brief", session.name, *self._provider_args()] + (["--force"] if force else [])
+        self.start_task(f"Skrót kroniki {session.name}", args)
+
     def suggest_speakers(self, session: Session) -> None:
         self.start_task(f"Sugestia mówców {session.name}",
                         ["speakers", "--suggest-only", *self._provider_args(), session.name])
@@ -514,6 +364,14 @@ class MainWindow(Adw.ApplicationWindow):
             self.toast(f"Zapisano mówców sesji {self.speakers_page.session.name}")
             GLib.idle_add(lambda: self.refresh() or GLib.SOURCE_REMOVE)
 
+    def open_pdf(self, session: Session) -> None:
+        """Otwiera aktualny PDF kroniki; jeśli go nie ma albo jest starszy niż kronika - najpierw go tworzy."""
+        if chronicle.pdf_is_current(session):
+            Gtk.FileLauncher.new(Gio.File.new_for_path(chronicle.pdf_path(session))).launch(self, None, None)
+            return
+        self._open_pdf_after = session.name
+        self.start_task(f"PDF {session.name}", ["pdf", session.name])
+
     # ------------------------------------------------------------ zadania
 
     def start_task(self, title: str, args: list[str]) -> None:
@@ -521,15 +379,8 @@ class MainWindow(Adw.ApplicationWindow):
         if error:
             self.toast(error)
             return
-        self._task_started = time.monotonic()
-        self._proposal_counts = self._snapshot_proposals()
-        self._memory_mtimes = self._snapshot_memory()
-        self._stage_key = None
-        self.task_title.set_text(title)
-        self.task_detail.set_text("Uruchamianie…")
-        self.task_progress.set_fraction(0)
-        self._start_pulse()
-        self.task_revealer.set_reveal_child(True)
+        self._proposals_before = proposals_snapshot()
+        self.task_bar.start(title)
         self._set_busy(True)
 
     def _set_busy(self, busy: bool) -> None:
@@ -540,36 +391,16 @@ class MainWindow(Adw.ApplicationWindow):
         for button in self._session_task_buttons:
             button.set_sensitive(not busy)
         self.speakers_page.set_busy(busy)
-        if self.recording_panel is not None:
-            self.recording_panel.set_busy(busy)
+        self.transcript_page.set_busy(busy)
 
     def _on_task_line(self, _runner, line: str) -> None:
         self.log_buffer.insert(self.log_buffer.get_end_iter(), line + "\n")
-        if line.strip() and not line.startswith("$ "):
-            self.task_detail.set_text(line.strip())
-
-    def _on_task_progress(self, _runner, stage: str, session: str, fraction: float) -> None:
-        key = (stage, session)
-        now = time.monotonic()
-        if key != self._stage_key:
-            self._stage_key, self._stage_started = key, now
-        label = f"{stage.capitalize()} · {session}" if session else stage.capitalize()
-        if fraction < 0:
-            self._start_pulse()
-            self.task_detail.set_text(label + "…")
-            return
-        self._stop_pulse()
-        self.task_progress.set_fraction(fraction)
-        remaining = estimate_remaining(now - self._stage_started, fraction)
-        eta = f" · zostało ok. {format_minutes(max(60, remaining))}" if remaining is not None else ""
-        self.task_detail.set_text(f"{label} · {fraction:.0%}{eta}")
+        self.task_bar.show_line(line)
 
     def _on_task_finished(self, _runner, title: str, success: bool, description: str) -> None:
-        self._stop_pulse()
         self.player.close_file()
-        self.task_revealer.set_reveal_child(False)
+        elapsed = self.task_bar.finish()
         self._set_busy(False)
-        elapsed = format_minutes(time.monotonic() - self._task_started)
         if success:
             self.toast(f"{title}: gotowe ({elapsed})")
         else:
@@ -590,27 +421,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _notify_new_proposals(self) -> None:
         """Toast, gdy zadanie (kronika, „Uzupełnij z kronik”) dodało propozycje do słownika lub stanu kampanii."""
-        for key, mtime in self._snapshot_memory().items():
-            if mtime != self._memory_mtimes.get(key):
-                toast = Adw.Toast(title=GLib.markup_escape_text(f"Nowy stan kampanii {key} do przejrzenia"),
-                                  button_label="Przejrzyj", timeout=0)
-                toast.connect("button-clicked", lambda _t, k=key: self.show_campaigns(k))
-                self.toasts.add_toast(toast)
-        for key, count in self._snapshot_proposals().items():
-            if count > self._proposal_counts.get(key, 0):
-                toast = Adw.Toast(title=GLib.markup_escape_text(f"Nowe propozycje do słownika kampanii {key}: {count}"),
-                                  button_label="Przejrzyj", timeout=0)
-                toast.connect("button-clicked", lambda _t, k=key: self.show_campaigns(k))
-                self.toasts.add_toast(toast)
-
-    def _start_pulse(self) -> None:
-        if not self._pulse_id:
-            self._pulse_id = GLib.timeout_add(120, lambda: self.task_progress.pulse() or True)
-
-    def _stop_pulse(self) -> None:
-        if self._pulse_id:
-            GLib.source_remove(self._pulse_id)
-            self._pulse_id = 0
+        for key, message in new_proposals(self._proposals_before, proposals_snapshot()):
+            toast = Adw.Toast(title=GLib.markup_escape_text(message), button_label="Przejrzyj", timeout=0)
+            toast.connect("button-clicked", lambda _t, k=key: self.show_campaigns(k))
+            self.toasts.add_toast(toast)
 
     def show_log(self) -> None:
         view = Gtk.TextView(buffer=self.log_buffer, editable=False, monospace=True,
@@ -623,58 +437,7 @@ class MainWindow(Adw.ApplicationWindow):
         body.add_top_bar(Adw.HeaderBar())
         Adw.Dialog(title="Log zadań", child=body, content_width=900, content_height=600).present(self)
 
-    # ------------------------------------------------------------ środowisko
-
-    def _check_environment(self) -> None:
-        """W tle: czy .venv (transkrypcja, AI) działa - np. po aktualizacji systemu może wskazywać na
-        odinstalowanego Pythona. Pełne sprawdzenie: ./sprawdz-srodowisko."""
-        venv_python = PROJECT_ROOT / ".venv" / "bin" / "python"
-        if not venv_python.exists():
-            self._show_environment_error("brak działającego interpretera w .venv")
-            return
-        launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
-        launcher.unsetenv("PYTHONPATH")
-        try:
-            process = launcher.spawnv([str(venv_python), "-c",
-                                       "import faster_whisper, pyannote.audio, torchcodec.decoders"])
-        except GLib.Error as e:
-            self._show_environment_error(e.message)
-            return
-
-        def done(proc, result):
-            try:
-                _ok, output, _err = proc.communicate_utf8_finish(result)
-            except GLib.Error as e:
-                output = e.message
-            if not proc.get_successful():
-                lines = [line for line in (output or "").splitlines() if line.strip()]
-                self._show_environment_error(lines[-1] if lines else "nieznany błąd")
-
-        process.communicate_utf8_async(None, None, done)
-
-    def _show_environment_error(self, details: str) -> None:
-        self._environment_error = details
-        self.env_banner.set_title("Środowisko transkrypcji (.venv) nie działa - transkrypcja, odciski głosu "
-                                  "i kroniki są niedostępne")
-        self.env_banner.set_revealed(True)
-
-    def _show_environment_help(self) -> None:
-        dialog = Adw.AlertDialog(
-            heading="Napraw środowisko transkrypcji",
-            body="Najczęściej to skutek aktualizacji systemu (zmiana wersji Pythona). W terminalu, w katalogu "
-                 f"programu ({PROJECT_ROOT}), uruchom:\n\n./sprawdz-srodowisko --napraw\n\n"
-                 "Odtworzy to .venv (kilka minut, pobiera ok. 1 GB). Potem uruchom aplikację ponownie.\n\n"
-                 f"Szczegóły: {self._environment_error}")
-        dialog.add_response("ok", "Zamknij")
-        dialog.present(self)
-
-    def open_pdf(self, session: Session) -> None:
-        """Otwiera aktualny PDF kroniki; jeśli go nie ma albo jest starszy niż kronika - najpierw go tworzy."""
-        if chronicle.pdf_is_current(session):
-            Gtk.FileLauncher.new(Gio.File.new_for_path(chronicle.pdf_path(session))).launch(self, None, None)
-            return
-        self._open_pdf_after = session.name
-        self.start_task(f"PDF {session.name}", ["pdf", session.name])
+    # ------------------------------------------------------------ okna dialogowe
 
     def show_discord(self, session: Session) -> None:
         if self._discord_dialog is not None:
@@ -703,19 +466,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._campaigns_dialog = dialog
         dialog.present(self)
 
-    def _snapshot_memory(self) -> dict[str, float]:
-        """Propozycje stanu kampanii: klucz -> czas zmiany pliku (nowa kronika aktualizuje tę samą propozycję)."""
-        try:
-            return {path.stem: path.stat().st_mtime for path in memory.proposals_dir().glob("*.json")}
-        except OSError:
-            return {}
-
-    def _snapshot_proposals(self) -> dict[str, int]:
-        counts = {}
-        for path in glossary.proposals_dir().glob("*.json"):
-            counts[path.stem] = glossary.count_proposals(glossary.load_proposals(path.stem))
-        return counts
-
     def show_settings(self) -> None:
         def provider_changed(key: str) -> None:
             self.provider_action.set_state(GLib.Variant.new_string(key))
@@ -726,6 +476,8 @@ class MainWindow(Adw.ApplicationWindow):
             self.toasts.add_toast(toast)
 
         SettingsDialog(self.provider, provider_changed, folders_changed).present(self)
+
+    # ------------------------------------------------------------ okno
 
     def restart(self) -> None:
         """Uruchamia GUI od nowa w tym samym procesie (np. po zmianie folderów)."""
@@ -758,76 +510,3 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.connect("response", on_response)
         dialog.present(self)
         return True
-
-
-def _icon_button(icon: str, tooltip: str, action: str) -> Gtk.Button:
-    return Gtk.Button(icon_name=icon, tooltip_text=tooltip, action_name=action)
-
-
-def _issues_button(issues: list[quality.Issue]) -> Gtk.Widget:
-    """Ikona ostrzeżenia z listą podejrzanych miejsc w transkrypcji (kontrola jakości)."""
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12,
-                  margin_start=12, margin_end=12)
-    title = Gtk.Label(label="Podejrzane miejsca w transkrypcji", xalign=0)
-    title.add_css_class("heading")
-    box.append(title)
-    for issue in issues:
-        box.append(Gtk.Label(label=f"• {issue.message}", xalign=0, wrap=True, max_width_chars=60))
-    button = Gtk.MenuButton(icon_name="dialog-warning-symbolic", popover=Gtk.Popover(child=box),
-                            tooltip_text=f"Uwagi do transkrypcji: {len(issues)}")
-    button.add_css_class("flat")
-    button.add_css_class("warning")
-    return button
-
-
-def _markdown_buffer(content: str) -> Gtk.TextBuffer:
-    """Tekst kroniki/skrótu z prostym formatowaniem Markdown (nagłówki, pogrubienia, punkty)."""
-    buffer = Gtk.TextBuffer()
-    tags = {
-        "h1": buffer.create_tag("h1", weight=Pango.Weight.BOLD, scale=1.5, pixels_below_lines=8),
-        "h2": buffer.create_tag("h2", weight=Pango.Weight.BOLD, scale=1.25, pixels_above_lines=10),
-        "h3": buffer.create_tag("h3", weight=Pango.Weight.BOLD, scale=1.1, pixels_above_lines=6),
-        "bold": buffer.create_tag("bold", weight=Pango.Weight.BOLD),
-    }
-    end = buffer.get_end_iter()
-    for line in content.splitlines():
-        style, spans = markdown_spans(line)
-        if style == "rule":
-            continue  # sekcje i tak oddzielają nagłówki
-        for text, span_style in spans:
-            applied = [tags[t] for t in (style, span_style) if t]
-            if applied:
-                buffer.insert_with_tags(end, text, *applied)
-            else:
-                buffer.insert(end, text)
-        buffer.insert(end, "\n")
-    return buffer
-
-
-def _text_view(buffer: Gtk.TextBuffer) -> Gtk.Widget:
-    view = Gtk.TextView(buffer=buffer, editable=False, cursor_visible=False, wrap_mode=Gtk.WrapMode.WORD_CHAR,
-                        top_margin=18, bottom_margin=24, left_margin=24, right_margin=24, pixels_below_lines=6)
-    return Gtk.ScrolledWindow(child=view, vexpand=True)
-
-
-def _text_page(content: Gtk.TextBuffer | Gtk.Widget, info: str, buttons: list[Gtk.Widget] | None = None,
-               leading: Gtk.Widget | None = None) -> Gtk.Widget:
-    """Tekst tylko do odczytu (bufor albo gotowy widżet) z paskiem informacji i przyciskami nad nim."""
-    scrolled = _text_view(content) if isinstance(content, Gtk.TextBuffer) else content
-
-    label = Gtk.Label(label=info, xalign=0, hexpand=True, ellipsize=Pango.EllipsizeMode.END)
-    label.add_css_class("dim-label")
-    bar = Gtk.Box(spacing=6, margin_top=6, margin_bottom=6, margin_start=24, margin_end=12)
-    if leading is not None:
-        leading.set_margin_end(6)
-        bar.append(leading)
-    bar.append(label)
-    for button in buttons or []:
-        button.add_css_class("flat")
-        bar.append(button)
-
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-    box.append(bar)
-    box.append(Gtk.Separator())
-    box.append(scrolled)
-    return box

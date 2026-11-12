@@ -51,3 +51,20 @@ def test_markdown_spans():
 def test_estimate_remaining():
     assert estimate_remaining(10, 0.5) is None      # za wcześnie na szacowanie
     assert estimate_remaining(600, 0.25) == 1800
+
+
+def test_new_proposals_after_task(workspace):
+    from rpg_chronicler import glossary, memory
+    from rpg_chronicler.gui.text import new_proposals, proposals_snapshot
+    from rpg_chronicler.campaigns import Campaign
+
+    glossary.add_proposals(Campaign("Fallout", "Fallout"), {"npc": ["Moira"]})
+    before = proposals_snapshot()
+    assert new_proposals(before, proposals_snapshot()) == []
+
+    glossary.add_proposals(Campaign("Fallout", "Fallout"), {"miejsca": ["Megaton"]})
+    memory.save_proposal("Warhammer", memory.State("## Drużyna", "Warhammer_261105"))
+    assert new_proposals(before, proposals_snapshot()) == [
+        ("Warhammer", "Nowy stan kampanii Warhammer do przejrzenia"),
+        ("Fallout", "Nowe propozycje do słownika kampanii Fallout: 2"),
+    ]

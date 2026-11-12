@@ -55,7 +55,12 @@ src/rpg_chronicler/
   doctor.py                   # ./sprawdz-srodowisko: diagnostyka i naprawa .venv (systemowy Python, tylko stdlib)
   progress.py                 # protokół postępu dla GUI: linie `@@postep {json}` gdy RPG_CHRONICLER_PROGRESS=json
   gui/                        # GTK4 + libadwaita, uruchamiane systemowym Pythonem (skrypt ./rpg-chronicler-gui)
-    app.py, window.py         #   Adw.Application, główne okno (lista sesji, zakładki, pasek zadań)
+    app.py, window.py         #   Adw.Application, główne okno: lista sesji, składa zakładki, uruchamia zadania
+    transcript_page.py        #   zakładka „Transkrypcja”: tekst z kolorami mówców + uwagi jakości albo panel nagrania
+    chronicle_page.py         #   zakładka „Kronika”: kronika / skrót, PDF, Discord, ponowne generowanie
+    task_bar.py               #   pasek zadania na dole (etap, postęp, szacowany czas)
+    environment.py            #   baner „.venv nie działa” (sprawdzenie w tle przy starcie)
+    widgets.py                #   wspólne widżety: text_page, markdown_buffer, task_button, issues_button
     speakers_page.py          #   zakładka „Mówcy”: sugestia AI, imiona, odsłuch próbek
     discord_dialog.py         #   okno „Wyślij na Discord”: kanał, zapowiedź (edytowalna/AI), załącznik PDF
     campaigns_dialog.py       #   okno „Kampanie” (Ctrl+K): opis, postacie graczy, słownik, propozycje AI
@@ -64,7 +69,7 @@ src/rpg_chronicler/
     desktop.py                #   APP_ID, instalacja .desktop + ikony (pl.rpgchronicler.Kronikarz.svg)
     tasks.py                  #   TaskRunner: uruchamia .venv/bin/rpg-chronicler (Gio.Subprocess), czyta postęp
     player.py                 #   SnippetPlayer: odsłuch fragmentu nagrania (Gtk.MediaFile/GStreamer)
-    text.py                   #   logika bez GTK (stan sesji, formatowanie, prosty Markdown) - testowana pytestem
+    text.py                   #   logika bez GTK (stan sesji, formatowanie, Markdown, nowe propozycje AI) - testowana pytestem
   prompts/                    # szablony .md + render(name, **pola) (str.format → klamry trzeba podwajać)
   llm/                        # LLMClient (Protocol), LLMError(retryable), with_retry, get_client(provider)
     claude_code.py            #   `claude -p` w podprocesie (plan Pro/Max), bez narzędzi i MCP, cwd=tempdir

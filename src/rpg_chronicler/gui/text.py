@@ -106,3 +106,30 @@ def estimate_remaining(elapsed: float, fraction: float) -> float | None:
     if fraction <= 0.02 or elapsed < 20:
         return None
     return elapsed * (1 - fraction) / fraction
+
+
+# --- propozycje AI (słownik, stan kampanii) ---
+
+def proposals_snapshot() -> dict[str, dict]:
+    """Stan oczekujących propozycji: liczba nazw do słownika i czas zmiany propozycji stanu, per kampania."""
+    from .. import glossary, memory
+    glossary_counts = {path.stem: glossary.count_proposals(glossary.load_proposals(path.stem))
+                       for path in glossary.proposals_dir().glob("*.json")}
+    try:
+        memory_times = {path.stem: path.stat().st_mtime for path in memory.proposals_dir().glob("*.json")}
+    except OSError:
+        memory_times = {}
+    return {"slownik": glossary_counts, "stan": memory_times}
+
+
+def new_proposals(before: dict[str, dict], after: dict[str, dict]) -> list[tuple[str, str]]:
+    """Co przybyło w czasie zadania: [(kampania, komunikat)]. Nowa kronika aktualizuje tę samą propozycję
+    stanu, więc liczy się zmiana czasu pliku, a w słowniku - wzrost liczby nazw."""
+    messages = []
+    for key, mtime in after.get("stan", {}).items():
+        if mtime != before.get("stan", {}).get(key):
+            messages.append((key, f"Nowy stan kampanii {key} do przejrzenia"))
+    for key, count in after.get("slownik", {}).items():
+        if count > before.get("slownik", {}).get(key, 0):
+            messages.append((key, f"Nowe propozycje do słownika kampanii {key}: {count}"))
+    return messages
