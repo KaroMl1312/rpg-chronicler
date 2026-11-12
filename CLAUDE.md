@@ -24,7 +24,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 .venv/bin/python -m rpg_chronicler status
 .venv/bin/python -m pytest               # testy (szybkie, bez modeli i sieci)
 ./rpg-chronicler-gui                     # GUI (systemowy Python, patrz niżej)
-./rpg-chronicler-gui --instaluj          # wpis w menu GNOME (~/.local/share), --odinstaluj usuwa
+./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
 Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).

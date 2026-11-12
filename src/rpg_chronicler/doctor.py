@@ -171,7 +171,7 @@ def check_tools(report: Report) -> None:
     if desktop.exists():
         launcher = ROOT / "rpg-chronicler-gui"
         valid = str(launcher) in desktop.read_text(encoding="utf-8")
-        report.add(OK if valid else WARN, "Wpis w menu GNOME",
+        report.add(OK if valid else WARN, "Wpis w menu aplikacji",
                    "" if valid else "wskazuje inny katalog - ./rpg-chronicler-gui --instaluj")
 
 

@@ -1,4 +1,6 @@
-"""Wpis aplikacji w menu GNOME (.desktop + ikona) w katalogach użytkownika. Bez GTK - testowane pytestem."""
+"""Wpis aplikacji w menu (.desktop + ikona) i skrót na pulpicie, w katalogach użytkownika.
+
+Standard freedesktop - działa w GNOME, KDE i innych środowiskach. Bez GTK - testowane pytestem."""
 import os
 import shutil
 import subprocess
@@ -18,6 +20,27 @@ def desktop_file_path() -> Path:
 
 def icon_path() -> Path:
     return data_home() / "icons" / "hicolor" / "scalable" / "apps" / f"{APP_ID}.svg"
+
+
+def desktop_dir() -> Path:
+    """Folder pulpitu wg ~/.config/user-dirs.dirs (np. ~/Pulpit w polskiej instalacji), domyślnie ~/Desktop."""
+    home = os.path.expanduser("~")
+    config_home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+    try:
+        lines = Path(config_home, "user-dirs.dirs").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        lines = []
+    for line in lines:
+        key, _, value = line.strip().partition("=")
+        if key == "XDG_DESKTOP_DIR" and value:
+            value = value.strip().strip('"').replace("$HOME", home)
+            if os.path.isabs(value):
+                return Path(value)
+    return Path(home, "Desktop")
+
+
+def shortcut_path() -> Path:
+    return desktop_dir() / f"{APP_ID}.desktop"
 
 
 def quote_exec_arg(arg: str) -> str:
@@ -57,7 +80,7 @@ def install(launcher: str) -> list[Path]:
     desktop.parent.mkdir(parents=True, exist_ok=True)
     desktop.write_text(desktop_entry(launcher), encoding="utf-8")
 
-    # Odświeżenie pamięci podręcznych - opcjonalne, GNOME i tak zauważy nowe pliki
+    # Odświeżenie pamięci podręcznych - opcjonalne, środowisko i tak zauważy nowe pliki
     for command in (["update-desktop-database", str(desktop.parent)],
                     ["gtk-update-icon-cache", "-q", "-t", str(data_home() / "icons" / "hicolor")]):
         if shutil.which(command[0]):
@@ -65,9 +88,20 @@ def install(launcher: str) -> list[Path]:
     return [desktop, icon]
 
 
+def install_shortcut(launcher: str) -> Path:
+    """Skrót na pulpicie. Wymaga ikony z install(); prawo wykonania = „zaufany” w KDE i w rozszerzeniu DING (GNOME)."""
+    shortcut = shortcut_path()
+    shortcut.parent.mkdir(parents=True, exist_ok=True)
+    shortcut.write_text(desktop_entry(launcher), encoding="utf-8")
+    shortcut.chmod(0o755)
+    if shutil.which("gio"):  # GNOME/DING dodatkowo patrzy na ten atrybut; w KDE bez znaczenia
+        subprocess.run(["gio", "set", str(shortcut), "metadata::trusted", "true"], check=False, capture_output=True)
+    return shortcut
+
+
 def uninstall() -> list[Path]:
     removed = []
-    for path in (desktop_file_path(), icon_path()):
+    for path in (desktop_file_path(), icon_path(), shortcut_path()):
         if path.exists():
             path.unlink()
             removed.append(path)
