@@ -4,7 +4,7 @@ import os
 import sys
 
 from . import progress
-from .config import DIARIZATION_MODEL, LLM_PROVIDER, WHISPER_CPU_THREADS
+from .config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS
 from .session import SessionNotFound, list_sessions
 
 PROVIDERS = ["claude-code", "anthropic", "gemini"]
@@ -133,9 +133,12 @@ def cmd_benchmark(args):
     session = list_sessions([args.session])[0]
     if not session.audio_path:
         raise SessionNotFound(f"Sesja '{session.name}' nie ma lokalnego nagrania.")
+    from .transcription.runner import name_hints
+    names = session.campaign.all_names()
     run_benchmark(session.audio_path, args.seconds, threads=args.threads, vad=args.vad,
                   batch_size=args.batch_size, diarization=not args.no_diarization,
-                  diarization_models=args.diarization_models)
+                  diarization_models=args.diarization_models, whisper_models=args.whisper_models,
+                  offset=args.offset, hotwords=name_hints(session), names=names, save_text=args.save_text)
 
 
 def _audio_session(name: str):
@@ -455,6 +458,11 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("benchmark", help="zmierz szybkość transkrypcji na fragmencie nagrania")
     p.add_argument("session", metavar="SESJA", help="sesja z lokalnym nagraniem")
     p.add_argument("--seconds", type=int, default=300, help="długość fragmentu w sekundach (domyślnie 300)")
+    p.add_argument("--offset", type=int, default=0, metavar="S",
+                   help="początek fragmentu w sekundach (np. 1800 = środek sesji zamiast rozgrzewki)")
+    p.add_argument("--whisper-models", nargs="+", default=[MODEL_SIZE], metavar="MODEL",
+                   help=f"modele Whispera do porównania, np. medium large-v3-turbo (domyślnie {MODEL_SIZE})")
+    p.add_argument("--save-text", metavar="FOLDER", help="zapisz teksty każdego modelu do porównania")
     p.add_argument("--threads", type=int, nargs="+", default=[WHISPER_CPU_THREADS],
                    help=f"liczby wątków do porównania, np. --threads 4 6 12 (domyślnie {WHISPER_CPU_THREADS})")
     p.add_argument("--vad", action="store_true", help="włącz pomijanie ciszy")

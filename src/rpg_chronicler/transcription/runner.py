@@ -20,6 +20,7 @@ from ..config import (
 from ..session import Session
 from ..transcript import Segment, Transcript, save_transcript
 from ..voices import save_voiceprints, voices_path
+from .compare import uses_previous_text
 from .merge import Turn, assign_speakers
 
 
@@ -29,8 +30,8 @@ def format_duration(seconds: float) -> str:
     return f"{hours}h {minutes:02d}m {secs:02d}s" if hours else f"{minutes}m {secs:02d}s"
 
 
-def load_whisper(cpu_threads: int = WHISPER_CPU_THREADS) -> WhisperModel:
-    return WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
+def load_whisper(cpu_threads: int = WHISPER_CPU_THREADS, model_size: str = MODEL_SIZE) -> WhisperModel:
+    return WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
 
 
 def load_diarization(model: str = DIARIZATION_MODEL) -> Pipeline:
@@ -62,16 +63,20 @@ def diarize(pipeline: Pipeline, audio, session_name: str | None = None) -> list[
 
 def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_VAD,
                      batch_size: int = WHISPER_BATCH_SIZE, show_progress: bool = True,
-                     session_name: str | None = None, hotwords: str | None = None):
+                     session_name: str | None = None, hotwords: str | None = None,
+                     model_size: str = MODEL_SIZE):
     """Zwraca (lista segmentów, info). `audio` to ścieżka albo tablica numpy 16 kHz.
 
     `hotwords`: nazwy podpowiadane modelowi (słownik kampanii) - poprawiają pisownię imion i miejsc.
+    `model_size`: nazwa modelu - modele turbo działają bez warunkowania na poprzednim tekście (compare.py).
     """
     if batch_size > 0:
         segments_iter, info = BatchedInferencePipeline(whisper_model).transcribe(
             audio, language="pl", batch_size=batch_size, hotwords=hotwords)
     else:
-        segments_iter, info = whisper_model.transcribe(audio, language="pl", vad_filter=vad, hotwords=hotwords)
+        segments_iter, info = whisper_model.transcribe(
+            audio, language="pl", vad_filter=vad, hotwords=hotwords,
+            condition_on_previous_text=uses_previous_text(model_size))
 
     # Segmenty powstają w trakcie iterowania - stąd postęp liczony po czasie nagrania
     segments = []

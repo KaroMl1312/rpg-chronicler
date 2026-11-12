@@ -180,6 +180,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 - Komunikaty dla użytkownika: `print` z prefiksami `[SUKCES]`, `[BŁĄD]`, `[OSTRZEŻENIE]`, `[INFO]`, `[POMINIĘTO]`, `[PORAŻKA]`. Błąd pojedynczej sesji nie przerywa całego przebiegu.
 - Testy: używaj fixture `workspace` (monkeypatch ścieżek w `session`/`summary`, `FakeLLM` zamiast `get_client`). Testy nie mogą wymagać modeli, sieci, `rclone` ani `claude`.
 - Transkrypcja działa tylko na CPU (`device="cpu"`, `int8`); strojenie przez `WHISPER_CPU_THREADS`, `WHISPER_VAD`, `WHISPER_BATCH_SIZE` i komendę `benchmark`.
+- **Modele Whispera** (`benchmark SESJA --whisper-models medium large-v3-turbo --offset 1800 --save-text DIR`, pomiar 2026-11 na `Warhammer_261105`, 6 wątków): `medium` 0,25× czasu nagrania; `large-v3-turbo` 0,12× (ok. 2,5× szybciej) przy podobnej liczbie słów i jakości tekstu, ale z dłuższymi segmentami (8 segmentów ≥ 25 s na 10 min wobec 0 w medium - gorzej dla przypisania mówców). Turbo **musi** działać z `condition_on_previous_text=False` (`transcription/compare.uses_previous_text`), inaczej zapętla się („Tak?” ×34 zamiast monologu MG); z VAD i warunkowaniem jest jeszcze gorzej (241 słów). Domyślnie zostaje `medium`.
 - `ClaudeCodeClient` uruchamia `claude` z `cwd=tempfile.gettempdir()`, żeby ten plik CLAUDE.md nie trafiał do promptu kroniki.
 
 ## Zależności zewnętrzne

@@ -16,7 +16,7 @@ CLAUDE_CODE_MODELS = [("", "Domyślny dla konta"), ("sonnet", "Sonnet"), ("opus"
 WHISPER_MODELS = [
     ("small", "Small", "szybki, wyraźnie mniej dokładny"),
     ("medium", "Medium", "dobry kompromis dla polskiego"),
-    ("large-v3-turbo", "Large v3 Turbo", "dokładniejszy, nieco wolniejszy od Medium"),
+    ("large-v3-turbo", "Large v3 Turbo", "ok. 2,5× szybszy od Medium, podobna jakość, dłuższe fragmenty"),
     ("large-v3", "Large v3", "najdokładniejszy, ok. 2× wolniejszy od Medium"),
 ]
 FOLDERS = [("foldery.nagrania", "Nagrania", config.AUDIO_DIR),
