@@ -1,4 +1,4 @@
-Poniżej jest kronika sesji RPG w systemie {system_name}. Napisz na jej podstawie krótkie streszczenie sesji - przypomnienie dla graczy, co się wydarzyło.
+Powyżej jest kronika sesji RPG w systemie {system_name}. Napisz na jej podstawie krótkie streszczenie sesji - przypomnienie dla graczy, co się wydarzyło.
 
 Zasady:
 1. Jeden akapit ciągłej opowieści (bez listy, nagłówków, pogrubień i tytułu), 6–10 zdań, najwyżej ok. 1000 znaków.
@@ -12,6 +12,3 @@ Przykład stylu (z innej, wymyślonej kampanii - weź z niego tylko formę):
 „Dotarliście do portu w Saltmarsh, gdzie kapitan straży poprosił Was o zbadanie zaginięć rybaków. Kiedy przepytaliście mieszkańców, wyszło na jaw, że ślady prowadzą do opuszczonej latarni. W środku natknęliście się na przemytników, a po walce znaleźliście list z pieczęcią miejskiego radnego. Sesja skończyła się, gdy wracaliście do miasta, zastanawiając się, komu jeszcze można ufać.”
 
 Odpowiedz wyłącznie treścią streszczenia.
-
-Kronika:
-{chronicle}

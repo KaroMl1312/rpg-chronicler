@@ -18,7 +18,7 @@ from pathlib import Path
 
 from . import session as _session
 from .campaigns import Campaign, session_date
-from .prompts import render
+from .prompts import chronicle_blocks, render
 
 STATE_PREFIX = "stan-kampanii-"
 HEADER_RE = re.compile(r"^<!-- po sesji: (?P<session>.*?) -->\n?")
@@ -158,28 +158,23 @@ def clean_response(text: str) -> str:
     return text[:STATE_LIMIT].strip()
 
 
-def update_prompt(campaign: Campaign, previous: State | None, session_name: str, chronicle: str) -> str:
-    return render("campaign_state",
-                  system_name=campaign.system,
-                  campaign_info=campaign.prompt_info() or "(brak)",
-                  previous_state=previous.text if previous else "(brak - to pierwszy zapis stanu kampanii)",
-                  chronicles=f"<kronika sesja=\"{session_name}\">\n{chronicle.strip()}\n</kronika>")
+def update_prompt(campaign: Campaign, previous: State | None, session_name: str,
+                  chronicle: str) -> tuple[str, str]:
+    """(kronika, polecenie) - kronika na początku, wspólna z innymi zapytaniami po niej (cache w API)."""
+    return chronicle_blocks([(session_name, chronicle)]), render(
+        "campaign_state",
+        system_name=campaign.system,
+        campaign_info=campaign.prompt_info() or "(brak)",
+        previous_state=previous.text if previous else "(brak - to pierwszy zapis stanu kampanii)")
 
 
-def build_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> str:
+def build_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> tuple[str, str]:
     """Stan od zera z wielu kronik (od najstarszej); przy limicie zostają najnowsze."""
-    blocks, total = [], 0
-    for name, text in reversed(chronicles):
-        block = f"<kronika sesja=\"{name}\">\n{text.strip()}\n</kronika>"
-        if blocks and total + len(block) > CHRONICLES_LIMIT:
-            break
-        blocks.insert(0, block)
-        total += len(block)
-    return render("campaign_state",
-                  system_name=campaign.system,
-                  campaign_info=campaign.prompt_info() or "(brak)",
-                  previous_state="(brak - zbuduj stan od zera na podstawie wszystkich kronik poniżej)",
-                  chronicles="\n\n".join(blocks))
+    return chronicle_blocks(chronicles, CHRONICLES_LIMIT), render(
+        "campaign_state",
+        system_name=campaign.system,
+        campaign_info=campaign.prompt_info() or "(brak)",
+        previous_state="(brak - zbuduj stan od zera na podstawie wszystkich kronik powyżej)")
 
 
 def propose_update(llm, campaign: Campaign, session_name: str, chronicle: str) -> State | None:
@@ -187,13 +182,13 @@ def propose_update(llm, campaign: Campaign, session_name: str, chronicle: str) -
 
     Zwraca propozycję albo None, gdy sesja nie jest nowsza od stanu. Rzuca LLMError.
     """
-    from .llm import with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
     base = load_proposal(campaign.key) or load_state(campaign.key)
     if not is_newer(session_name, base):
         return None
-    prompt = update_prompt(campaign, base, session_name, chronicle)
+    prefix, prompt = update_prompt(campaign, base, session_name, chronicle)
     print(f"[{llm.name}] Aktualizacja stanu kampanii {campaign.key} po sesji {session_name}...")
-    text = clean_response(with_retry(lambda: llm.generate(prompt), f"stan kampanii {campaign.key}"))
+    text = clean_response(with_retry(lambda: generate(llm, prompt, prefix), f"stan kampanii {campaign.key}"))
     proposal = State(text, session_name)
     save_proposal(campaign.key, proposal)
     return proposal
@@ -201,12 +196,12 @@ def propose_update(llm, campaign: Campaign, session_name: str, chronicle: str) -
 
 def propose_from_chronicles(llm, campaign: Campaign, chronicles: list[tuple[str, str]]) -> State | None:
     """Stan od zera ze wszystkich kronik kampanii (od najstarszej). Rzuca LLMError."""
-    from .llm import with_retry
+    from .llm import generate, with_retry
     if not chronicles:
         return None
-    prompt = build_prompt(campaign, chronicles)
+    prefix, prompt = build_prompt(campaign, chronicles)
     print(f"[{llm.name}] Budowanie stanu kampanii {campaign.key} z {len(chronicles)} kronik...")
-    text = clean_response(with_retry(lambda: llm.generate(prompt), f"stan kampanii {campaign.key}"))
+    text = clean_response(with_retry(lambda: generate(llm, prompt, prefix), f"stan kampanii {campaign.key}"))
     proposal = State(text, chronicles[-1][0])
     save_proposal(campaign.key, proposal)
     return proposal

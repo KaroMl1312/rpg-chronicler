@@ -1,4 +1,4 @@
-Poniżej są kroniki sesji kampanii RPG w systemie {system_name}. Wypisz z nich nazwy własne, które warto dodać do słownika kampanii, żeby transkrypcja nagrań i kolejne kroniki zapisywały je poprawnie.
+Powyżej są kroniki sesji kampanii RPG w systemie {system_name}. Wypisz z nich nazwy własne, które warto dodać do słownika kampanii, żeby transkrypcja nagrań i kolejne kroniki zapisywały je poprawnie.
 
 Zasady:
 1. Tylko nazwy własne występujące w kronikach: imiona, nazwy miejsc, nazwane przedmioty, frakcje, organizacje, bóstwa, specyficzne pojęcia świata. Bez zwykłych słów i opisów („karczmarz”, „miecz”).
@@ -12,6 +12,3 @@ Obecny słownik kampanii:
 
 Odpowiedz WYŁĄCZNIE obiektem JSON, bez komentarza i bez bloku kodu, w formacie:
 {{"postacie_graczy": [], "npc": [], "miejsca": [], "przedmioty": [], "inne": []{description_field}}}
-
-Kroniki:
-{chronicles}

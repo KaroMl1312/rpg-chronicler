@@ -68,7 +68,7 @@ def test_prompts_render_with_braces_in_transcript():
     events = render("events", system_name="Warhammer", part="1", parts="2", time_range="0:00:00–0:45:00",
                     speaker_mapping_info="", campaign_context="", previous_events="", transcript="{x}")
     assert "część 1 z 2" in events and "{x}" in events
-    state = render("campaign_state", system_name="Warhammer", campaign_info="", previous_state="", chronicles="{k}")
+    state = render("campaign_state", system_name="Warhammer", campaign_info="", previous_state="{k}")
     assert "## Otwarte wątki" in state and "{k}" in state
 
 

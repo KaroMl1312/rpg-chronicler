@@ -1,7 +1,7 @@
 from ..config import LLM_PROVIDER
-from .base import LLMClient, LLMError, with_retry
+from .base import LLMClient, LLMError, generate, with_retry
 
-__all__ = ["LLMClient", "LLMError", "with_retry", "get_client"]
+__all__ = ["LLMClient", "LLMError", "generate", "with_retry", "get_client"]
 
 
 def get_client(provider: str = LLM_PROVIDER) -> LLMClient:

@@ -22,6 +22,17 @@ class LLMClient(Protocol):
         ...
 
 
+def generate(client: LLMClient, prompt: str, prefix: str = "") -> str:
+    """Zapytanie z opcjonalnym stałym początkiem `prefix` (wspólnym dla kilku zapytań z rzędu).
+
+    Klient z atrybutem `caches_prefix = True` (API Anthropic) dostaje go osobno i cache'uje; pozostali
+    dostają po prostu sklejony tekst - wynik jest ten sam.
+    """
+    if prefix and getattr(client, "caches_prefix", False):
+        return client.generate(prompt, prefix=prefix)
+    return client.generate(prefix + prompt)
+
+
 def with_retry(fn: Callable[[], T], description: str,
                attempts: int = LLM_MAX_RETRIES, delay: int = LLM_RETRY_DELAY) -> T:
     """Wywołuje `fn`, ponawiając próbę przy błędach LLMError oznaczonych jako retryable."""

@@ -24,11 +24,11 @@ def test_new_only_skips_known_names_case_insensitive():
 
 
 def test_prompt_contains_current_glossary_and_asks_for_description():
-    prompt = glossary.build_prompt(CAMPAIGN, [("Warhammer_261001", "Kronika 1")])
+    prefix, prompt = glossary.build_prompt(CAMPAIGN, [("Warhammer_261001", "Kronika 1")])
     assert "postacie_graczy: Fen" in prompt and "miejsca: Altdorf" in prompt
-    assert '"opis": ""' in prompt and '<kronika sesja="Warhammer_261001">' in prompt
+    assert '"opis": ""' in prompt and prefix.startswith('<kronika sesja="Warhammer_261001">')
     with_context = Campaign("W", "W", context="Opis")
-    assert '"opis"' not in glossary.build_prompt(with_context, [("W_1", "K")])
+    assert '"opis"' not in glossary.build_prompt(with_context, [("W_1", "K")])[1]
 
 
 def test_accept_and_pending_proposals(workspace):

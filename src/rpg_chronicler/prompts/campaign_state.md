@@ -1,6 +1,6 @@
 Prowadzisz „pamięć kampanii” RPG w systemie {system_name}: zwięzły, rzeczowy opis stanu świata po ostatniej rozegranej sesji. Ta notatka trafia do AI piszącego kronikę następnej sesji - ma mu powiedzieć, kim są bohaterowie, co mają, z kim mają do czynienia i jakie sprawy są otwarte.
 
-Zadanie: zaktualizuj poprzedni stan na podstawie kronik poniżej (albo zbuduj go od zera, jeśli poprzedniego nie ma).
+Zadanie: zaktualizuj poprzedni stan na podstawie kronik powyżej (albo zbuduj go od zera, jeśli poprzedniego nie ma).
 
 Zasady:
 1. Zachowaj informacje z poprzedniego stanu, którym kroniki nie przeczą. Zmień to, co się zmieniło (rany, pieniądze, przedmioty, relacje, miejsce pobytu).
@@ -33,6 +33,3 @@ Informacje o kampanii:
 
 Poprzedni stan kampanii:
 {previous_state}
-
-Kroniki:
-{chronicles}

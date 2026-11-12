@@ -7,8 +7,8 @@ from .campaigns import campaign_key, session_date
 from .chronicle import brief_path
 from .config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_PART_SECONDS, CHRONICLE_TWO_STEP,
                      GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR)
-from .llm import LLMClient, LLMError, get_client, with_retry
-from .prompts import render
+from .llm import LLMClient, LLMError, generate, get_client, with_retry
+from .prompts import chronicle_blocks, render, render_split
 from .session import Session, list_sessions
 from .speakers import identify_speakers, save_suggestion, suggest_speakers
 from .quality import format_time
@@ -95,17 +95,20 @@ def session_events(client: LLMClient, session: Session, transcript: Transcript, 
         if previous:
             previous_block = ("\n\nWydarzenia z poprzedniej części (tylko kontekst - nie powtarzaj ich):\n"
                               f"<poprzednia_czesc>\n{previous[-PREVIOUS_EVENTS_LIMIT:]}\n</poprzednia_czesc>")
-        prompt = render("events", system_name=session.system_name, part=str(index), parts=str(len(parts)),
-                        time_range=time_range, speaker_mapping_info=mapping_info, campaign_context=context,
-                        previous_events=previous_block, transcript=part.compact_for_llm(mapping))
-        cache = cache_dir / f"{hashlib.sha1(prompt.encode('utf-8')).hexdigest()}.md"
+        # Początek (zasady, mówcy, kampania) jest taki sam dla wszystkich części - cache w API
+        prefix, prompt = render_split(
+            "events", system_name=session.system_name, part=str(index), parts=str(len(parts)),
+            time_range=time_range, speaker_mapping_info=mapping_info, campaign_context=context,
+            previous_events=previous_block, transcript=part.compact_for_llm(mapping))
+        cache = cache_dir / f"{hashlib.sha1((prefix + prompt).encode('utf-8')).hexdigest()}.md"
         try:
             text = cache.read_text(encoding="utf-8")
             print(f"[INFO] Wydarzenia części {index}/{len(parts)} ({time_range}) z pamięci podręcznej.")
         except OSError:
             progress.report("wydarzenia", session.name, index - 1, len(parts))
             print(f"[{client.name}] Wydarzenia części {index}/{len(parts)} ({time_range})...")
-            text = with_retry(lambda: client.generate(prompt), f"wydarzenia {session.name} {index}/{len(parts)}")
+            text = with_retry(lambda: generate(client, prompt, prefix),
+                              f"wydarzenia {session.name} {index}/{len(parts)}")
             text = text.strip()
             cache_dir.mkdir(parents=True, exist_ok=True)
             cache.write_text(text, encoding="utf-8")
@@ -286,9 +289,11 @@ def update_campaign_memory(client: LLMClient, session: Session, chronicle: str) 
 def write_brief(client: LLMClient, session: Session, chronicle: str) -> str:
     """Skrót kroniki: najważniejsze wydarzenia w jednym akapicie. Rzuca LLMError."""
     progress.report("skrót kroniki", session.name)
-    prompt = render("brief", system_name=session.system_name, chronicle=chronicle)
+    # Kronika na początku - ten sam początek mają zapytania o słownik i stan kampanii (cache w API)
+    prefix = chronicle_blocks([(session.name, chronicle)])
+    prompt = render("brief", system_name=session.system_name)
     print(f"[{client.name}] Pisanie skrótu kroniki {session.name}...")
-    brief = with_retry(lambda: client.generate(prompt), f"skrót {session.name}").strip()
+    brief = with_retry(lambda: generate(client, prompt, prefix), f"skrót {session.name}").strip()
     with open(brief_path(session), "w", encoding="utf-8") as f:
         f.write(brief + "\n")
     print(f"[SUKCES] Zapisano skrót kroniki w: {brief_path(session)}")

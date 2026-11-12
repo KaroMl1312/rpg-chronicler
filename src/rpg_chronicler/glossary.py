@@ -12,7 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .campaigns import GLOSSARY_CATEGORIES, Campaign, campaign_key, session_date
-from .prompts import render
+from .prompts import chronicle_blocks, render
 
 PLAYER_CHARACTERS = "postacie_graczy"
 DESCRIPTION = "opis"
@@ -35,17 +35,13 @@ def current_glossary_text(campaign: Campaign) -> str:
     return "\n".join(lines) or "(pusty)"
 
 
-def build_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> str:
-    """`chronicles` = [(nazwa sesji, tekst kroniki)], od najstarszej."""
-    blocks, total = [], 0
-    for name, text in reversed(chronicles):  # przy limicie zostawiamy najnowsze
-        block = f"<kronika sesja=\"{name}\">\n{text.strip()}\n</kronika>"
-        if blocks and total + len(block) > CHRONICLES_LIMIT:
-            break
-        blocks.insert(0, block)
-        total += len(block)
+def build_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> tuple[str, str]:
+    """(kroniki, polecenie) - `chronicles` = [(nazwa sesji, tekst kroniki)], od najstarszej.
+
+    Kroniki idą na początek (wspólny z innymi zapytaniami po nowej kronice - cache w API).
+    """
     wants_description = not campaign.context
-    return render(
+    return chronicle_blocks(chronicles, CHRONICLES_LIMIT), render(
         "glossary_extraction",
         system_name=campaign.system,
         current_glossary=current_glossary_text(campaign),
@@ -53,7 +49,6 @@ def build_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> str:
                           "kim są bohaterowie, główny wątek) - posłuży jako opis kampanii dla AI.\n"
                           if wants_description else ""),
         description_field=', "opis": ""' if wants_description else "",
-        chronicles="\n\n".join(blocks),
     )
 
 
@@ -104,12 +99,12 @@ def new_only(proposals: dict, campaign: Campaign) -> dict:
 
 def extract_proposals(llm, campaign: Campaign, chronicles: list[tuple[str, str]]) -> dict:
     """Pyta AI o nowe nazwy z kronik. Rzuca LLMError (połączenie) albo GlossaryError (zła odpowiedź)."""
-    from .llm import with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
     if not chronicles:
         return {}
-    prompt = build_prompt(campaign, chronicles)
+    prefix, prompt = build_prompt(campaign, chronicles)
     print(f"[{llm.name}] Szukanie nazw w {len(chronicles)} kronikach kampanii {campaign.key}...")
-    response = with_retry(lambda: llm.generate(prompt), f"słownik kampanii {campaign.key}")
+    response = with_retry(lambda: generate(llm, prompt, prefix), f"słownik kampanii {campaign.key}")
     return new_only(parse_response(response), campaign)
 
 
