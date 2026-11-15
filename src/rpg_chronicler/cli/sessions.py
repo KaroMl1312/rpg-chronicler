@@ -45,6 +45,25 @@ def cmd_check(args):
     print(f"\nSprawdzono {len(results)} transkrypcji: {ok} bez uwag, {len(bad)} z uwagami.")
 
 
+def cmd_stats(args):
+    from ..campaigns import campaign_key
+    from ..stats import format_report, merge_stats, session_stats
+    from ..transcript import load_speaker_mapping
+
+    sessions = [s for s in list_sessions(args.sessions) if s.has_transcript
+                and (not args.campaign or campaign_key(s.name).casefold() == args.campaign.casefold())]
+    if not sessions:
+        print("Brak transkrypcji do policzenia.")
+        return
+    all_stats = []
+    for s in sessions:
+        stats = session_stats(s.load_transcript(), load_speaker_mapping(s.txt_path), s.campaign)
+        all_stats.append(stats)
+        print(f"\n{s.name}:\n{format_report(stats)}")
+    if len(all_stats) > 1:
+        print(f"\nRazem, sesje: {len(all_stats)}:\n{format_report(merge_stats(all_stats))}")
+
+
 def cmd_migrate(args):
     import json
 

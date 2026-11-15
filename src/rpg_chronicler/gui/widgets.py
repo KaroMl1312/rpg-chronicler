@@ -3,7 +3,7 @@ from typing import Callable
 
 from gi.repository import Gtk, Pango
 
-from .. import quality
+from .. import quality, stats as session_stats
 from .text import markdown_spans
 
 RegisterTaskButton = Callable[[Gtk.Button], None]
@@ -37,6 +37,39 @@ def issues_button(issues: list[quality.Issue]) -> Gtk.Widget:
     button.add_css_class("flat")
     button.add_css_class("warning")
     return button
+
+
+def stats_button(stats: session_stats.SessionStats) -> Gtk.Widget:
+    """„Statystyki” z okienkiem: czas gry i przerw, MG a gracze, kto ile mówił (paski udziału)."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10, margin_top=12, margin_bottom=12,
+                  margin_start=12, margin_end=12)
+    title = Gtk.Label(label="Statystyki sesji", xalign=0)
+    title.add_css_class("heading")
+    box.append(title)
+    fmt = session_stats.format_duration
+    summary = [f"Nagranie {fmt(stats.duration)}, gra {fmt(stats.play_seconds)}, {session_stats.breaks_text(stats)}"]
+    if stats.gm_seconds:
+        players = sum(s.seconds for s in stats.players)
+        summary.append(f"MG {stats.share(stats.gm_seconds):.0%} · gracze {stats.share(players):.0%} czasu mówienia")
+    for line in summary:
+        box.append(Gtk.Label(label=line, xalign=0, wrap=True, max_width_chars=50))
+
+    grid = Gtk.Grid(column_spacing=12, row_spacing=6)
+    for row, s in enumerate(stats.speakers):
+        share = stats.share(s.seconds)
+        grid.attach(Gtk.Label(label=s.name, xalign=0, ellipsize=Pango.EllipsizeMode.END, max_width_chars=18),
+                    0, row, 1, 1)
+        bar = Gtk.ProgressBar(fraction=share, valign=Gtk.Align.CENTER, hexpand=True)
+        bar.set_size_request(120, -1)
+        grid.attach(bar, 1, row, 1, 1)
+        detail = Gtk.Label(label=f"{share:.0%} · {session_stats.format_duration(s.seconds)}", xalign=1,
+                           tooltip_text=f"{s.utterances} wypowiedzi, {s.words} słów")
+        detail.add_css_class("dim-label")
+        detail.add_css_class("numeric")
+        grid.attach(detail, 2, row, 1, 1)
+    box.append(grid)
+    return Gtk.MenuButton(label="Statystyki", popover=Gtk.Popover(child=box),
+                          tooltip_text="Kto ile mówił, MG a gracze, czas gry i przerw")
 
 
 def markdown_buffer(content: str) -> Gtk.TextBuffer:

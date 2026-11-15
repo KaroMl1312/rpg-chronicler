@@ -1,4 +1,4 @@
-"""Komendy kronik: skrót, cytaty, poprawki, PDF, Discord, wyszukiwarka i encyklopedia."""
+"""Komendy kronik: skrót, cytaty, poprawki, PDF, Discord, wyszukiwarka, encyklopedia i dziennik postaci."""
 import os
 
 from .. import progress
@@ -143,3 +143,27 @@ def cmd_encyclopedia(args):
     write_markdown_pdf(text, encyclopedia.pdf_path(campaign.key), campaign.system)
     print(f"[SUKCES] Encyklopedia kampanii {campaign.key}: {encyclopedia.pdf_path(campaign.key)} "
           f"(i {os.path.basename(encyclopedia.markdown_path(campaign.key))})")
+
+
+def cmd_diary(args):
+    from .. import diary
+    from ..campaigns import campaign_for
+    from ..chronicle_pdf import write_markdown_pdf
+    from ..llm import LLMError, LazyClient
+
+    campaign = campaign_for(f"{args.campaign}_")
+    character = diary.canonical_character(campaign, args.character)
+    llm = LazyClient(args.provider)   # wpisy z cache nie potrzebują klienta
+    try:
+        text = diary.build(llm.get, campaign, character, list_sessions(), force=args.force,
+                           progress=lambda done, total: progress.report("dziennik postaci", character, done, total))
+    except (LLMError, diary.DiaryError) as e:
+        raise SessionNotFound(f"Nie udało się utworzyć dziennika: {e}")
+    path = diary.markdown_path(campaign.key, character)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+    progress.report("PDF", character)
+    write_markdown_pdf(text, diary.pdf_path(campaign.key, character), campaign.system)
+    print(f"[SUKCES] Dziennik postaci {character}: {diary.pdf_path(campaign.key, character)} "
+          f"(i {os.path.basename(path)})")

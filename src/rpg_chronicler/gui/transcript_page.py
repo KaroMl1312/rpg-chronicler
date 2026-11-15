@@ -3,13 +3,13 @@ from typing import Callable
 
 from gi.repository import Adw, Gtk, Pango
 
-from .. import quality
+from .. import quality, stats
 from ..session import Session
 from ..transcript import Transcript, load_speaker_mapping
 from .player import SnippetPlayer
 from .recording_page import RecordingPanel
 from .text import format_minutes, format_timestamp, transcript_blocks
-from .widgets import RegisterTaskButton, issues_button, text_page
+from .widgets import RegisterTaskButton, issues_button, stats_button, text_page
 
 SPEAKER_COLORS = ["#3584e4", "#e66100", "#26a269", "#9141ac", "#c64600", "#1c71d8", "#a51d2d", "#865e3c"]
 
@@ -69,4 +69,7 @@ class TranscriptPage(Adw.Bin):
         if not session.has_json:
             info.append("starszy format .txt")
         issues = quality.check(transcript)
-        return text_page(buffer, " · ".join(info), leading=issues_button(issues) if issues else None)
+        buttons = []
+        if transcript.segments:
+            buttons.append(stats_button(stats.session_stats(transcript, mapping, session.campaign)))
+        return text_page(buffer, " · ".join(info), buttons, leading=issues_button(issues) if issues else None)

@@ -28,7 +28,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `diary KAMPANIA POSTAĆ [--force]`, `stats [SESJA...] [--campaign K]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -55,6 +55,8 @@ src/rpg_chronicler/
   textmatch.py                # dopasowanie słów odporne na polską odmianę (początki słów, ruchome „e”); stdlib
   search.py                   # wyszukiwarka po kronikach i transkrypcjach (od najstarszej sesji); stdlib
   encyclopedia.py             # encyklopedia kampanii: oś czasu, stan, hasła z opisami AI → .md + PDF
+  diary.py                    # dziennik postaci: wpis AI o każdej sesji z jej perspektywy (cache) → .md + PDF
+  stats.py                    # statystyki sesji: kto ile mówił, MG a gracze, czas gry i przerw; stdlib
   quality.py                  # kontrola jakości transkrypcji: mało tekstu, dziury, pętle Whispera, kopie sesji; stdlib
   archive.py                  # archiwizacja sesji do podfolderów archiwum/ (lokalnie; Drive w storage/drive.py); stdlib
   audio_trim.py               # wykrywanie ciszy (ffmpeg silencedetect) i przycinanie nagrań; tylko stdlib + ffmpeg
@@ -115,6 +117,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `stan-kampanii-<kampania>.md` | `TXT_DIR` | pamięć kampanii (zatwierdzona), 1. linia `<!-- po sesji: NAZWA -->` |
 | `<nazwa>_wydarzenia.md` | `SUMMARY_DIR` | lista wydarzeń z części transkrypcji (krok pośredni kroniki w dwóch krokach) |
 | `encyklopedia-<kampania>.md`, `.pdf` | `SUMMARY_DIR` | encyklopedia kampanii (komenda `encyclopedia`, przycisk w oknie Kampanie) |
+| `dziennik-<kampania>-<postać>.md`, `.pdf` | `SUMMARY_DIR` | dziennik postaci (komenda `diary`, okno Kampanie); spacje w imieniu → `_` |
 | `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw (synchronizowany z Drive) |
 
 Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówców) `[12.34s -> 15.67s] tekst`. `load_transcript` preferuje JSON, a w razie braku parsuje .txt. Komenda `migrate` tworzy JSON z .txt, nie ruszając .txt.
@@ -149,6 +152,11 @@ Gdy `ai.kronika_etapami` (domyślnie włączone) i transkrypcja ma ponad ~1 h (`
 - **Poprawka poleceniem** (`revise`, „Popraw…” w zakładce Kronika): `revision.revise_chronicle` daje AI kronikę, materiał źródłowy (lista wydarzeń `_wydarzenia.md`, a gdy jej nie ma - transkrypcja) i polecenie (`prompts/revise.md`: zmień tylko to, czego dotyczy polecenie). Poprzednia wersja trafia do `~/.cache/rpg-chronicler/kroniki-poprzednie/<sesja>/` (lokalnie, nie na Drive); `--undo` / „Cofnij poprawkę” przywraca najnowszą. Odpowiedź krótsza niż 30% kroniki jest odrzucana (`RevisionError`). Po poprawce odświeża się skrót (`ai.skrot_kroniki`); słownika i stanu kampanii poprawka nie rusza.
 - **Wyszukiwarka** (`search`, okno Ctrl+F): `textmatch` porównuje początki słów (min. 4 litery) z wariantem bez ruchomego „e” (kupiec → kupca, Marek → Marka); nieregularnej odmiany (ojciec → ojca) nie łapie. Zapytanie z kilku słów musi trafić w okno do 3 kolejnych wypowiedzi, zaczynające się od wypowiedzi z którymś ze słów. Wyniki od najstarszej sesji (w sesji: kronika, potem transkrypcja wg czasu). GUI trzyma transkrypcje w `TranscriptCache` (odświeżane po zmianie pliku).
 - **Encyklopedia** (`encyclopedia`, okno Kampanie): hasła = słownik kampanii + to, co AI znajdzie w kronikach (`prompts/encyclopedia.md`, JSON z opisem i listą sesji; jedno zapytanie na kampanię, odpowiedź w `~/.cache/rpg-chronicler/encyklopedia/`). Sesje hasła = dopasowanie pełnej nazwy w kronice (`textmatch.contains_name`) **lub** wskazanie AI (łapie „Fen” dla „Fen Wanderer” i nieregularną odmianę); sesje spoza kronik kampanii są odrzucane. Słownik decyduje o pisowni i kategorii. PDF: `chronicle_pdf.write_markdown_pdf` (ten sam styl co kroniki).
+
+## Statystyki sesji i dziennik postaci
+
+- **Statystyki** (`stats`, przycisk „Statystyki” nad transkrypcją): `stats.session_stats` liczy z segmentów i mapowania mówców (imiona ujednolicone `NameResolver`, gracz → postać) czas mówienia, wypowiedzi (ciągi segmentów jednego mówcy) i słowa; udział MG a graczy; przerwy = ≥ 3 min bez wypowiedzi (`BREAK_SECONDS`), czas gry = od pierwszej do ostatniej wypowiedzi bez przerw. Nagrania użytkownika są zwykle przycięte z ciszy, więc przerw zwykle nie ma. `--campaign K` dodaje sumę (`merge_stats`).
+- **Dziennik postaci** (`diary KAMPANIA POSTAĆ`, okno Kampanie → „Dzienniki postaci”): wpis AI (`prompts/diary.md`, pierwsza osoba, tylko to, co postać przeżyła) o każdej sesji kampanii z kroniką, na której postać była - kronika wymienia ją lub skrót jej imienia (`diary.aliases`: „Fen Wanderer” → „Fen”, „Wanderer”; „Sir Amos” → „Amos”) albo mówiła wg mapowania mówców. Źródło: kronika + lista wydarzeń (prefiks wspólny dla dzienników różnych postaci), cytaty postaci i **poprzedni wpis** (bez niego wpisy pisane osobno zmieniały rodzaj gramatyczny postaci). Wpisy w `~/.cache/rpg-chronicler/dziennik/<kampania>/<sha1>.md` - odświeżenie po nowej sesji pyta tylko o nowy wpis; `--force` pisze wszystko od nowa. AI odpowiada „BRAK”, gdy postaci nie było - wpis jest pomijany. `canonical_character` zamienia „fen” na „Fen Wanderer” z kampanii.
 
 ## Rozpoznawanie graczy po głosie
 

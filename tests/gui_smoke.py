@@ -74,6 +74,12 @@ def steps(win):
     def transcript_tab():
         win.view_stack.set_visible_child_name("transcript")
         assert any("segmentów" in t for t in labels(win.transcript_page))
+        menu = next(w for w in _walk(win.transcript_page) if isinstance(w, Gtk.MenuButton)
+                    and w.get_label() == "Statystyki")
+        texts = labels(menu.get_popover())
+        assert "MG" in texts and "Fen" in texts and any("57%" in t for t in texts), texts
+        menu.popup()
+        menu.popdown()
     yield "transkrypcja", transcript_tab
 
     yield "mówcy", lambda: win.view_stack.set_visible_child_name("speakers")
@@ -97,7 +103,8 @@ def steps(win):
         win.show_campaigns("Warhammer")
         page = win._campaigns_dialog.nav.get_visible_page()
         texts = labels(page)
-        assert "Pamięć kampanii" in texts and "Encyklopedia kampanii" in texts, texts
+        assert "Pamięć kampanii" in texts and "Encyklopedia kampanii" in texts and "Dzienniki postaci" in texts, texts
+        assert "Sir Amos" in texts and "Utwórz" in texts, texts
         win._campaigns_dialog.force_close()
     yield "kampanie", campaigns
 

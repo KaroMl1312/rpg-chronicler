@@ -42,6 +42,9 @@ def _make_data(base: Path) -> dict[str, str]:
     txt = dirs["transkrypcje"] / "Warhammer_261105.txt"
     save_transcript(transcript, str(dirs["transkrypcje"] / "Warhammer_261105.transkrypcja.json"), str(txt))
     save_speaker_mapping(str(txt), {"SPEAKER_00": "MG", "SPEAKER_01": "Fen"})
+    (dirs["transkrypcje"] / "kampanie.toml").write_text(
+        '[Warhammer]\nsystem = "Warhammer"\n[Warhammer.postacie_graczy]\nFen = ""\n"Sir Amos" = "Ola"\n',
+        encoding="utf-8")
 
     summary = dirs["kroniki"]
     (summary / "Warhammer_261105_podsumowanie.txt").write_text(

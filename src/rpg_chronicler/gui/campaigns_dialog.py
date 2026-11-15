@@ -1,4 +1,5 @@
-"""Okno „Kampanie”: system, opis świata, pamięć kampanii, postacie graczy, słownik nazw i propozycje AI.
+"""Okno „Kampanie”: system, opis świata, pamięć kampanii, encyklopedia, dzienniki postaci, postacie graczy,
+słownik nazw i propozycje AI.
 
 Każda zmiana zapisuje się od razu do kampanie.toml (folder transkrypcji, na Drive trafia przy wysyłaniu).
 """
@@ -9,7 +10,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 import os
 
-from .. import chronicle, discord, encyclopedia, glossary, memory
+from .. import chronicle, diary, discord, encyclopedia, glossary, memory
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          load_campaigns, update_campaign)
 from ..session import list_sessions
@@ -128,6 +129,9 @@ class CampaignsDialog(Adw.Dialog):
     def start_encyclopedia(self, key: str) -> None:
         self._start_task(f"Encyklopedia kampanii {key}", ["encyclopedia", key, "--provider", self._provider()])
 
+    def start_diary(self, key: str, character: str) -> None:
+        self._start_task(f"Dziennik postaci {character}", ["diary", key, character, "--provider", self._provider()])
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -164,6 +168,7 @@ class CampaignPage(Adw.NavigationPage):
         box.append(self._general_group(campaign))
         box.append(self._memory_group())
         box.append(self._encyclopedia_group())
+        box.append(self._diary_group(campaign))
         box.append(self._proposals_group(campaign))
         box.append(self._characters_group(campaign))
         box.append(self._discord_group())
@@ -299,6 +304,36 @@ class CampaignPage(Adw.NavigationPage):
             row.add_suffix(Gtk.Image(icon_name="x-office-document-symbolic"))
             row.connect("activated", lambda _r: Gtk.FileLauncher.new(Gio.File.new_for_path(pdf)).launch(
                 self.get_root(), None, None))
+            group.add(row)
+        return group
+
+    # --- dzienniki postaci ---
+
+    def _diary_group(self, campaign: Campaign) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="Dzienniki postaci",
+            description="PDF dla gracza: wydarzenia kampanii opowiedziane przez jego postać, wpis po każdej sesji "
+                        "(AI, z kronik). Odświeżenie po nowej sesji dopisuje tylko nowe wpisy.")
+        if not campaign.player_characters:
+            group.add(Adw.ActionRow(title="Najpierw dodaj postacie graczy (niżej)", sensitive=False))
+        for name in campaign.player_characters:
+            pdf = diary.pdf_path(self.key, name)
+            exists = os.path.exists(pdf)
+            subtitle = "jeszcze nie ma"
+            if exists:
+                subtitle = "utworzony " + GLib.DateTime.new_from_unix_local(
+                    int(os.path.getmtime(pdf))).format("%d.%m.%Y %H:%M")
+            row = Adw.ActionRow(title=name, subtitle=subtitle, activatable=exists)
+            if exists:
+                row.add_suffix(Gtk.Image(icon_name="x-office-document-symbolic"))
+                row.connect("activated", lambda _r, path=pdf: Gtk.FileLauncher.new(
+                    Gio.File.new_for_path(path)).launch(self.get_root(), None, None))
+            build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
+                               tooltip_text=f"AI opisze kolejne sesje z perspektywy postaci {name}")
+            build.add_css_class("flat")
+            build.connect("clicked", lambda _b, n=name: self.dialog.start_diary(self.key, n))
+            self.dialog.register_task_button(build)
+            row.add_suffix(build)
             group.add(row)
         return group
 
