@@ -89,6 +89,7 @@ def test_send_errors(monkeypatch):
 
 
 def test_cli_discord_full_flow(chronicle_session, workspace, sent_requests, monkeypatch, capsys):
+    pytest.importorskip("weasyprint")  # PDF w załączniku; w CI instalowany osobno
     monkeypatch.setattr("rpg_chronicler.llm.get_client", lambda provider: workspace.llm)
     workspace.llm.response = "„Wasza drużyna warzy lek 🌿.”"
 

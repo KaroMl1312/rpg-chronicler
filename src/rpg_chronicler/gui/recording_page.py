@@ -3,7 +3,7 @@ import math
 import os
 from typing import Callable
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gtk
 
 from .. import audio_trim
 from ..audio_trim import format_timestamp

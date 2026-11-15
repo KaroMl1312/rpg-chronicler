@@ -32,3 +32,4 @@ rpg_chronicler = ["prompts/*.md", "gui/*.svg"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q -p no:anyio"
+markers = ["gui: test dymny GUI w Broadway (systemowy Python z GTK 4); wyłączenie: -m \"not gui\""]

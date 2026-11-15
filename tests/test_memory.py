@@ -1,6 +1,6 @@
 import os
 
-from rpg_chronicler import cli, memory, summary
+from rpg_chronicler import after_chronicle, chronicle_events, cli, llm, memory, summary
 from rpg_chronicler.campaigns import Campaign
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript
@@ -60,7 +60,7 @@ def test_state_goes_into_chronicle_prompt(workspace):
 
 
 def test_memory_built_from_chronicles_then_updated(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CAMPAIGN_MEMORY", True)
+    monkeypatch.setattr(after_chronicle, "CAMPAIGN_MEMORY", True)
     (workspace.dirs["summary"] / "Fallout_260930_podsumowanie.txt").write_text("STARA KRONIKA", encoding="utf-8")
     workspace.add_transcript("Fallout_260930", LEGACY)
     workspace.add_transcript("Fallout_261014", LEGACY)
@@ -81,7 +81,7 @@ def test_memory_built_from_chronicles_then_updated(workspace, monkeypatch):
 
 
 def test_old_chronicle_does_not_update_newer_state(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CAMPAIGN_MEMORY", True)
+    monkeypatch.setattr(after_chronicle, "CAMPAIGN_MEMORY", True)
     memory.save_state("Fallout", STATE, "Fallout_261014")
     workspace.add_transcript("Fallout_260930", LEGACY)
     summary.summarize_sessions(list_sessions(), interactive=False)
@@ -113,7 +113,7 @@ def test_memory_rebuild_command(workspace, monkeypatch):
 # --- kronika w dwóch krokach ---
 
 def test_two_step_chronicle_uses_events_and_caches_them(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CHRONICLE_TWO_STEP", True)
+    monkeypatch.setattr(chronicle_events, "CHRONICLE_TWO_STEP", True)
     workspace.add_transcript("Fallout_261014", _long_transcript(100))   # 100 min -> 2 części
     counter = iter(range(100))
     workspace.llm.generate = lambda prompt: workspace.llm.prompts.append(prompt) or f"ODPOWIEDŹ {next(counter)}"
@@ -131,7 +131,7 @@ def test_two_step_chronicle_uses_events_and_caches_them(workspace, monkeypatch):
 
 
 def test_short_session_is_summarized_in_one_step(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CHRONICLE_TWO_STEP", True)
+    monkeypatch.setattr(chronicle_events, "CHRONICLE_TWO_STEP", True)
     workspace.add_transcript("Fallout_261014", _long_transcript(50))
     summary.summarize_sessions(list_sessions(), interactive=False, allow_unnamed=True)
     assert len(workspace.llm.prompts) == 1 and "wypowiedź 49" in workspace.llm.prompts[0]

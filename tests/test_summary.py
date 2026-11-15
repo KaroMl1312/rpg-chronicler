@@ -1,4 +1,4 @@
-from rpg_chronicler import summary
+from rpg_chronicler import after_chronicle, summary
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import save_speaker_mapping
 
@@ -98,7 +98,7 @@ def test_previous_chronicle_of_same_campaign_goes_into_prompt(workspace):
 
 def test_glossary_proposals_after_new_chronicle(workspace, monkeypatch):
     from rpg_chronicler import glossary
-    monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", True)
+    monkeypatch.setattr(after_chronicle, "GLOSSARY_PROPOSALS", True)
     responses = iter(["KRONIKA o Altdorfie", '{"npc": ["Eustachy"], "miejsca": ["Altdorf"], "opis": "Imperium."}'])
     workspace.llm.generate = lambda prompt: workspace.llm.prompts.append(prompt) or next(responses)
     workspace.add_transcript("Warhammer_261001", LEGACY)

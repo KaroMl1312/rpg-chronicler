@@ -1,6 +1,6 @@
 import os
 
-from rpg_chronicler import chronicle, cli, summary
+from rpg_chronicler import after_chronicle, chronicle, cli, summary
 from rpg_chronicler.chronicle_pdf import chronicle_html
 from rpg_chronicler.session import list_sessions
 
@@ -9,7 +9,7 @@ BRIEF = "Uwarzyliście lek, a potem ruszyliście na północ. Sesja skończyła 
 
 
 def test_brief_written_after_new_chronicle(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CHRONICLE_BRIEF", True)
+    monkeypatch.setattr(after_chronicle, "CHRONICLE_BRIEF", True)
     responses = iter(["PEŁNA KRONIKA", BRIEF])
     workspace.llm.generate = lambda prompt: workspace.llm.prompts.append(prompt) or next(responses)
     workspace.add_transcript("Warhammer_261015", LEGACY)

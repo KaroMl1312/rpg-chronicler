@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from rpg_chronicler import chronicle, cli, discord, summary
+from rpg_chronicler import after_chronicle, chronicle, cli, discord, llm
 from rpg_chronicler.session import list_sessions
 
 LEGACY = "[0.00s -> 2.00s]  Czy ten koń zje mnie, skoro nie ma szczęki?\n"
@@ -31,7 +31,7 @@ def test_quotes_file_roundtrip_and_tolerant_parsing():
 
 def test_write_quotes_from_transcript(workspace, session):
     workspace.llm.response = RESPONSE
-    quotes = summary.write_quotes(workspace.llm, session, "# Kronika\n\nStodoła.")
+    quotes = after_chronicle.write_quotes(workspace.llm, session, "# Kronika\n\nStodoła.")
     assert quotes == [("Czy ten koń będzie chciał mnie zjeść, skoro nie ma szczęki?", "Sir Amos"),
                       ("Brakuje mu połowy głowy.", "MG")]
     assert chronicle.read_quotes(session) == quotes
@@ -45,14 +45,14 @@ def test_quotes_prefer_candidates_from_events(workspace, session):
         "## Część 1 z 2\n\n- Stodoła\n\n### Cytaty\n\n- Sir Amos: „Kandydat pierwszy”\n\n"
         "## Część 2 z 2\n\n- Walka\n\n### Cytaty\n- MG: „Kandydat drugi”\n", encoding="utf-8")
     workspace.llm.response = RESPONSE
-    summary.write_quotes(workspace.llm, session, "K")
+    after_chronicle.write_quotes(workspace.llm, session, "K")
     prompt = workspace.llm.prompts[0]
     assert "Kandydat pierwszy" in prompt and "Kandydat drugi" in prompt and "<transkrypcja>" not in prompt
     assert "- Walka" not in prompt
 
 
 def test_quotes_command_and_bad_response(workspace, session, monkeypatch, capsys):
-    monkeypatch.setattr(summary, "get_client", lambda provider: workspace.llm)
+    monkeypatch.setattr(llm, "get_client", lambda provider: workspace.llm)
     workspace.llm.response = "nie wiem"
     assert cli.main(["quotes"]) == 0
     assert "nie zawiera obiektu JSON" in capsys.readouterr().out

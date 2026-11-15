@@ -22,12 +22,13 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./sprawdz-srodowisko --napraw            # odtwarza .venv: python3.11, torch/torchaudio/torchcodec CPU, potem -e .[dev,anthropic,gemini]
 .venv/bin/rpg-chronicler                 # = rpg-chronicler run (sync → transkrypcja → podsumowania → upload)
 .venv/bin/python -m rpg_chronicler status
-.venv/bin/python -m pytest               # testy (szybkie, bez modeli i sieci)
+.venv/bin/python -m pytest               # testy (szybkie, bez modeli i sieci; z testem dymnym GUI w Broadway)
+.venv/bin/python -m pytest -m "not gui"  # bez testu GUI
 ./rpg-chronicler-gui                     # GUI (systemowy Python, patrz niżej)
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -37,7 +38,8 @@ kampanie.przyklad.toml        # przykład formatu; właściwy plik kampanii jest
 src/rpg_chronicler/
   config.py                   # WSZYSTKIE stałe: ścieżki, remote'y rclone, modele, wątki, retry; własny loader .env
   settings.py                 # ustawienia użytkownika ~/.config/rpg-chronicler/ustawienia.toml (z GUI)
-  cli.py                      # argparse, podkomendy cmd_*; ciężkie importy leniwie wewnątrz cmd_*
+  cli/                        # komendy: __init__ (main), parser (argparse), common (pomocniki), sessions (przebieg),
+                              #   audio (nagrania), chronicles (kroniki, PDF, Discord, szukanie), campaigns; ciężkie importy leniwie w cmd_*
   session.py                  # Session (nazwa + ścieżki pochodne), list_sessions(), SessionNotFound
   campaigns.py                # Campaign (system, opis, postacie graczy, słownik), odczyt/zapis kampanie.toml, session_date()
   voices.py                   # odciski głosu (.glosy.json), profile głosów kampanii, podpowiedzi imion; tylko stdlib
@@ -45,7 +47,11 @@ src/rpg_chronicler/
   memory.py                   # pamięć kampanii: stan-kampanii-<kampania>.md + propozycje AI w ~/.cache/rpg-chronicler/stan-kampanii/
   transcript.py               # Segment, Transcript (JSON ⇄ .txt), compact_for_llm(), mapowanie mówców
   speakers.py                 # identify_speakers(): sugestia LLM + input() użytkownika
-  summary.py                  # name_speakers(), summarize_sessions(), _LazyClient
+  summary.py                  # name_speakers(), summarize_sessions() - tylko kronika
+  context.py                  # kontekst dla AI: speaker_mapping_info, previous_session, campaign_context
+  chronicle_events.py         # kronika w dwóch krokach: części, lista wydarzeń (cache), chronicle_source
+  after_chronicle.py          # dodatki po kronice: skrót, cytaty, propozycje słownika i stanu kampanii (run_all)
+  revision.py                 # poprawka kroniki poleceniem (revise_chronicle)
   textmatch.py                # dopasowanie słów odporne na polską odmianę (początki słów, ruchome „e”); stdlib
   search.py                   # wyszukiwarka po kronikach i transkrypcjach (od najstarszej sesji); stdlib
   encyclopedia.py             # encyklopedia kampanii: oś czasu, stan, hasła z opisami AI → .md + PDF
@@ -125,14 +131,14 @@ Stan przetwarzania wynika **wyłącznie z istnienia plików** (`Session.has_*`) 
 
 Klucz kampanii = prefiks nazwy sesji przed `_`. Plik `TXT_DIR/kampanie.toml` (format: `kampanie.przyklad.toml`) leży w folderze transkrypcji, więc synchronizuje się z Drive; zapisuje go `campaigns.save_campaigns` (atomowo, komentarze ręczne nie są zachowywane). `load_campaigns()` ma pamięć podręczną unieważnianą po zmianie pliku (GUI działa długo). Kampania jest używana w:
 - transkrypcji: `Campaign.all_names()` jako `hotwords` Whispera (ustawienie `transkrypcja.podpowiedz_nazw`; Whisper sam przycina listę do ~220 tokenów),
-- kronice: `summary.campaign_context()` = `Campaign.prompt_info()` (opis, postacie graczy, słownik) + kronika poprzedniej sesji tej kampanii (`previous_session()` wg daty z nazwy: `RRMMDD` lub `DD_MM_RRRR`, `campaigns.session_date`),
+- kronice: `context.campaign_context()` = `Campaign.prompt_info()` (opis, postacie graczy, słownik) + kronika poprzedniej sesji tej kampanii (`previous_session()` wg daty z nazwy: `RRMMDD` lub `DD_MM_RRRR`, `campaigns.session_date`),
 - sugestii mówców: lista postaci graczy w prompcie; w GUI menu imion przy polach mówców.
 
 Słownik budowany z AI: `glossary KAMPANIA` (wszystkie kroniki) i automatycznie po każdej nowej kronice (`ai.propozycje_slownika`). Propozycje nie trafiają od razu do pliku — czekają w cache (`glossary.load_proposals`/`pending_for`), aż użytkownik je zatwierdzi w oknie „Kampanie”. Prompt prosi o nazwy w mianowniku i JSON; `parse_response` toleruje tekst wokół JSON-a. Synchronizacja `TXT_DIR`/`SUMMARY_DIR` używa `rclone --update`, żeby starsza wersja z Drive nie nadpisała lokalnych zmian (kampanie, mówcy) i odwrotnie.
 
 ## Pamięć kampanii
 
-`memory.py`: zwięzły stan świata po ostatniej sesji (sekcje: Drużyna, Zasoby i ekwipunek, Gdzie jesteśmy, Otwarte wątki, Ważni BN-i, Zamknięte wątki; prompt `prompts/campaign_state.md`). Po każdej nowej kronice (`ai.pamiec_kampanii`) AI aktualizuje stan — gdy stanu nie ma, buduje go ze wszystkich kronik kampanii. Wynik to **propozycja** w cache; kolejne kroniki przed zatwierdzeniem aktualizują tę propozycję. Zatwierdza użytkownik (GUI: okno „Kampanie”, z możliwością poprawek; CLI: `memory KAMPANIA --accept`). Do kroniki sesji trafia (`summary.campaign_context`) tylko stan sprzed tej sesji (`memory.is_before`; stan bez nagłówka = wpisany ręcznie, zawsze), a stan aktualizuje się tylko kroniką sesji nowszej niż ta, po której go zapisano — ponowne pisanie starszej kroniki nie cofa stanu.
+`memory.py`: zwięzły stan świata po ostatniej sesji (sekcje: Drużyna, Zasoby i ekwipunek, Gdzie jesteśmy, Otwarte wątki, Ważni BN-i, Zamknięte wątki; prompt `prompts/campaign_state.md`). Po każdej nowej kronice (`ai.pamiec_kampanii`) AI aktualizuje stan — gdy stanu nie ma, buduje go ze wszystkich kronik kampanii. Wynik to **propozycja** w cache; kolejne kroniki przed zatwierdzeniem aktualizują tę propozycję. Zatwierdza użytkownik (GUI: okno „Kampanie”, z możliwością poprawek; CLI: `memory KAMPANIA --accept`). Do kroniki sesji trafia (`context.campaign_context`) tylko stan sprzed tej sesji (`memory.is_before`; stan bez nagłówka = wpisany ręcznie, zawsze), a stan aktualizuje się tylko kroniką sesji nowszej niż ta, po której go zapisano — ponowne pisanie starszej kroniki nie cofa stanu.
 
 ## Kronika w dwóch krokach
 
@@ -140,7 +146,7 @@ Gdy `ai.kronika_etapami` (domyślnie włączone) i transkrypcja ma ponad ~1 h (`
 
 ## Poprawka kroniki, wyszukiwarka, encyklopedia
 
-- **Poprawka poleceniem** (`revise`, „Popraw…” w zakładce Kronika): `summary.revise_chronicle` daje AI kronikę, materiał źródłowy (lista wydarzeń `_wydarzenia.md`, a gdy jej nie ma - transkrypcja) i polecenie (`prompts/revise.md`: zmień tylko to, czego dotyczy polecenie). Poprzednia wersja trafia do `~/.cache/rpg-chronicler/kroniki-poprzednie/<sesja>/` (lokalnie, nie na Drive); `--undo` / „Cofnij poprawkę” przywraca najnowszą. Odpowiedź krótsza niż 30% kroniki jest odrzucana (`RevisionError`). Po poprawce odświeża się skrót (`ai.skrot_kroniki`); słownika i stanu kampanii poprawka nie rusza.
+- **Poprawka poleceniem** (`revise`, „Popraw…” w zakładce Kronika): `revision.revise_chronicle` daje AI kronikę, materiał źródłowy (lista wydarzeń `_wydarzenia.md`, a gdy jej nie ma - transkrypcja) i polecenie (`prompts/revise.md`: zmień tylko to, czego dotyczy polecenie). Poprzednia wersja trafia do `~/.cache/rpg-chronicler/kroniki-poprzednie/<sesja>/` (lokalnie, nie na Drive); `--undo` / „Cofnij poprawkę” przywraca najnowszą. Odpowiedź krótsza niż 30% kroniki jest odrzucana (`RevisionError`). Po poprawce odświeża się skrót (`ai.skrot_kroniki`); słownika i stanu kampanii poprawka nie rusza.
 - **Wyszukiwarka** (`search`, okno Ctrl+F): `textmatch` porównuje początki słów (min. 4 litery) z wariantem bez ruchomego „e” (kupiec → kupca, Marek → Marka); nieregularnej odmiany (ojciec → ojca) nie łapie. Zapytanie z kilku słów musi trafić w okno do 3 kolejnych wypowiedzi, zaczynające się od wypowiedzi z którymś ze słów. Wyniki od najstarszej sesji (w sesji: kronika, potem transkrypcja wg czasu). GUI trzyma transkrypcje w `TranscriptCache` (odświeżane po zmianie pliku).
 - **Encyklopedia** (`encyclopedia`, okno Kampanie): hasła = słownik kampanii + to, co AI znajdzie w kronikach (`prompts/encyclopedia.md`, JSON z opisem i listą sesji; jedno zapytanie na kampanię, odpowiedź w `~/.cache/rpg-chronicler/encyklopedia/`). Sesje hasła = dopasowanie pełnej nazwy w kronice (`textmatch.contains_name`) **lub** wskazanie AI (łapie „Fen” dla „Fen Wanderer” i nieregularną odmianę); sesje spoza kronik kampanii są odrzucane. Słownik decyduje o pisowni i kategorii. PDF: `chronicle_pdf.write_markdown_pdf` (ten sam styl co kroniki).
 
@@ -166,9 +172,9 @@ PDF: emoji są usuwane (`chronicle_pdf.strip_emoji`) — systemowa czcionka Noto
 
 ## Przepływ podsumowania
 
-`summarize_sessions` → dla sesji z transkrypcją bez podsumowania: wczytaj mapowanie mówców → jeśli brak i tryb interaktywny, zapytaj i wywołaj `identify_speakers`; jeśli nieinteraktywny i brak `--allow-unnamed`, pomiń → `chronicle_source()`: lista wydarzeń z części (kronika w dwóch krokach) albo `transcript.compact_for_llm(mapping)` (bez czasów, sklejone wypowiedzi — oszczędność tokenów) → `render("summary", ..., source=...)` → `with_retry(client.generate)` → zapis → skrót, propozycje słownika, propozycja stanu kampanii.
+`summarize_sessions` → dla sesji z transkrypcją bez podsumowania: wczytaj mapowanie mówców → jeśli brak i tryb interaktywny, zapytaj i wywołaj `identify_speakers`; jeśli nieinteraktywny i brak `--allow-unnamed`, pomiń → `chronicle_source()`: lista wydarzeń z części (kronika w dwóch krokach) albo `transcript.compact_for_llm(mapping)` (bez czasów, sklejone wypowiedzi — oszczędność tokenów) → `render("summary", ..., source=...)` → `with_retry(client.generate)` → zapis → `after_chronicle.run_all`: skrót, cytaty, propozycje słownika, propozycja stanu kampanii.
 
-Klient LLM tworzony leniwie (`_LazyClient`), więc brak klucza API nie przeszkadza, gdy nic nie ma do zrobienia.
+Klient LLM tworzony leniwie (`llm.LazyClient`; w testach podmienia się `llm.get_client`), więc brak klucza API nie przeszkadza, gdy nic nie ma do zrobienia.
 
 ## Ustawienia
 
@@ -183,18 +189,19 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 - Interakcja z użytkownikiem w GUI zamiast `input()`: sugestia mówców przez `speakers --suggest-only` (zapis do `.mowcy-sugestia.md`), imiona zapisuje GUI bezpośrednio (`save_speaker_mapping`).
 - Nowy długi etap w CLI → wołaj `progress.report(etap, sesja, zrobione, razem)`; bez zmiennej środowiskowej nic nie wypisuje. Wyjście `\r` (np. rclone -P) GUI pokazuje tylko w pasku stanu, nie w logu.
 - Przy starcie GUI sprawdza w tle, czy `.venv` importuje faster-whisper/pyannote/torchcodec; jeśli nie, pokazuje `Adw.Banner` z instrukcją `./sprawdz-srodowisko --napraw`. Wynik `audio_trim.has_duration_header` (ffprobe) jest zapamiętywany per wersja pliku (ścieżka, rozmiar, data).
-- Logikę, którą da się testować bez GTK, umieszczaj w `gui/text.py` (testy: `tests/test_gui_text.py`). Okno można sprawdzić bez ekranu: `gtk4-broadwayd :5 &` i `GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 PYTHONPATH=src /usr/bin/python3 -m rpg_chronicler.gui`.
+- Logikę, którą da się testować bez GTK, umieszczaj w `gui/text.py` (testy: `tests/test_gui_text.py`). **Test dymny GUI** (`tests/test_gui_smoke.py`, znacznik `gui`): uruchamia `gtk4-broadwayd` i systemowym Pythonem `tests/gui_smoke.py` na tymczasowych danych - buduje wszystkie widoki (zakładki, wyszukiwarka, Kampanie, Discord, Ustawienia, okno poprawki) i nie toleruje `Gtk-CRITICAL`/`Gtk-WARNING`; pomija się bez Broadway/GTK. Nowy widok lub okno → dopisz krok w `gui_smoke.py`. Ręcznie okno można sprawdzić bez ekranu: `gtk4-broadwayd :5 &` i `GDK_BACKEND=broadway BROADWAY_DISPLAY=:5 PYTHONPATH=src /usr/bin/python3 -m rpg_chronicler.gui`.
 
 ## Zasady przy zmianach
 
 - Nowe ustawienia → stała w `config.py`; sekrety tylko z `.env` (nigdy w kodzie, `.env` jest w `.gitignore`).
-- Nowy dostawca LLM: klasa z atrybutem `name` i metodą `generate(prompt) -> str`, rzucająca `LLMError(retryable=...)`; dopisać w `llm/__init__.get_client` i w `cli.PROVIDERS`. Import SDK wewnątrz modułu/konstruktora (zależności opcjonalne).
+- Nowy dostawca LLM: klasa z atrybutem `name` i metodą `generate(prompt) -> str`, rzucająca `LLMError(retryable=...)`; dopisać w `llm/__init__.get_client` i w `cli/parser.PROVIDERS`. Import SDK wewnątrz modułu/konstruktora (zależności opcjonalne).
 - Prompty edytuj w `prompts/*.md`; dosłowne `{`/`}` muszą być podwojone (`str.format`).
 - **Cache promptów (API Anthropic):** zapytania wołaj przez `llm.generate(client, prompt, prefix)`. `prefix` to stały początek wspólny dla kilku zapytań z rzędu - w szablonie oddzielony linią `---8<---` (`prompts.render_split`) albo kroniki z `prompts.chronicle_blocks` (skrót, słownik i stan kampanii po nowej kronice zaczynają się od tego samego bloku). Klient z `caches_prefix = True` wysyła go jako osobny blok z `cache_control` (5 min), pozostali dostają sklejony tekst. Prefiks musi być **bajt w bajt** taki sam, inaczej cache nie zadziała (testy: `tests/test_prompt_cache.py`). Zmienną treść (numer części, czas, transkrypcja) trzymaj po znaczniku.
 - Zapisy transkrypcji przez `_write_atomic` (plik `.part` + `os.replace`).
-- Ciężkie biblioteki (torch, faster-whisper, pyannote) importuj tylko w `transcription/` i leniwie z `cli.py`, żeby `status`, testy itp. działały szybko i bez nich.
+- Ciężkie biblioteki (torch, faster-whisper, pyannote) importuj tylko w `transcription/` i leniwie z komend w `cli/`, żeby `status`, testy itp. działały szybko i bez nich.
 - Komunikaty dla użytkownika: `print` z prefiksami `[SUKCES]`, `[BŁĄD]`, `[OSTRZEŻENIE]`, `[INFO]`, `[POMINIĘTO]`, `[PORAŻKA]`. Błąd pojedynczej sesji nie przerywa całego przebiegu.
-- Testy: używaj fixture `workspace` (monkeypatch ścieżek w `session`/`summary`, `FakeLLM` zamiast `get_client`). Testy nie mogą wymagać modeli, sieci, `rclone` ani `claude`.
+- **CI** (`.github/workflows/testy.yml`): GitHub Actions przy każdym pushu, Python 3.11 i najnowszy 3.x, bez modeli (`pip install pytest markdown weasyprint` + `pip install --no-deps -e .`). Test, który potrzebuje torcha/pyannote, oznacza błąd w leniwych importach - napraw import, a nie test.
+- Testy: używaj fixture `workspace` (monkeypatch ścieżek w `session`, `FakeLLM` zamiast `llm.get_client`; ustawienia dodatków w `after_chronicle`, dwóch kroków w `chronicle_events`). Testy nie mogą wymagać modeli, sieci, `rclone` ani `claude`.
 - Transkrypcja działa tylko na CPU (`device="cpu"`, `int8`); strojenie przez `WHISPER_CPU_THREADS`, `WHISPER_VAD`, `WHISPER_BATCH_SIZE` i komendę `benchmark`.
 - **Modele Whispera** (`benchmark SESJA --whisper-models medium large-v3-turbo --offset 1800 --save-text DIR`, pomiar 2026-11 na `Warhammer_261105`, 6 wątków): `medium` 0,25× czasu nagrania; `large-v3-turbo` 0,12× (ok. 2,5× szybciej) przy podobnej liczbie słów i jakości tekstu, ale z dłuższymi segmentami (8 segmentów ≥ 25 s na 10 min wobec 0 w medium - gorzej dla przypisania mówców). `large-v3` 0,65× (ok. 2,6× wolniej od medium, ~1 h 20 min na 2 h nagrania): najwięcej tekstu (1356 słów wobec 1137) i najmniej przekręceń zwykłych słów („kawałki stodoły”, „do strzyżenia owieczek”), ale imię „Sir Amos” zapisał źle, a medium dobrze. Turbo **musi** działać z `condition_on_previous_text=False` (`transcription/compare.uses_previous_text`), inaczej zapętla się („Tak?” ×34 zamiast monologu MG); z VAD i warunkowaniem jest jeszcze gorzej (241 słów). Domyślnie zostaje `medium`.
 - `ClaudeCodeClient` uruchamia `claude` z `cwd=tempfile.gettempdir()`, żeby ten plik CLAUDE.md nie trafiał do promptu kroniki.

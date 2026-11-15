@@ -1,7 +1,7 @@
 """Cache promptów w API Anthropic: stały początek zapytań (prefix) musi być identyczny, żeby był czytany z cache."""
 from types import SimpleNamespace
 
-from rpg_chronicler import llm, memory, summary
+from rpg_chronicler import after_chronicle, chronicle_events, llm, memory, summary
 from rpg_chronicler.llm.anthropic_api import AnthropicClient
 from rpg_chronicler.prompts import chronicle_blocks, render, render_split
 from rpg_chronicler.session import list_sessions
@@ -81,13 +81,13 @@ def test_anthropic_client_marks_prefix_for_cache(capsys):
 
 
 def test_requests_after_chronicle_share_identical_prefix(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CHRONICLE_BRIEF", True)
-    monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", True)
-    monkeypatch.setattr(summary, "CAMPAIGN_MEMORY", True)
+    monkeypatch.setattr(after_chronicle, "CHRONICLE_BRIEF", True)
+    monkeypatch.setattr(after_chronicle, "GLOSSARY_PROPOSALS", True)
+    monkeypatch.setattr(after_chronicle, "CAMPAIGN_MEMORY", True)
     memory.save_state("Fallout", "## Drużyna\n- Fen", "Fallout_260930")
     workspace.add_transcript("Fallout_261014", LEGACY)
     fake = CachingLLM(["KRONIKA SESJI", "SKRÓT", '{"npc": []}', "## Drużyna\n- Fen ranny"])
-    monkeypatch.setattr(summary, "get_client", lambda provider: fake)
+    monkeypatch.setattr(llm, "get_client", lambda provider: fake)
 
     summary.summarize_sessions(list_sessions(), interactive=False)
     (_, chronicle), brief, glossary_call, memory_call = fake.calls
@@ -96,11 +96,11 @@ def test_requests_after_chronicle_share_identical_prefix(workspace, monkeypatch)
 
 
 def test_event_parts_share_identical_prefix(workspace, monkeypatch):
-    monkeypatch.setattr(summary, "CHRONICLE_TWO_STEP", True)
+    monkeypatch.setattr(chronicle_events, "CHRONICLE_TWO_STEP", True)
     segments = [Segment(i * 60.0, i * 60.0 + 50, f"wypowiedź {i}", f"SPEAKER_0{i // 4 % 2}") for i in range(140)]
     workspace.add_transcript("Fallout_261014", Transcript(segments=segments).to_txt())
     fake = CachingLLM(["W1", "W2", "W3", "KRONIKA"])
-    monkeypatch.setattr(summary, "get_client", lambda provider: fake)
+    monkeypatch.setattr(llm, "get_client", lambda provider: fake)
 
     summary.summarize_sessions(list_sessions(), interactive=False, allow_unnamed=True)
     parts = fake.calls[:3]

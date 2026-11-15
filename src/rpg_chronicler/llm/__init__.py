@@ -1,7 +1,20 @@
 from ..config import LLM_PROVIDER
 from .base import LLMClient, LLMError, generate, with_retry
 
-__all__ = ["LLMClient", "LLMError", "generate", "with_retry", "get_client"]
+__all__ = ["LLMClient", "LLMError", "LazyClient", "generate", "with_retry", "get_client"]
+
+
+class LazyClient:
+    """Tworzy klienta LLM dopiero przy pierwszym użyciu (np. nie wymaga klucza, gdy nie ma nic do zrobienia)."""
+
+    def __init__(self, provider: str):
+        self.provider = provider
+        self._client: LLMClient | None = None
+
+    def get(self) -> LLMClient:
+        if self._client is None:
+            self._client = get_client(self.provider)
+        return self._client
 
 
 def get_client(provider: str = LLM_PROVIDER) -> LLMClient:

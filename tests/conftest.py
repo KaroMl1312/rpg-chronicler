@@ -8,7 +8,7 @@ os.environ["HOME"] = tempfile.mkdtemp(prefix="rpg-chronicler-testy-")
 
 import pytest  # noqa: E402
 
-from rpg_chronicler import campaigns, session, summary  # noqa: E402
+from rpg_chronicler import after_chronicle, campaigns, chronicle_events, llm, session  # noqa: E402
 
 
 class FakeLLM:
@@ -43,23 +43,22 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setattr(session, "AUDIO_DIR", str(dirs["audio"]))
     monkeypatch.setattr(session, "TXT_DIR", str(dirs["txt"]))
     monkeypatch.setattr(session, "SUMMARY_DIR", str(dirs["summary"]))
-    monkeypatch.setattr(summary, "SUMMARY_DIR", str(dirs["summary"]))
     monkeypatch.setattr(campaigns, "load_campaigns", lambda: {})
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))  # analizy ciszy, propozycje słownika
-    monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", False)       # testy włączają je jawnie
-    monkeypatch.setattr(summary, "CHRONICLE_BRIEF", False)          # jw. - skrót kroniki
-    monkeypatch.setattr(summary, "CHRONICLE_QUOTES", False)         # jw. - cytaty z sesji
-    monkeypatch.setattr(summary, "CHRONICLE_TWO_STEP", False)       # jw. - kronika w dwóch krokach
-    monkeypatch.setattr(summary, "CAMPAIGN_MEMORY", False)          # jw. - pamięć kampanii
+    monkeypatch.setattr(after_chronicle, "GLOSSARY_PROPOSALS", False)       # testy włączają je jawnie
+    monkeypatch.setattr(after_chronicle, "CHRONICLE_BRIEF", False)          # jw. - skrót kroniki
+    monkeypatch.setattr(after_chronicle, "CHRONICLE_QUOTES", False)         # jw. - cytaty z sesji
+    monkeypatch.setattr(chronicle_events, "CHRONICLE_TWO_STEP", False)       # jw. - kronika w dwóch krokach
+    monkeypatch.setattr(after_chronicle, "CAMPAIGN_MEMORY", False)          # jw. - pamięć kampanii
 
-    llm = FakeLLM()
-    monkeypatch.setattr(summary, "get_client", lambda provider: llm)
+    fake = FakeLLM()
+    monkeypatch.setattr(llm, "get_client", lambda provider: fake)  # LazyClient i komendy CLI
 
     class Workspace:
         pass
 
     ws = Workspace()
-    ws.dirs, ws.llm = dirs, llm
+    ws.dirs, ws.llm = dirs, fake
 
     def add_transcript(name, text):
         (dirs["txt"] / f"{name}.txt").write_text(text, encoding="utf-8")

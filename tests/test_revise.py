@@ -1,6 +1,6 @@
 import pytest
 
-from rpg_chronicler import chronicle, cli, summary
+from rpg_chronicler import chronicle, cli, revision
 from rpg_chronicler.session import list_sessions
 
 LEGACY = "[0.00s -> 2.00s]  Hans otworzył drzwi.\n"
@@ -17,7 +17,7 @@ def session(workspace):
 def test_revise_saves_previous_version_and_uses_transcript(workspace, session):
     revised = CHRONICLE.replace("Hans", "Hanna")
     workspace.llm.response = revised
-    summary.revise_chronicle(workspace.llm, session, "to nie Hans, tylko Hanna")
+    revision.revise_chronicle(workspace.llm, session, "to nie Hans, tylko Hanna")
 
     prompt = workspace.llm.prompts[0]
     assert "to nie Hans, tylko Hanna" in prompt and "Hans otworzył drzwi." in prompt   # transkrypcja jako źródło
@@ -34,14 +34,14 @@ def test_revise_saves_previous_version_and_uses_transcript(workspace, session):
 def test_revise_prefers_events_list(workspace, session):
     (workspace.dirs["summary"] / "Warhammer_261001_wydarzenia.md").write_text("WYDARZENIA SESJI", encoding="utf-8")
     workspace.llm.response = CHRONICLE
-    summary.revise_chronicle(workspace.llm, session, "popraw")
+    revision.revise_chronicle(workspace.llm, session, "popraw")
     assert "WYDARZENIA SESJI" in workspace.llm.prompts[0] and "Hans otworzył drzwi." not in workspace.llm.prompts[0]
 
 
 def test_revise_refuses_truncated_answer(workspace, session):
     workspace.llm.response = "Hanna."
-    with pytest.raises(summary.RevisionError):
-        summary.revise_chronicle(workspace.llm, session, "to nie Hans, tylko Hanna")
+    with pytest.raises(revision.RevisionError):
+        revision.revise_chronicle(workspace.llm, session, "to nie Hans, tylko Hanna")
     assert chronicle.read_chronicle(session) == CHRONICLE and chronicle.previous_versions(session) == []
 
 
