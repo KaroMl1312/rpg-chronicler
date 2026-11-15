@@ -133,3 +133,21 @@ def new_proposals(before: dict[str, dict], after: dict[str, dict]) -> list[tuple
         if count > before.get("slownik", {}).get(key, 0):
             messages.append((key, f"Nowe propozycje do słownika kampanii {key}: {count}"))
     return messages
+
+
+# --- wyszukiwarka ---
+
+def highlight_markup(text: str, query: str) -> str:
+    """Tekst jako Pango markup z pogrubionymi słowami pasującymi do zapytania (w dowolnej odmianie)."""
+    from html import escape
+
+    from ..textmatch import WORD_RE, query_stems, word_matches
+
+    stems = query_stems(query)
+    parts, last = [], 0
+    for match in WORD_RE.finditer(text):
+        if any(word_matches(match[0].lower(), alts) for alts in stems):
+            parts += [escape(text[last:match.start()]), f"<b>{escape(match[0])}</b>"]
+            last = match.end()
+    parts.append(escape(text[last:]))
+    return "".join(parts)

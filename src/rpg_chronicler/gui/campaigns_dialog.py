@@ -5,9 +5,11 @@ Każda zmiana zapisuje się od razu do kampanie.toml (folder transkrypcji, na Dr
 from dataclasses import replace as _replace
 from typing import Callable
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import chronicle, discord, glossary, memory
+import os
+
+from .. import chronicle, discord, encyclopedia, glossary, memory
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          load_campaigns, update_campaign)
 from ..session import list_sessions
@@ -123,6 +125,9 @@ class CampaignsDialog(Adw.Dialog):
     def start_memory(self, key: str) -> None:
         self._start_task(f"Stan kampanii {key}", ["memory", key, "--rebuild", "--provider", self._provider()])
 
+    def start_encyclopedia(self, key: str) -> None:
+        self._start_task(f"Encyklopedia kampanii {key}", ["encyclopedia", key, "--provider", self._provider()])
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -158,6 +163,7 @@ class CampaignPage(Adw.NavigationPage):
                       margin_top=24, margin_bottom=24, margin_start=12, margin_end=12)
         box.append(self._general_group(campaign))
         box.append(self._memory_group())
+        box.append(self._encyclopedia_group())
         box.append(self._proposals_group(campaign))
         box.append(self._characters_group(campaign))
         box.append(self._discord_group())
@@ -271,6 +277,30 @@ class CampaignPage(Adw.NavigationPage):
             return
         self.dialog.toast("Zapisano stan kampanii")
         self.reload()
+
+    # --- encyklopedia ---
+
+    def _encyclopedia_group(self) -> Gtk.Widget:
+        pdf = encyclopedia.pdf_path(self.key)
+        exists = os.path.exists(pdf)
+        group = Adw.PreferencesGroup(
+            title="Encyklopedia kampanii",
+            description="PDF dla graczy: oś czasu sesji, stan kampanii oraz postacie, miejsca i przedmioty z opisami "
+                        "(AI) i listą sesji, w których się pojawiły. Leży obok kronik, więc trafia też na Drive.")
+        build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
+                           tooltip_text="AI przeczyta kroniki tej kampanii i opisze hasła (kilka minut)")
+        build.add_css_class("flat" if exists else "suggested-action")
+        build.connect("clicked", lambda _b: self.dialog.start_encyclopedia(self.key))
+        self.dialog.register_task_button(build)
+        group.set_header_suffix(build)
+        if exists:
+            modified = GLib.DateTime.new_from_unix_local(int(os.path.getmtime(pdf))).format("%d.%m.%Y %H:%M")
+            row = Adw.ActionRow(title=os.path.basename(pdf), subtitle=f"utworzona {modified}", activatable=True)
+            row.add_suffix(Gtk.Image(icon_name="x-office-document-symbolic"))
+            row.connect("activated", lambda _r: Gtk.FileLauncher.new(Gio.File.new_for_path(pdf)).launch(
+                self.get_root(), None, None))
+            group.add(row)
+        return group
 
     # --- propozycje AI ---
 

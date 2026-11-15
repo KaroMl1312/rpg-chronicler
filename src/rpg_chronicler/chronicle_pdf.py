@@ -104,3 +104,37 @@ def write_pdf(session: Session, path: str) -> None:
     weasyprint.HTML(string=document).write_pdf(tmp_path, stylesheets=[weasyprint.CSS(string=CSS)])
     import os
     os.replace(tmp_path, path)
+
+
+def markdown_document_html(text: str, campaign_line: str) -> str:
+    """Dokument HTML z Markdownu w stylu kronik: „# tytuł” i kursywa pod nim trafiają do nagłówka strony."""
+    import markdown
+
+    lines = strip_emoji(text).replace("\r\n", "\n").split("\n")
+    title, subtitle = "", ""
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    if lines and lines[0].startswith("# "):
+        title = lines.pop(0)[2:].strip()
+        while lines and not lines[0].strip():
+            lines.pop(0)
+        if lines and lines[0].startswith("*") and lines[0].endswith("*") and not lines[0].startswith("**"):
+            subtitle = lines.pop(0).strip("*").strip()
+    body = markdown.markdown(HORIZONTAL_RULE_RE.sub("", "\n".join(lines)), extensions=["sane_lists"])
+    return (f'<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
+            f'</head><body><header><div class="campaign">{html.escape(campaign_line)}</div>'
+            f"<h1>{html.escape(title)}</h1>"
+            + (f'<div class="date">{html.escape(subtitle)}</div>' if subtitle else "")
+            + f"</header>{body}</body></html>")
+
+
+def write_markdown_pdf(text: str, path: str, campaign_line: str) -> None:
+    """PDF z dokumentu Markdown (np. encyklopedia kampanii), zapis atomowy."""
+    import os
+
+    import weasyprint
+
+    tmp_path = path + ".part"
+    weasyprint.HTML(string=markdown_document_html(text, campaign_line)).write_pdf(
+        tmp_path, stylesheets=[weasyprint.CSS(string=CSS)])
+    os.replace(tmp_path, path)

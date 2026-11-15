@@ -16,6 +16,7 @@ from .chronicle_page import ChroniclePage
 from .discord_dialog import DiscordDialog
 from .environment import EnvironmentBanner
 from .player import SnippetPlayer
+from .search_dialog import SearchDialog
 from .settings_dialog import PROVIDERS, SettingsDialog
 from .speakers_page import SpeakersPage
 from .task_bar import TaskBar
@@ -76,6 +77,7 @@ class MainWindow(Adw.ApplicationWindow):
         add("show-log", self.show_log)
         add("preferences", self.show_settings)
         add("campaigns", lambda: self.show_campaigns(None))
+        add("search", self.show_search)
         add("restart", self.restart)
         add("cancel", self.runner.cancel)
 
@@ -124,6 +126,8 @@ class MainWindow(Adw.ApplicationWindow):
     def _build_sidebar(self) -> Adw.NavigationPage:
         header = Adw.HeaderBar()
         header.pack_start(icon_button("view-refresh-symbolic", "Odśwież listę (Ctrl+R)", "win.refresh"))
+        header.pack_start(icon_button("system-search-symbolic", "Szukaj w kronikach i transkrypcjach (Ctrl+F)",
+                                      "win.search"))
 
         menu = Gio.Menu()
         section = Gio.Menu()
@@ -137,6 +141,7 @@ class MainWindow(Adw.ApplicationWindow):
             providers.append_item(item)
         menu.append_section("Dostawca AI", providers)
         other = Gio.Menu()
+        other.append("Szukaj w sesjach", "win.search")
         other.append("Kampanie", "win.campaigns")
         other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
@@ -171,7 +176,8 @@ class MainWindow(Adw.ApplicationWindow):
         self.transcript_page = TranscriptPage(self.player, self.start_task, self._register_task_button)
         self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved, self.start_task)
         self.chronicle_page = ChroniclePage(
-            summarize=self.summarize, write_brief=self.write_brief, open_pdf=self.open_pdf,
+            summarize=self.summarize, write_brief=self.write_brief, revise=self.revise,
+            undo_revision=self.undo_revision, open_pdf=self.open_pdf,
             show_discord=self.show_discord, provider_label=self._provider_label,
             register_task_button=self._register_task_button)
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
@@ -345,6 +351,21 @@ class MainWindow(Adw.ApplicationWindow):
         args = ["brief", session.name, *self._provider_args()] + (["--force"] if force else [])
         self.start_task(f"Skrót kroniki {session.name}", args)
 
+    def revise(self, session: Session, instruction: str) -> None:
+        self.start_task(f"Poprawka kroniki {session.name}",
+                        ["revise", session.name, instruction, *self._provider_args()])
+
+    def undo_revision(self, session: Session) -> None:
+        dialog = Adw.AlertDialog(heading="Cofnąć ostatnią poprawkę?",
+                                 body="Kronika wróci do wersji sprzed ostatniej poprawki. Skrót kroniki "
+                                      "trzeba będzie napisać ponownie (zakładka Kronika → Skrót).")
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("undo", "Cofnij poprawkę")
+        dialog.set_response_appearance("undo", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.connect("response", lambda _d, r: r == "undo" and self.start_task(
+            f"Cofnięcie poprawki {session.name}", ["revise", session.name, "--undo"]))
+        dialog.present(self)
+
     def suggest_speakers(self, session: Session) -> None:
         self.start_task(f"Sugestia mówców {session.name}",
                         ["speakers", "--suggest-only", *self._provider_args(), session.name])
@@ -465,6 +486,20 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.connect("closed", closed)
         self._campaigns_dialog = dialog
         dialog.present(self)
+
+    def show_search(self) -> None:
+        campaign = self.current.campaign.key if self.current is not None else None
+        SearchDialog(lambda: self.sessions, self.player, self.open_session, campaign or None).present(self)
+
+    def open_session(self, name: str, page: str) -> None:
+        """Pokazuje sesję na wskazanej zakładce (np. z wyniku wyszukiwania)."""
+        row = self._rows.get(name)
+        if row is None:
+            self.toast(f"Nie ma już sesji {name}")
+            return
+        self.session_list.select_row(row)  # wywoła _on_row_selected → _show_session
+        self.view_stack.set_visible_child_name(page)
+        self.split.set_show_content(True)
 
     def show_settings(self) -> None:
         def provider_changed(key: str) -> None:

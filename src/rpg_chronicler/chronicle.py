@@ -56,6 +56,51 @@ def read_chronicle(session: Session) -> str:
         return f.read()
 
 
+# --- poprzednie wersje kroniki (poprawki poleceniem: `revise`, przycisk „Popraw…”) ---
+
+def versions_dir(session: Session) -> str:
+    """Poprzednie wersje kroniki - lokalnie w cache (nie na Drive), do cofnięcia poprawki."""
+    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(cache_home, "rpg-chronicler", "kroniki-poprzednie", session.name)
+
+
+def previous_versions(session: Session) -> list[str]:
+    """Ścieżki poprzednich wersji, od najnowszej."""
+    try:
+        names = sorted((n for n in os.listdir(versions_dir(session)) if n.endswith(".txt")), reverse=True)
+    except OSError:
+        return []
+    return [os.path.join(versions_dir(session), n) for n in names]
+
+
+def save_version(session: Session) -> str:
+    """Kopia obecnej kroniki przed poprawką; zwraca jej ścieżkę."""
+    os.makedirs(versions_dir(session), exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    path = os.path.join(versions_dir(session), f"{stamp}.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(read_chronicle(session))
+    return path
+
+
+def write_chronicle(session: Session, text: str) -> None:
+    tmp = session.summary_path + ".part"
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+    os.replace(tmp, session.summary_path)
+
+
+def restore_previous(session: Session) -> str | None:
+    """Przywraca ostatnią poprzednią wersję (i usuwa ją z listy); None, gdy nie ma czego cofać."""
+    versions = previous_versions(session)
+    if not versions:
+        return None
+    with open(versions[0], encoding="utf-8") as f:
+        write_chronicle(session, f.read())
+    os.unlink(versions[0])
+    return versions[0]
+
+
 def chronicle_title(text: str, fallback: str = "Kronika sesji") -> str:
     """Tytuł z pierwszej niepustej linii kroniki (bez znaczników Markdown), np. „📜 Kronika Sesji [X]: …”."""
     for line in text.splitlines():

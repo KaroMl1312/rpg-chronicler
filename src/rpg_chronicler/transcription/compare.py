@@ -5,13 +5,8 @@ ile nazw ze słownika kampanii model zapisał, jak bardzo teksty modeli się ró
 przeczytanie tekstów zapisanych przez --save-text.
 """
 import difflib
-import re
 
-WORD_RE = re.compile(r"\w+", re.UNICODE)
-
-
-def words(text: str) -> list[str]:
-    return [w.lower() for w in WORD_RE.findall(text)]
+from ..textmatch import contains_name, words
 
 
 def agreement(a: str, b: str) -> float:
@@ -22,21 +17,9 @@ def agreement(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, wa, wb, autojunk=False).ratio()
 
 
-def _stem(token: str) -> str:
-    """Początek słowa odporny na polską odmianę: „Altdorf” trafia też „Altdorfie”, „Eustachos” - „Eustachosa”."""
-    token = token.lower()
-    return token[:max(4, len(token) - 2)] if len(token) > 4 else token
-
-
 def names_found(text: str, names: list[str]) -> list[str]:
     """Nazwy ze słownika kampanii, które występują w tekście (wszystkie słowa nazwy, w dowolnej odmianie)."""
-    text_words = words(text)
-    found = []
-    for name in names:
-        tokens = [t for t in words(name) if len(t) >= 3]
-        if tokens and all(any(w.startswith(_stem(t)) for w in text_words) for t in tokens):
-            found.append(name)
-    return found
+    return [name for name in names if contains_name(text, name)]
 
 
 def uses_previous_text(model_size: str) -> bool:

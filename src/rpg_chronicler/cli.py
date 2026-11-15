@@ -242,6 +242,71 @@ def _ensure_pdf(session, force: bool = False) -> str:
     return path
 
 
+def cmd_revise(args):
+    from . import chronicle
+    session = _chronicle_session(args.session)
+    if args.undo:
+        restored = chronicle.restore_previous(session)
+        if restored is None:
+            raise SessionNotFound(f"Kronika {session.name} nie ma poprzedniej wersji do przywrócenia.")
+        print(f"[SUKCES] Przywrócono poprzednią wersję kroniki {session.name}. "
+              f"Skrót kroniki odśwież komendą: rpg-chronicler brief {session.name}")
+        return
+    if not args.instruction or not args.instruction.strip():
+        raise SessionNotFound("Podaj polecenie, np.: rpg-chronicler revise SESJA \"to nie Hans, tylko Hanna\"")
+    from .llm import LLMError, get_client
+    from .summary import RevisionError, revise_chronicle
+    try:
+        revise_chronicle(get_client(args.provider), session, args.instruction)
+    except (LLMError, RevisionError) as e:
+        raise SessionNotFound(f"Nie udało się poprawić kroniki: {e}")
+
+
+def cmd_search(args):
+    from .search import KIND_CHRONICLE, search, summary_line
+    from .quality import format_time
+
+    hits = search(list_sessions(), args.query, campaign=args.campaign,
+                  chronicles=not args.transcripts_only, transcripts=not args.chronicles_only)
+    print(summary_line(hits))
+    current = None
+    for hit in hits[:args.limit]:
+        if hit.session != current:
+            current = hit.session
+            print(f"\n== {hit.session}")
+        if hit.kind == KIND_CHRONICLE:
+            print(f"  [kronika{' · ' + hit.heading if hit.heading else ''}] {hit.text}")
+        else:
+            print(f"  [{format_time(hit.start)}{' · ' + hit.speaker if hit.speaker else ''}] {hit.text}")
+    if len(hits) > args.limit:
+        print(f"\n… i {len(hits) - args.limit} więcej (--limit N)")
+
+
+def cmd_encyclopedia(args):
+    from . import encyclopedia
+    from .campaigns import campaign_for
+    from .chronicle_pdf import write_markdown_pdf
+
+    campaign = campaign_for(f"{args.campaign}_")
+    llm = None
+    if not args.no_ai:
+        from .llm import get_client
+        llm = get_client(args.provider)
+    progress.report("encyklopedia", campaign.key)
+    from .llm import LLMError
+    try:
+        text = encyclopedia.build(campaign, list_sessions(), llm)
+    except (LLMError, encyclopedia.EncyclopediaError) as e:
+        raise SessionNotFound(f"Nie udało się utworzyć encyklopedii: {e}")
+    os.makedirs(os.path.dirname(encyclopedia.markdown_path(campaign.key)), exist_ok=True)
+    with open(encyclopedia.markdown_path(campaign.key), "w", encoding="utf-8") as f:
+        f.write(text)
+    progress.report("PDF", campaign.key)
+    write_markdown_pdf(text, encyclopedia.pdf_path(campaign.key), campaign.system)
+    print(f"[SUKCES] Encyklopedia kampanii {campaign.key}: {encyclopedia.pdf_path(campaign.key)} "
+          f"(i {os.path.basename(encyclopedia.markdown_path(campaign.key))})")
+
+
 def cmd_brief(args):
     from .summary import brief_sessions
     brief_sessions(list_sessions(args.sessions), args.provider, force=args.force)
@@ -507,6 +572,28 @@ def build_parser() -> argparse.ArgumentParser:
     provider_arg(p)
     p.add_argument("--force", action="store_true", help="napisz ponownie, nawet jeśli skrót jest aktualny")
     p.set_defaults(func=cmd_brief)
+
+    p = sub.add_parser("revise", help="popraw kronikę poleceniem dla AI (np. „to nie Hans, tylko Hanna”)")
+    p.add_argument("session", metavar="SESJA")
+    p.add_argument("instruction", nargs="?", metavar="POLECENIE", help="co poprawić")
+    provider_arg(p)
+    p.add_argument("--undo", action="store_true", help="przywróć wersję sprzed ostatniej poprawki")
+    p.set_defaults(func=cmd_revise)
+
+    p = sub.add_parser("search", help="szukaj w kronikach i transkrypcjach (od najstarszej sesji)")
+    p.add_argument("query", metavar="FRAZA", help="np. Ulrich albo „Ojciec Romulus” (odmiana nie przeszkadza)")
+    p.add_argument("--campaign", metavar="KAMPANIA", help="tylko sesje tej kampanii")
+    p.add_argument("--limit", type=int, default=50, help="najwyżej tyle wyników (domyślnie 50)")
+    group = p.add_mutually_exclusive_group()
+    group.add_argument("--chronicles-only", action="store_true", help="tylko kroniki")
+    group.add_argument("--transcripts-only", action="store_true", help="tylko transkrypcje")
+    p.set_defaults(func=cmd_search)
+
+    p = sub.add_parser("encyclopedia", help="encyklopedia kampanii (oś czasu, stan, postacie, miejsca) w PDF")
+    p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")
+    provider_arg(p)
+    p.add_argument("--no-ai", action="store_true", help="bez opisów od AI - tylko hasła ze słownika i oś czasu")
+    p.set_defaults(func=cmd_encyclopedia)
 
     p = sub.add_parser("pdf", help="zapisz kronikę jako PDF (obok kroniki, w folderze kronik)")
     p.add_argument("sessions", nargs="+", metavar="SESJA")

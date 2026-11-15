@@ -1,4 +1,4 @@
-"""Zakładka „Kronika”: kronika albo jej skrót (przełącznik), PDF, Discord, ponowne generowanie."""
+"""Zakładka „Kronika”: kronika albo jej skrót (przełącznik), poprawka poleceniem, PDF, Discord, ponowne generowanie."""
 from typing import Callable
 
 from gi.repository import Adw, Gio, Gtk
@@ -10,9 +10,12 @@ from .widgets import RegisterTaskButton, markdown_buffer, task_button, text_page
 
 class ChroniclePage(Adw.Bin):
     def __init__(self, *, summarize: Callable[[Session, bool], None], write_brief: Callable[[Session, bool], None],
+                 revise: Callable[[Session, str], None], undo_revision: Callable[[Session], None],
                  open_pdf: Callable[[Session], None], show_discord: Callable[[Session], None],
                  provider_label: Callable[[], str], register_task_button: RegisterTaskButton):
         super().__init__()
+        self._revise = revise
+        self._undo_revision = undo_revision
         self._summarize = summarize
         self._write_brief = write_brief
         self._open_pdf = open_pdf
@@ -69,12 +72,47 @@ class ChroniclePage(Adw.Bin):
         pdf_button.connect("clicked", lambda _b: self._open_pdf(session))
         discord_button = Gtk.Button(label="Wyślij na Discord")
         discord_button.connect("clicked", lambda _b: self._show_discord(session))
-        for button in (regenerate, pdf_button, discord_button):
+        revise_button = Gtk.Button(label="Popraw…", tooltip_text="Popraw kronikę poleceniem dla AI, "
+                                                                 "np. „to nie Hans, tylko Hanna”")
+        revise_button.connect("clicked", lambda _b: self._ask_revision(session))
+        buttons = [revise_button]
+        if chronicle.previous_versions(session):
+            undo = Gtk.Button(label="Cofnij poprawkę", tooltip_text="Przywróć wersję sprzed ostatniej poprawki")
+            undo.connect("clicked", lambda _b: self._undo_revision(session))
+            buttons.append(undo)
+        for button in (regenerate, pdf_button, discord_button, *buttons):
             self._register(button)
         sent = chronicle.sent_text(session)
         info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
-        return text_page(stack, info, [open_button, pdf_button, discord_button, regenerate], leading=toggles)
+        return text_page(stack, info, [*buttons, open_button, pdf_button, discord_button, regenerate], leading=toggles)
+
+    def _ask_revision(self, session: Session) -> None:
+        """Okno z poleceniem poprawki; AI zmienia tylko to, czego dotyczy polecenie."""
+        buffer = Gtk.TextBuffer()
+        view = Gtk.TextView(buffer=buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=8, bottom_margin=8,
+                            left_margin=10, right_margin=10, accepts_tab=False)
+        view.add_css_class("card")
+        scrolled = Gtk.ScrolledWindow(child=view, min_content_height=110, hscrollbar_policy=Gtk.PolicyType.NEVER)
+        dialog = Adw.AlertDialog(
+            heading="Popraw kronikę",
+            body="Napisz, co zmienić - AI poprawi tylko to, resztę zostawi bez zmian. Na przykład: „to nie Hans, "
+                 "tylko Hanna”, „dodaj walkę z trollem przy moście”, „Eustachos nie był ranny”. "
+                 "Poprzednią wersję można przywrócić przyciskiem „Cofnij poprawkę”.",
+            extra_child=scrolled)
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("revise", "Popraw")
+        dialog.set_response_appearance("revise", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_response_enabled("revise", False)
+        buffer.connect("changed", lambda b: dialog.set_response_enabled("revise", bool(_text(b).strip())))
+
+        def on_response(_d, response):
+            if response == "revise" and _text(buffer).strip():
+                self._revise(session, _text(buffer).strip())
+
+        dialog.connect("response", on_response)
+        dialog.present(self.get_root())
+        view.grab_focus()
 
     def _brief_view(self, session: Session) -> Gtk.Widget:
         """Skrót kroniki (jeden akapit) albo zachęta do jego napisania."""
@@ -102,3 +140,7 @@ class ChroniclePage(Adw.Bin):
         box.append(bar)
         box.append(text_view(markdown_buffer(brief)))
         return box
+
+
+def _text(buffer: Gtk.TextBuffer) -> str:
+    return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)

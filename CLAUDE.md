@@ -27,7 +27,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -46,6 +46,9 @@ src/rpg_chronicler/
   transcript.py               # Segment, Transcript (JSON ⇄ .txt), compact_for_llm(), mapowanie mówców
   speakers.py                 # identify_speakers(): sugestia LLM + input() użytkownika
   summary.py                  # name_speakers(), summarize_sessions(), _LazyClient
+  textmatch.py                # dopasowanie słów odporne na polską odmianę (początki słów, ruchome „e”); stdlib
+  search.py                   # wyszukiwarka po kronikach i transkrypcjach (od najstarszej sesji); stdlib
+  encyclopedia.py             # encyklopedia kampanii: oś czasu, stan, hasła z opisami AI → .md + PDF
   quality.py                  # kontrola jakości transkrypcji: mało tekstu, dziury, pętle Whispera, kopie sesji; stdlib
   archive.py                  # archiwizacja sesji do podfolderów archiwum/ (lokalnie; Drive w storage/drive.py); stdlib
   audio_trim.py               # wykrywanie ciszy (ffmpeg silencedetect) i przycinanie nagrań; tylko stdlib + ffmpeg
@@ -63,7 +66,8 @@ src/rpg_chronicler/
     widgets.py                #   wspólne widżety: text_page, markdown_buffer, task_button, issues_button
     speakers_page.py          #   zakładka „Mówcy”: sugestia AI, imiona, odsłuch próbek
     discord_dialog.py         #   okno „Wyślij na Discord”: kanał, zapowiedź (edytowalna/AI), załącznik PDF
-    campaigns_dialog.py       #   okno „Kampanie” (Ctrl+K): opis, postacie graczy, słownik, propozycje AI
+    campaigns_dialog.py       #   okno „Kampanie” (Ctrl+K): opis, stan kampanii, encyklopedia, postacie graczy, słownik, propozycje AI
+    search_dialog.py          #   okno „Szukaj w sesjach” (Ctrl+F): wyniki z pogrubieniem, odsłuch fragmentu, przejście do sesji
     recording_page.py         #   panel nagrania przed transkrypcją: cisza, oś czasu, przycinanie, „Transkrybuj”
     settings_dialog.py        #   okno ustawień (Adw.PreferencesDialog), zapis od razu przy zmianie
     desktop.py                #   APP_ID, instalacja .desktop + ikony (pl.rpgchronicler.Kronikarz.svg)
@@ -103,6 +107,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>_zapowiedz.txt`, `_kronika.pdf`, `_discord.json` | `SUMMARY_DIR` | zapowiedź na Discord, PDF kroniki, kiedy wysłano |
 | `stan-kampanii-<kampania>.md` | `TXT_DIR` | pamięć kampanii (zatwierdzona), 1. linia `<!-- po sesji: NAZWA -->` |
 | `<nazwa>_wydarzenia.md` | `SUMMARY_DIR` | lista wydarzeń z części transkrypcji (krok pośredni kroniki w dwóch krokach) |
+| `encyklopedia-<kampania>.md`, `.pdf` | `SUMMARY_DIR` | encyklopedia kampanii (komenda `encyclopedia`, przycisk w oknie Kampanie) |
 | `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw (synchronizowany z Drive) |
 
 Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówców) `[12.34s -> 15.67s] tekst`. `load_transcript` preferuje JSON, a w razie braku parsuje .txt. Komenda `migrate` tworzy JSON z .txt, nie ruszając .txt.
@@ -131,6 +136,12 @@ Słownik budowany z AI: `glossary KAMPANIA` (wszystkie kroniki) i automatycznie 
 ## Kronika w dwóch krokach
 
 Gdy `ai.kronika_etapami` (domyślnie włączone) i transkrypcja ma ponad ~1 h (`Transcript.split_parts`, części po `CHRONICLE_PART_SECONDS` = 45 min, cięcie przy zmianie mówcy, krótka końcówka dołącza do poprzedniej): z każdej części AI robi rzeczową listę wydarzeń z cytatami (`prompts/events.md`, z kontekstem: kampania, stan kampanii, wydarzenia poprzedniej części), a kronika (`prompts/summary.md`, pole `{source}`) powstaje z połączonych list zamiast z całej transkrypcji. Listy części są w `~/.cache/rpg-chronicler/wydarzenia/<sesja>/<sha1 promptu>.md` — przerwany przebieg ani `summarize --force` nie powtarzają zapytań, dopóki nie zmieni się transkrypcja, mówcy, kontekst ani prompt. Krótsze sesje idą jednym krokiem jak dawniej.
+
+## Poprawka kroniki, wyszukiwarka, encyklopedia
+
+- **Poprawka poleceniem** (`revise`, „Popraw…” w zakładce Kronika): `summary.revise_chronicle` daje AI kronikę, materiał źródłowy (lista wydarzeń `_wydarzenia.md`, a gdy jej nie ma - transkrypcja) i polecenie (`prompts/revise.md`: zmień tylko to, czego dotyczy polecenie). Poprzednia wersja trafia do `~/.cache/rpg-chronicler/kroniki-poprzednie/<sesja>/` (lokalnie, nie na Drive); `--undo` / „Cofnij poprawkę” przywraca najnowszą. Odpowiedź krótsza niż 30% kroniki jest odrzucana (`RevisionError`). Po poprawce odświeża się skrót (`ai.skrot_kroniki`); słownika i stanu kampanii poprawka nie rusza.
+- **Wyszukiwarka** (`search`, okno Ctrl+F): `textmatch` porównuje początki słów (min. 4 litery) z wariantem bez ruchomego „e” (kupiec → kupca, Marek → Marka); nieregularnej odmiany (ojciec → ojca) nie łapie. Zapytanie z kilku słów musi trafić w okno do 3 kolejnych wypowiedzi, zaczynające się od wypowiedzi z którymś ze słów. Wyniki od najstarszej sesji (w sesji: kronika, potem transkrypcja wg czasu). GUI trzyma transkrypcje w `TranscriptCache` (odświeżane po zmianie pliku).
+- **Encyklopedia** (`encyclopedia`, okno Kampanie): hasła = słownik kampanii + to, co AI znajdzie w kronikach (`prompts/encyclopedia.md`, JSON z opisem i listą sesji; jedno zapytanie na kampanię, odpowiedź w `~/.cache/rpg-chronicler/encyklopedia/`). Sesje hasła = dopasowanie pełnej nazwy w kronice (`textmatch.contains_name`) **lub** wskazanie AI (łapie „Fen” dla „Fen Wanderer” i nieregularną odmianę); sesje spoza kronik kampanii są odrzucane. Słownik decyduje o pisowni i kategorii. PDF: `chronicle_pdf.write_markdown_pdf` (ten sam styl co kroniki).
 
 ## Rozpoznawanie graczy po głosie
 
