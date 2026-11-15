@@ -179,7 +179,7 @@ class MainWindow(Adw.ApplicationWindow):
             summarize=self.summarize, write_brief=self.write_brief, revise=self.revise,
             undo_revision=self.undo_revision, write_quotes=self.write_quotes, open_pdf=self.open_pdf,
             show_discord=self.show_discord, provider_label=self._provider_label,
-            register_task_button=self._register_task_button)
+            register_task_button=self._register_task_button, player=self.player)
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
                                              "text-x-generic-symbolic")
         self.view_stack.add_titled_with_icon(self.speakers_page, "speakers", "Mówcy", "system-users-symbolic")

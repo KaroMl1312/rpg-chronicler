@@ -51,7 +51,7 @@ def session_events(client: LLMClient, session: Session, transcript: Transcript, 
         prefix, prompt = render_split(
             "events", system_name=session.system_name, part=str(index), parts=str(len(parts)),
             time_range=time_range, speaker_mapping_info=mapping_info, campaign_context=context,
-            previous_events=previous_block, transcript=part.compact_for_llm(mapping))
+            previous_events=previous_block, transcript=part.compact_for_llm(mapping, timestamps=True))
         cache = cache_dir / f"{hashlib.sha1((prefix + prompt).encode('utf-8')).hexdigest()}.md"
         try:
             text = cache.read_text(encoding="utf-8")

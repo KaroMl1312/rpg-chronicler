@@ -117,7 +117,7 @@ class DiscordDialog(Adw.Dialog):
         if not quotes:
             return None
         group = Adw.PreferencesGroup(title="Cytaty sesji")
-        preview = "\n".join(f"„{text}”" + (f" — {who}" if who else "") for text, who in quotes)
+        preview = "\n".join(f"„{q.text}”" + (f" — {q.who}" if q.who else "") for q in quotes)
         self._quotes_switch = Adw.SwitchRow(title=f"Dołącz cytaty pod zapowiedzią ({len(quotes)})",
                                             subtitle=preview, subtitle_lines=0, active=True, use_markup=False)
         group.add(self._quotes_switch)

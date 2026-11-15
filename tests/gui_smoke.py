@@ -50,6 +50,9 @@ def steps(win):
         assert win.current.name == FULL
         texts = labels(win.chronicle_page)
         assert "Popraw…" in texts and "Wyślij na Discord" in texts, texts
+        menu = next(w for w in _walk(win.chronicle_page) if isinstance(w, Gtk.MenuButton)
+                    and w.get_icon_name() == "view-more-symbolic")
+        assert "Generuj ponownie" in labels(menu.get_popover()), labels(menu.get_popover())
     yield "kronika", full_session
 
     def chronicle_modes():
@@ -64,6 +67,8 @@ def steps(win):
                 buffer = view.get_buffer()
                 texts.append(buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False))
             assert any(expected in t for t in texts), (mode, texts)
+            if mode == "cytaty":  # cytat z czasem i nagraniem ma przycisk odsłuchu
+                assert len(win.chronicle_page._play_buttons) == 1, win.chronicle_page._play_buttons
     yield "skrót i cytaty", chronicle_modes
 
     def transcript_tab():

@@ -79,7 +79,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         group.add(brief)
         quotes = Adw.SwitchRow(
             title="Cytaty z sesji",
-            subtitle="Po każdej nowej kronice AI wybiera 3–5 najlepszych wypowiedzi (na koniec PDF i na Discord)",
+            subtitle="Po każdej nowej kronice AI wybiera po cytacie każdej postaci i 2–3 najciekawsze wypowiedzi (na koniec PDF i na Discord)",
             active=self._value("ai.cytaty", config.CHRONICLE_QUOTES))
         quotes.connect("notify::active", lambda row, _p: self._save("ai.cytaty", row.get_active()))
         group.add(quotes)

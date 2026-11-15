@@ -2,7 +2,8 @@
 
 Pliki leżą obok kroniki w SUMMARY_DIR (synchronizują się z Drive):
   <sesja>_skrot.txt      - skrót kroniki: najważniejsze wydarzenia w jednym akapicie (AI)
-  <sesja>_cytaty.txt     - najlepsze cytaty z sesji, po jednym w linii: „cytat” — Postać (AI, można poprawiać)
+  <sesja>_cytaty.txt     - najlepsze cytaty z sesji, po jednym w linii: [0:05:34–0:05:41] „cytat” — Postać
+                           (AI, można poprawiać; czas = fragment nagrania do odsłuchu, opcjonalny)
   <sesja>_zapowiedz.txt  - 2-3 zdania zapowiedzi (AI albo wpisane ręcznie)
   <sesja>_kronika.pdf    - kronika w PDF (chronicle_pdf.py)
   <sesja>_discord.json   - kiedy i dokąd wysłano
@@ -10,8 +11,10 @@ Tylko biblioteka standardowa (używa tego też GUI).
 """
 import datetime
 import json
+import math
 import os
 import re
+from dataclasses import dataclass
 
 from . import settings
 from .campaigns import session_date
@@ -42,28 +45,67 @@ def brief_is_current(session: Session) -> bool:
 
 # --- cytaty z sesji ---
 
-QUOTE_RE = re.compile(r"^\s*[-*]?\s*[„\"”](?P<text>.+?)[”\"“]\s*(?:[—–-]+\s*(?P<who>.+?))?\s*$")
+# „[0:05:34–0:05:41] „cytat” — Postać” (czas opcjonalny: bez niego cytat działa, tylko bez odsłuchu)
+QUOTE_RE = re.compile(r"^\s*[-*]?\s*(?:\[(?P<start>[\d:.]+)(?:\s*[–-]\s*(?P<end>[\d:.]+))?\]\s*)?"
+                      r"[„\"”](?P<text>.+?)[”\"“]\s*(?:[—–-]+\s*(?P<who>.+?))?\s*$")
+
+
+@dataclass(frozen=True)
+class Quote:
+    text: str
+    who: str = ""
+    start: float | None = None   # sekunda nagrania, w której padł cytat
+    end: float | None = None     # koniec wypowiedzi (do odsłuchu)
+
+
+def _parse_time(text: str | None) -> float | None:
+    if not text:
+        return None
+    seconds = 0.0
+    try:
+        for part in text.split(":"):
+            seconds = seconds * 60 + float(part)
+    except ValueError:
+        return None
+    return seconds
+
+
+def _format_time(seconds: float, round_up: bool = False) -> str:
+    seconds = math.ceil(seconds) if round_up else int(seconds)
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
 def quotes_path(session: Session) -> str:
     return session.summary_path.replace("_podsumowanie.txt", "_cytaty.txt")
 
 
-def parse_quotes(content: str) -> list[tuple[str, str]]:
-    """Linie „cytat” — Postać → [(cytat, postać)]; linie w innym formacie są pomijane."""
+def parse_quotes(content: str) -> list[Quote]:
+    """Linie „[czas] „cytat” — Postać” → cytaty; linie w innym formacie są pomijane."""
     quotes = []
     for line in content.splitlines():
         match = QUOTE_RE.match(line)
         if match and match["text"].strip():
-            quotes.append((match["text"].strip(), (match["who"] or "").strip()))
+            quotes.append(Quote(match["text"].strip(), (match["who"] or "").strip(),
+                                _parse_time(match["start"]), _parse_time(match["end"])))
     return quotes
 
 
-def format_quotes(quotes: list[tuple[str, str]]) -> str:
-    return "".join(f"„{text}”" + (f" — {who}" if who else "") + "\n" for text, who in quotes)
+def format_quote_time(quote: Quote) -> str:
+    if quote.start is None:
+        return ""
+    # koniec w górę - odsłuch nie urywa końcówki wypowiedzi
+    return _format_time(quote.start) + (f"–{_format_time(quote.end, round_up=True)}" if quote.end is not None else "")
 
 
-def read_quotes(session: Session) -> list[tuple[str, str]]:
+def format_quotes(quotes: list[Quote]) -> str:
+    lines = []
+    for q in quotes:
+        time = format_quote_time(q)
+        lines.append((f"[{time}] " if time else "") + f"„{q.text}”" + (f" — {q.who}" if q.who else ""))
+    return "".join(line + "\n" for line in lines)
+
+
+def read_quotes(session: Session) -> list[Quote]:
     try:
         with open(quotes_path(session), encoding="utf-8") as f:
             return parse_quotes(f.read())
@@ -71,7 +113,7 @@ def read_quotes(session: Session) -> list[tuple[str, str]]:
         return []
 
 
-def save_quotes(session: Session, quotes: list[tuple[str, str]]) -> None:
+def save_quotes(session: Session, quotes: list[Quote]) -> None:
     with open(quotes_path(session), "w", encoding="utf-8") as f:
         f.write(format_quotes(quotes))
 

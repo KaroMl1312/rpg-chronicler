@@ -5,6 +5,12 @@ import re
 from dataclasses import asdict, dataclass, field
 
 FORMAT_VERSION = 1
+TIMED_LINE_SECONDS = 30  # najdłuższy wiersz z czasem w compact_for_llm(timestamps=True)
+
+
+def format_clock(seconds: float) -> str:
+    seconds = int(seconds)
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 # Formaty linii .txt:
 #   [SPEAKER_00] [12.34s -> 15.67s] tekst   (z rozpoznawaniem mówców)
@@ -124,30 +130,53 @@ class Transcript:
         return [Transcript(segments=p, audio=self.audio, language=self.language, model=self.model)
                 for p in parts if p]
 
-    def compact_for_llm(self, mapping: dict[str, str] | None = None) -> str:
+    def compact_for_llm(self, mapping: dict[str, str] | None = None, timestamps: bool = False) -> str:
         """Tekst bez znaczników czasu: kolejne wypowiedzi tego samego mówcy sklejone, z imionami z mapowania.
 
         Model nie potrzebuje czasów do podsumowania, a ich usunięcie mocno zmniejsza liczbę tokenów.
         Transkrypcje bez mówców zostają linia po linii, bez etykiet.
+        `timestamps=True` (wybór cytatów): każdy wiersz zaczyna się od „[g:mm:ss]”, a długie wypowiedzi
+        są dzielone co TIMED_LINE_SECONDS - czas wiersza wskazuje fragment nagrania (`line_span`).
         """
         mapping = mapping or {}
         lines: list[str] = []
         last_speaker = None
+        line_start = 0.0
         for s in self.segments:
             text = s.text.strip()
             if not text:
                 continue
-            if s.speaker is None:
-                lines.append(text)
-                last_speaker = None
-                continue
-            speaker = mapping.get(s.speaker, s.speaker)
-            if speaker == last_speaker:
+            speaker = mapping.get(s.speaker, s.speaker) if s.speaker is not None else None
+            same_line = (speaker is not None and speaker == last_speaker
+                         and (not timestamps or s.start - line_start < TIMED_LINE_SECONDS))
+            if same_line:
                 lines[-1] += " " + text
-            else:
-                lines.append(f"{speaker}: {text}")
-                last_speaker = speaker
+                continue
+            line_start = s.start
+            prefix = f"[{format_clock(s.start)}] " if timestamps else ""
+            lines.append(f"{prefix}{speaker}: {text}" if speaker is not None else f"{prefix}{text}")
+            last_speaker = speaker
         return "\n".join(lines)
+
+    def line_span(self, start: float) -> tuple[float, float] | None:
+        """Fragment nagrania wiersza z `compact_for_llm(timestamps=True)`, który zaczyna się o `start`.
+
+        AI podaje czas z dokładnością do sekundy, więc szukamy segmentu zaczynającego się najbliżej
+        (najwyżej 2 s różnicy), a potem dokładamy kolejne segmenty tego mówcy jak przy budowaniu wiersza.
+        """
+        segments = [s for s in self.segments if s.text.strip()]
+        if not segments:
+            return None
+        index = min(range(len(segments)), key=lambda i: abs(segments[i].start - start))
+        first = segments[index]
+        if abs(first.start - start) > 2:
+            return None
+        end = first.end
+        for s in segments[index + 1:]:
+            if s.speaker is None or s.speaker != first.speaker or s.start - first.start >= TIMED_LINE_SECONDS:
+                break
+            end = s.end
+        return first.start, end
 
 
 def _write_atomic(path: str, content: str) -> None:

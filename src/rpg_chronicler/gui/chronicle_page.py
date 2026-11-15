@@ -5,7 +5,13 @@ from gi.repository import Adw, Gio, Gtk
 
 from .. import chronicle
 from ..session import Session
+from .player import SnippetPlayer
 from .widgets import RegisterTaskButton, markdown_buffer, task_button, text_page, text_view
+
+# Sekundy nagrania przed i po cytacie: czasy segmentów Whispera bywają za wczesne, a cytat potrafi
+# ciągnąć się w następnym segmencie - lepiej puścić trochę dłużej, niż uciąć końcówkę
+QUOTE_MARGIN_BEFORE = 1.0
+QUOTE_MARGIN_AFTER = 4.0
 
 
 class ChroniclePage(Adw.Bin):
@@ -13,8 +19,12 @@ class ChroniclePage(Adw.Bin):
                  revise: Callable[[Session, str], None], undo_revision: Callable[[Session], None],
                  write_quotes: Callable[[Session, bool], None],
                  open_pdf: Callable[[Session], None], show_discord: Callable[[Session], None],
-                 provider_label: Callable[[], str], register_task_button: RegisterTaskButton):
+                 provider_label: Callable[[], str], register_task_button: RegisterTaskButton,
+                 player: SnippetPlayer):
         super().__init__()
+        self._player = player
+        self._play_buttons: dict[tuple, Gtk.Button] = {}
+        player.connect("changed", lambda _p: self._update_play_icons())
         self._revise = revise
         self._write_quotes = write_quotes
         self._undo_revision = undo_revision
@@ -27,7 +37,14 @@ class ChroniclePage(Adw.Bin):
         self._mode = "kronika"  # przełącznik „Kronika / Skrót” - pamiętany między sesjami
 
     def show_session(self, session: Session) -> None:
+        self._play_buttons = {}
         self.set_child(self._view(session))
+
+    def _update_play_icons(self) -> None:
+        for key, button in self._play_buttons.items():
+            playing = self._player.current_key == key
+            button.set_icon_name("media-playback-stop-symbolic" if playing else "media-playback-start-symbolic")
+            button.set_tooltip_text("Zatrzymaj" if playing else "Odsłuchaj ten fragment nagrania")
 
     def _view(self, session: Session) -> Gtk.Widget:
         if not session.has_summary:
@@ -79,25 +96,28 @@ class ChroniclePage(Adw.Bin):
         revise_button = Gtk.Button(label="Popraw…", tooltip_text="Popraw kronikę poleceniem dla AI, "
                                                                  "np. „to nie Hans, tylko Hanna”")
         revise_button.connect("clicked", lambda _b: self._ask_revision(session))
-        buttons = [revise_button]
+        task_buttons = [revise_button, pdf_button, discord_button, regenerate]
+        more_items = [open_button, regenerate]
         if chronicle.previous_versions(session):
             undo = Gtk.Button(label="Cofnij poprawkę", tooltip_text="Przywróć wersję sprzed ostatniej poprawki")
             undo.connect("clicked", lambda _b: self._undo_revision(session))
-            buttons.append(undo)
-        for button in (regenerate, pdf_button, discord_button, *buttons):
+            more_items.insert(0, undo)
+            task_buttons.append(undo)
+        for button in task_buttons:
             self._register(button)
         sent = chronicle.sent_text(session)
         info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
-        return text_page(stack, info, [*buttons, open_button, pdf_button, discord_button, regenerate], leading=toggles)
+        more = _menu_button(more_items, tooltip=f"Więcej (ponowne generowanie: {self._provider_label()})")
+        return text_page(stack, info, [revise_button, pdf_button, discord_button, more], leading=toggles)
 
     def _quotes_view(self, session: Session) -> Gtk.Widget:
         """Najlepsze cytaty z sesji albo zachęta do ich wybrania."""
         quotes = chronicle.read_quotes(session)
         if not quotes:
             status = Adw.StatusPage(icon_name="user-available-symbolic", title="Brak cytatów",
-                                    description="AI wybierze 3–5 najlepszych wypowiedzi z sesji - zabawnych, "
-                                                "dramatycznych albo kluczowych. Trafią na koniec PDF i pod "
+                                    description="AI wybierze po cytacie każdej postaci i 2–3 najciekawsze wypowiedzi "
+                                                "z sesji - zabawne, dramatyczne albo kluczowe. Trafią na koniec PDF i pod "
                                                 "zapowiedź na Discordzie.")
             status.set_child(task_button("Wybierz cytaty", lambda: self._write_quotes(session, False),
                                          self._register))
@@ -107,7 +127,8 @@ class ChroniclePage(Adw.Bin):
         again.connect("clicked", lambda _b: self._write_quotes(session, True))
         self._register(again)
         edit = Gtk.Button(label="Edytuj", valign=Gtk.Align.CENTER, css_classes=["flat"],
-                          tooltip_text="Otwórz plik cytatów w edytorze (jeden cytat w linii: „cytat” — Postać)")
+                          tooltip_text="Otwórz plik cytatów w edytorze "
+                                       "(jeden cytat w linii: [0:05:34–0:05:41] „cytat” — Postać)")
         edit.connect("clicked", lambda _b: Gtk.FileLauncher.new(
             Gio.File.new_for_path(chronicle.quotes_path(session))).launch(self.get_root(), None, None))
         label = Gtk.Label(label="Cytaty sesji", xalign=0, hexpand=True, css_classes=["dim-label"])
@@ -117,14 +138,26 @@ class ChroniclePage(Adw.Bin):
 
         items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin_top=18, margin_bottom=24,
                         margin_start=32, margin_end=32)
-        for text, who in quotes:
-            item = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-            quote = Gtk.Label(label=f"„{text}”", xalign=0, wrap=True, selectable=True)
+        for index, q in enumerate(quotes):
+            item = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, hexpand=True)
+            quote = Gtk.Label(label=f"„{q.text}”", xalign=0, wrap=True, selectable=True)
             quote.add_css_class("title-4")
             item.append(quote)
-            if who:
-                item.append(Gtk.Label(label=f"— {who}", xalign=1, css_classes=["dim-label"]))
-            items.append(item)
+            if q.who:
+                item.append(Gtk.Label(label=f"— {q.who}", xalign=1, css_classes=["dim-label"]))
+            row = Gtk.Box(spacing=12)
+            row.append(item)
+            if session.audio_path and q.start is not None:
+                key = (session.name, "cytat", index)
+                end = q.end if q.end is not None else q.start + 15
+                play = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.START,
+                                  css_classes=["flat", "circular"],
+                                  tooltip_text=f"Odsłuchaj ten fragment nagrania ({chronicle.format_quote_time(q)})")
+                play.connect("clicked", lambda _b, k=key, s=q.start, e=end: self._player.toggle(
+                    session.audio_path, max(0.0, s - QUOTE_MARGIN_BEFORE), e + QUOTE_MARGIN_AFTER, k))
+                self._play_buttons[key] = play
+                row.prepend(play)
+            items.append(row)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.append(bar)
         box.append(Gtk.ScrolledWindow(child=items, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
@@ -187,3 +220,18 @@ class ChroniclePage(Adw.Bin):
 
 def _text(buffer: Gtk.TextBuffer) -> str:
     return buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+
+
+def _menu_button(items: list[Gtk.Button], tooltip: str) -> Gtk.MenuButton:
+    """„⋯” z rzadziej używanymi przyciskami - pasek nad kroniką mieści się w wąskim oknie."""
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, margin_top=6, margin_bottom=6,
+                  margin_start=6, margin_end=6)
+    popover = Gtk.Popover(child=box)
+    for item in items:
+        item.add_css_class("flat")
+        if isinstance(item.get_child(), Gtk.Label):
+            item.get_child().set_xalign(0)
+        item.connect("clicked", lambda _b: popover.popdown())
+        box.append(item)
+    return Gtk.MenuButton(icon_name="view-more-symbolic", popover=popover, tooltip_text=tooltip,
+                          valign=Gtk.Align.CENTER)

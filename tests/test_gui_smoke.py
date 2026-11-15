@@ -48,13 +48,14 @@ def _make_data(base: Path) -> dict[str, str]:
         "# Kronika Sesji: Noc Nietoperzy\n\n**Świt**\n- Kapłanka wskazała Ojca Romulusa.\n", encoding="utf-8")
     time.sleep(0.01)  # skrót i cytaty nowsze niż kronika
     (summary / "Warhammer_261105_skrot.txt").write_text("Dotarliście do Doliny.\n", encoding="utf-8")
-    (summary / "Warhammer_261105_cytaty.txt").write_text("„Tak?” — Fen\n", encoding="utf-8")
+    (summary / "Warhammer_261105_cytaty.txt").write_text("[0:00:04–0:00:07] „Tak?” — Fen\n", encoding="utf-8")
 
-    with wave.open(str(dirs["nagrania"] / "Warhammer_261112.wav"), "wb") as audio:  # 1 s ciszy
-        audio.setnchannels(1)
-        audio.setsampwidth(2)
-        audio.setframerate(16000)
-        audio.writeframes(b"\0\0" * 16000)
+    for name, seconds in (("Warhammer_261112", 1), ("Warhammer_261105", 8)):  # cisza
+        with wave.open(str(dirs["nagrania"] / f"{name}.wav"), "wb") as audio:
+            audio.setnchannels(1)
+            audio.setsampwidth(2)
+            audio.setframerate(16000)
+            audio.writeframes(b"\0\0" * 16000 * seconds)
 
     settings = base / "ustawienia.toml"
     settings.write_text("[foldery]\n" + "".join(f'{key} = "{dirs[name]}"\n' for key, name in
@@ -85,7 +86,9 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "kronika", "skrót i cytaty", "transkrypcja", "mówcy", "poprawka kroniki",
                     "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia"], report
-    problems = [line for line in proc.stderr.splitlines() if "-CRITICAL" in line or "Gtk-WARNING" in line]
+    # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
+    problems = [line for line in proc.stderr.splitlines()
+                if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]
     assert not problems, report
 
 

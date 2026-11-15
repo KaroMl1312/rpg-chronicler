@@ -105,13 +105,13 @@ def chronicle_html(text: str, session: Session) -> str:
             + f"</header>{brief}{body}{quotes}</body></html>")
 
 
-def quotes_html(quotes: list[tuple[str, str]]) -> str:
+def quotes_html(quotes) -> str:
     """Sekcja „Cytaty sesji” na końcu kroniki (pusta, gdy nie ma cytatów)."""
     if not quotes:
         return ""
-    items = "".join(f"<blockquote><p>„{html.escape(strip_emoji(text))}”</p>"
-                    + (f'<div class="who">— {html.escape(who)}</div>' if who else "") + "</blockquote>"
-                    for text, who in quotes)
+    items = "".join(f"<blockquote><p>„{html.escape(strip_emoji(q.text))}”</p>"
+                    + (f'<div class="who">— {html.escape(q.who)}</div>' if q.who else "") + "</blockquote>"
+                    for q in quotes)
     return f'<section class="quotes"><h2>Cytaty sesji</h2>{items}</section>'
 
 

@@ -70,7 +70,9 @@ def brief_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, force:
 # --- cytaty z sesji ---
 
 
-MAX_QUOTES = 5
+BEST_QUOTES = "2–3"   # cytaty „najciekawsze” ponad te po jednym na postać
+MAX_EXTRA_QUOTES = 3
+MIN_QUOTES = 5        # bez listy postaci (sesja bez mówców) - jak dawniej 3-5 cytatów
 
 
 class QuotesError(Exception):
@@ -86,16 +88,56 @@ def quotes_source(session: Session) -> tuple[str, str]:
         events = ""
     sections = re.findall(r"^#{2,4}\s*Cytaty\s*\n(.*?)(?=^#{1,4}\s|\Z)", events, re.MULTILINE | re.DOTALL)
     candidates = "\n".join(part.strip() for part in sections if part.strip())
-    if candidates:
+    if candidates and TIME_RE.search(candidates):  # starsze listy wydarzeń mają cytaty bez czasu
         return (f"<kandydaci>\n{candidates}\n</kandydaci>",
-                "cytaty wybrane wcześniej z kolejnych części nagrania (kandydaci)")
+                "cytaty wybrane wcześniej z kolejnych części nagrania (kandydaci, z czasem w nawiasie)")
     if session.has_transcript:
-        text = session.load_transcript().compact_for_llm(load_speaker_mapping(session.txt_path))
-        return f"<transkrypcja>\n{text}\n</transkrypcja>", "transkrypcja nagrania (format „MÓWCA: wypowiedź”)"
+        text = session.load_transcript().compact_for_llm(load_speaker_mapping(session.txt_path), timestamps=True)
+        return (f"<transkrypcja>\n{text}\n</transkrypcja>",
+                "transkrypcja nagrania (format „[czas] MÓWCA: wypowiedź”)")
     raise QuotesError("brak transkrypcji, z której można wybrać cytaty")
 
 
-def parse_quotes_response(text: str) -> list[tuple[str, str]]:
+TIME_RE = re.compile(r"\[\d+:\d{2}:\d{2}\]")
+
+
+def session_characters(session: Session) -> list[str]:
+    """Postacie graczy obecne na sesji (z mapowania mówców; gracz → jego postać, bez MG).
+
+    Bez mapowania - postacie graczy z kampanii (transkrypcja ma wtedy same etykiety SPEAKER_XX).
+    """
+    from .voices import GAME_MASTER, NameResolver
+    mapping = load_speaker_mapping(session.txt_path) if session.has_transcript else {}
+    if not mapping:
+        return list(session.campaign.player_characters)
+    resolver = NameResolver(session.campaign)
+    names: list[str] = []
+    for name in mapping.values():
+        name = resolver.resolve(name) if name.strip() else ""
+        if name and name != GAME_MASTER and not re.fullmatch(r"SPEAKER_\w+", name) and name not in names:
+            names.append(name)
+    return names
+
+
+def quotes_count_rule(characters: list[str]) -> str:
+    if not characters:
+        return "2. Od 3 do 5 cytatów."
+    return (f"2. Co najmniej po jednym cytacie każdej postaci graczy z tej sesji: {', '.join(characters)} - jej "
+            f"najlepsza wypowiedź w świecie gry (postać, która nie powiedziała nic wartego cytowania, pomiń). "
+            f"Do tego {BEST_QUOTES} najciekawsze cytaty z całej sesji, od kogokolwiek (także BN-ów i MG). "
+            f"Kolejność cytatów - chronologiczna.")
+
+
+def max_quotes(characters: list[str]) -> int:
+    return max(MIN_QUOTES, len(characters) + MAX_EXTRA_QUOTES)
+
+
+def parse_quotes_response(text: str, transcript=None, limit: int = MIN_QUOTES) -> list:
+    """Cytaty z odpowiedzi AI; czas („czas”) zamieniany na fragment nagrania wg transkrypcji (`line_span`).
+
+    Czasu, którego nie ma w transkrypcji (AI się pomyliło), nie zapisujemy - cytat zostaje bez odsłuchu.
+    """
+    from .chronicle import Quote, _parse_time
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if not match:
         raise QuotesError("Odpowiedź AI nie zawiera obiektu JSON.")
@@ -107,14 +149,17 @@ def parse_quotes_response(text: str) -> list[tuple[str, str]]:
     for item in data.get("cytaty", []) if isinstance(data, dict) else []:
         if isinstance(item, dict):
             quote = str(item.get("cytat", "")).strip().strip("„”\"").strip()
-            if quote:
-                quotes.append((quote, str(item.get("kto", "")).strip()))
+            if not quote:
+                continue
+            start = _parse_time(str(item.get("czas", "")).strip().strip("[]")) if item.get("czas") else None
+            span = transcript.line_span(start) if transcript is not None and start is not None else None
+            quotes.append(Quote(quote, str(item.get("kto", "")).strip(), *(span or (None, None))))
     if not quotes:
         raise QuotesError("AI nie wybrało żadnego cytatu.")
-    return quotes[:MAX_QUOTES]
+    return quotes[:limit]
 
 
-def write_quotes(client: LLMClient, session: Session, chronicle: str) -> list[tuple[str, str]]:
+def write_quotes(client: LLMClient, session: Session, chronicle: str) -> list:
     """Najlepsze cytaty z sesji do <sesja>_cytaty.txt. Rzuca LLMError albo QuotesError."""
     from .chronicle import quotes_path, save_quotes
 
@@ -122,11 +167,15 @@ def write_quotes(client: LLMClient, session: Session, chronicle: str) -> list[tu
     info = session.campaign.prompt_info()
     # Kronika na początku - wspólny początek ze skrótem, słownikiem i stanem kampanii (cache w API)
     prefix = chronicle_blocks([(session.name, chronicle)])
+    characters = session_characters(session)
     prompt = render("quotes", system_name=session.system_name, source_description=description, source=source,
+                    count_rule=quotes_count_rule(characters),
                     campaign_info=f"\nInformacje o kampanii (pisownia imion):\n{info}\n" if info else "")
     progress.report("cytaty", session.name)
     print(f"[{client.name}] Wybieranie cytatów z sesji {session.name}...")
-    quotes = parse_quotes_response(with_retry(lambda: generate(client, prompt, prefix), f"cytaty {session.name}"))
+    response = with_retry(lambda: generate(client, prompt, prefix), f"cytaty {session.name}")
+    quotes = parse_quotes_response(response, session.load_transcript() if session.has_transcript else None,
+                                   limit=max_quotes(characters))
     save_quotes(session, quotes)
     print(f"[SUKCES] Zapisano {len(quotes)} cytatów w: {quotes_path(session)}")
     return quotes
