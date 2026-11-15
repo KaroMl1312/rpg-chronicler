@@ -11,10 +11,12 @@ from .widgets import RegisterTaskButton, markdown_buffer, task_button, text_page
 class ChroniclePage(Adw.Bin):
     def __init__(self, *, summarize: Callable[[Session, bool], None], write_brief: Callable[[Session, bool], None],
                  revise: Callable[[Session, str], None], undo_revision: Callable[[Session], None],
+                 write_quotes: Callable[[Session, bool], None],
                  open_pdf: Callable[[Session], None], show_discord: Callable[[Session], None],
                  provider_label: Callable[[], str], register_task_button: RegisterTaskButton):
         super().__init__()
         self._revise = revise
+        self._write_quotes = write_quotes
         self._undo_revision = undo_revision
         self._summarize = summarize
         self._write_brief = write_brief
@@ -49,12 +51,14 @@ class ChroniclePage(Adw.Bin):
         stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
         stack.add_named(text_view(markdown_buffer(content)), "kronika")
         stack.add_named(self._brief_view(session), "skrot")
+        stack.add_named(self._quotes_view(session), "cytaty")
         stack.set_visible_child_name(self._mode)
 
         toggles = Adw.ToggleGroup(valign=Gtk.Align.CENTER)
         toggles.add(Adw.Toggle(label="Kronika", name="kronika"))
         toggles.add(Adw.Toggle(label="Skrót", name="skrot",
                                tooltip="Najważniejsze wydarzenia w jednym akapicie"))
+        toggles.add(Adw.Toggle(label="Cytaty", name="cytaty", tooltip="Najlepsze cytaty z sesji (PDF, Discord)"))
         toggles.set_active_name(self._mode)
 
         def toggled(group, _pspec):
@@ -86,6 +90,45 @@ class ChroniclePage(Adw.Bin):
         info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
         return text_page(stack, info, [*buttons, open_button, pdf_button, discord_button, regenerate], leading=toggles)
+
+    def _quotes_view(self, session: Session) -> Gtk.Widget:
+        """Najlepsze cytaty z sesji albo zachęta do ich wybrania."""
+        quotes = chronicle.read_quotes(session)
+        if not quotes:
+            status = Adw.StatusPage(icon_name="user-available-symbolic", title="Brak cytatów",
+                                    description="AI wybierze 3–5 najlepszych wypowiedzi z sesji - zabawnych, "
+                                                "dramatycznych albo kluczowych. Trafią na koniec PDF i pod "
+                                                "zapowiedź na Discordzie.")
+            status.set_child(task_button("Wybierz cytaty", lambda: self._write_quotes(session, False),
+                                         self._register))
+            return status
+
+        again = Gtk.Button(label="Wybierz ponownie", valign=Gtk.Align.CENTER, css_classes=["flat"])
+        again.connect("clicked", lambda _b: self._write_quotes(session, True))
+        self._register(again)
+        edit = Gtk.Button(label="Edytuj", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                          tooltip_text="Otwórz plik cytatów w edytorze (jeden cytat w linii: „cytat” — Postać)")
+        edit.connect("clicked", lambda _b: Gtk.FileLauncher.new(
+            Gio.File.new_for_path(chronicle.quotes_path(session))).launch(self.get_root(), None, None))
+        label = Gtk.Label(label="Cytaty sesji", xalign=0, hexpand=True, css_classes=["dim-label"])
+        bar = Gtk.Box(spacing=6, margin_top=10, margin_start=24, margin_end=12)
+        for widget in (label, edit, again):
+            bar.append(widget)
+
+        items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=18, margin_top=18, margin_bottom=24,
+                        margin_start=32, margin_end=32)
+        for text, who in quotes:
+            item = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+            quote = Gtk.Label(label=f"„{text}”", xalign=0, wrap=True, selectable=True)
+            quote.add_css_class("title-4")
+            item.append(quote)
+            if who:
+                item.append(Gtk.Label(label=f"— {who}", xalign=1, css_classes=["dim-label"]))
+            items.append(item)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.append(bar)
+        box.append(Gtk.ScrolledWindow(child=items, vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER))
+        return box
 
     def _ask_revision(self, session: Session) -> None:
         """Okno z poleceniem poprawki; AI zmienia tylko to, czego dotyczy polecenie."""

@@ -31,6 +31,9 @@ class DiscordDialog(Adw.Dialog):
         page = Adw.PreferencesPage()
         page.add(self._channel_group(key, webhook))
         page.add(self._teaser_group())
+        quotes_group = self._quotes_group()
+        if quotes_group is not None:
+            page.add(quotes_group)
         page.add(self._attachment_group())
 
         self._send = Gtk.Button(label="Wyślij", halign=Gtk.Align.CENTER, sensitive=bool(webhook))
@@ -107,6 +110,19 @@ class DiscordDialog(Adw.Dialog):
 
     # --- wysyłka ---
 
+    def _quotes_group(self) -> Adw.PreferencesGroup | None:
+        """Przełącznik „Dołącz cytaty” (tylko gdy sesja ma cytaty)."""
+        self._quotes_switch = None
+        quotes = chronicle.read_quotes(self.session)
+        if not quotes:
+            return None
+        group = Adw.PreferencesGroup(title="Cytaty sesji")
+        preview = "\n".join(f"„{text}”" + (f" — {who}" if who else "") for text, who in quotes)
+        self._quotes_switch = Adw.SwitchRow(title=f"Dołącz cytaty pod zapowiedzią ({len(quotes)})",
+                                            subtitle=preview, subtitle_lines=0, active=True, use_markup=False)
+        group.add(self._quotes_switch)
+        return group
+
     def _send_now(self) -> None:
         text = self._teaser.get_text(self._teaser.get_start_iter(), self._teaser.get_end_iter(), False).strip()
         if text:
@@ -116,6 +132,8 @@ class DiscordDialog(Adw.Dialog):
         args = ["discord", self.session.name, "--provider", self._provider()]
         if chronicle.load_sent(self.session):
             args.append("--force")
+        if self._quotes_switch is not None and not self._quotes_switch.get_active():
+            args.append("--no-quotes")
         self.close()
         self._start_task(f"Wysyłanie kroniki {self.session.name} na Discord", args)
 

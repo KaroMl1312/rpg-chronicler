@@ -77,6 +77,12 @@ class SettingsDialog(Adw.PreferencesDialog):
             active=self._value("ai.skrot_kroniki", config.CHRONICLE_BRIEF))
         brief.connect("notify::active", lambda row, _p: self._save("ai.skrot_kroniki", row.get_active()))
         group.add(brief)
+        quotes = Adw.SwitchRow(
+            title="Cytaty z sesji",
+            subtitle="Po każdej nowej kronice AI wybiera 3–5 najlepszych wypowiedzi (na koniec PDF i na Discord)",
+            active=self._value("ai.cytaty", config.CHRONICLE_QUOTES))
+        quotes.connect("notify::active", lambda row, _p: self._save("ai.cytaty", row.get_active()))
+        group.add(quotes)
         two_step = Adw.SwitchRow(
             title="Kronika w dwóch krokach",
             subtitle="Najpierw lista wydarzeń z każdych ~45 minut nagrania, potem kronika z tych list - mniej "

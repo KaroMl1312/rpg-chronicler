@@ -177,7 +177,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved, self.start_task)
         self.chronicle_page = ChroniclePage(
             summarize=self.summarize, write_brief=self.write_brief, revise=self.revise,
-            undo_revision=self.undo_revision, open_pdf=self.open_pdf,
+            undo_revision=self.undo_revision, write_quotes=self.write_quotes, open_pdf=self.open_pdf,
             show_discord=self.show_discord, provider_label=self._provider_label,
             register_task_button=self._register_task_button)
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
@@ -350,6 +350,10 @@ class MainWindow(Adw.ApplicationWindow):
     def write_brief(self, session: Session, force: bool = False) -> None:
         args = ["brief", session.name, *self._provider_args()] + (["--force"] if force else [])
         self.start_task(f"Skrót kroniki {session.name}", args)
+
+    def write_quotes(self, session: Session, force: bool = False) -> None:
+        args = ["quotes", session.name, *self._provider_args()] + (["--force"] if force else [])
+        self.start_task(f"Cytaty z sesji {session.name}", args)
 
     def revise(self, session: Session, instruction: str) -> None:
         self.start_task(f"Poprawka kroniki {session.name}",

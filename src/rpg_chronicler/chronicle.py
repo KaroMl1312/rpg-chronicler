@@ -2,6 +2,7 @@
 
 Pliki leżą obok kroniki w SUMMARY_DIR (synchronizują się z Drive):
   <sesja>_skrot.txt      - skrót kroniki: najważniejsze wydarzenia w jednym akapicie (AI)
+  <sesja>_cytaty.txt     - najlepsze cytaty z sesji, po jednym w linii: „cytat” — Postać (AI, można poprawiać)
   <sesja>_zapowiedz.txt  - 2-3 zdania zapowiedzi (AI albo wpisane ręcznie)
   <sesja>_kronika.pdf    - kronika w PDF (chronicle_pdf.py)
   <sesja>_discord.json   - kiedy i dokąd wysłano
@@ -37,6 +38,42 @@ def brief_is_current(session: Session) -> bool:
         return os.path.getmtime(brief_path(session)) >= os.path.getmtime(session.summary_path)
     except OSError:
         return False
+
+
+# --- cytaty z sesji ---
+
+QUOTE_RE = re.compile(r"^\s*[-*]?\s*[„\"”](?P<text>.+?)[”\"“]\s*(?:[—–-]+\s*(?P<who>.+?))?\s*$")
+
+
+def quotes_path(session: Session) -> str:
+    return session.summary_path.replace("_podsumowanie.txt", "_cytaty.txt")
+
+
+def parse_quotes(content: str) -> list[tuple[str, str]]:
+    """Linie „cytat” — Postać → [(cytat, postać)]; linie w innym formacie są pomijane."""
+    quotes = []
+    for line in content.splitlines():
+        match = QUOTE_RE.match(line)
+        if match and match["text"].strip():
+            quotes.append((match["text"].strip(), (match["who"] or "").strip()))
+    return quotes
+
+
+def format_quotes(quotes: list[tuple[str, str]]) -> str:
+    return "".join(f"„{text}”" + (f" — {who}" if who else "") + "\n" for text, who in quotes)
+
+
+def read_quotes(session: Session) -> list[tuple[str, str]]:
+    try:
+        with open(quotes_path(session), encoding="utf-8") as f:
+            return parse_quotes(f.read())
+    except OSError:
+        return []
+
+
+def save_quotes(session: Session, quotes: list[tuple[str, str]]) -> None:
+    with open(quotes_path(session), "w", encoding="utf-8") as f:
+        f.write(format_quotes(quotes))
 
 
 def teaser_path(session: Session) -> str:
@@ -133,12 +170,13 @@ def save_teaser(session: Session, text: str) -> None:
 
 
 def pdf_is_current(session: Session) -> bool:
-    """PDF istnieje i jest nowszy niż kronika i jej skrót (skrót jest w PDF jako „W skrócie”)."""
+    """PDF istnieje i jest nowszy niż kronika, jej skrót i cytaty (są w PDF: „W skrócie”, „Cytaty sesji”)."""
     try:
         pdf_time = os.path.getmtime(pdf_path(session))
         if pdf_time < os.path.getmtime(session.summary_path):
             return False
-        return not os.path.exists(brief_path(session)) or pdf_time >= os.path.getmtime(brief_path(session))
+        return all(not os.path.exists(path) or pdf_time >= os.path.getmtime(path)
+                   for path in (brief_path(session), quotes_path(session)))
     except OSError:
         return False
 

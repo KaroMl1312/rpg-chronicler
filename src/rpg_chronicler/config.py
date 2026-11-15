@@ -62,6 +62,8 @@ CLAUDE_CODE_MODEL = _setting("ai.model_claude_code", "") or None  # None = domy�
 GLOSSARY_PROPOSALS = _setting("ai.propozycje_slownika", True)
 # Po każdej nowej kronice AI pisze jej skrót (kilka punktów z najważniejszymi wydarzeniami)
 CHRONICLE_BRIEF = _setting("ai.skrot_kroniki", True)
+# Po każdej nowej kronice AI wybiera 3-5 najlepszych cytatów z sesji (PDF, Discord)
+CHRONICLE_QUOTES = _setting("ai.cytaty", True)
 # Kronika w dwóch krokach: z każdej części transkrypcji (~45 min) lista wydarzeń, potem kronika z tych list
 CHRONICLE_TWO_STEP = _setting("ai.kronika_etapami", True)
 CHRONICLE_PART_SECONDS = 45 * 60

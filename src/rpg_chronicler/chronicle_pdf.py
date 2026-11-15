@@ -7,7 +7,8 @@ import html
 import re
 
 from .campaigns import campaign_key
-from .chronicle import brief_is_current, chronicle_title, read_brief, read_chronicle, session_date_text
+from .chronicle import (brief_is_current, chronicle_title, read_brief, read_chronicle, read_quotes,
+                        session_date_text)
 from .session import Session
 
 EMOJI_RE = re.compile(
@@ -57,6 +58,13 @@ blockquote { margin: 0.8em 1.5em; font-style: italic; color: #5a4a3a; }
     text-transform: uppercase; color: #8b4513;
 }
 .brief ul { margin-bottom: 0.5em; }
+.quotes { margin-top: 2em; break-inside: avoid; }
+.quotes blockquote {
+    margin: 0 0 0.9em; padding: 0.1em 0 0.1em 1em; border-left: 2pt solid #d9c4a8;
+    font-size: 11.5pt; font-style: italic; color: #3d2a1a;
+}
+.quotes blockquote p { margin: 0; }
+.quotes .who { margin-top: 0.15em; font-style: normal; font-size: 9.5pt; color: #8b4513; text-align: right; }
 """
 
 
@@ -89,11 +97,22 @@ def chronicle_html(text: str, session: Session) -> str:
     if brief_is_current(session) and read_brief(session):
         brief_body = markdown.markdown(strip_emoji(read_brief(session)), extensions=["sane_lists"])
         brief = f'<section class="brief"><h2>W skrócie</h2>{brief_body}</section>'
+    quotes = quotes_html(read_quotes(session))
     return (f'<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
             f"</head><body><header><div class=\"campaign\">{html.escape(campaign_line)}</div>"
             f"<h1>{html.escape(title)}</h1>"
             + (f'<div class="date">Sesja z {html.escape(date)}</div>' if date else "")
-            + f"</header>{brief}{body}</body></html>")
+            + f"</header>{brief}{body}{quotes}</body></html>")
+
+
+def quotes_html(quotes: list[tuple[str, str]]) -> str:
+    """Sekcja „Cytaty sesji” na końcu kroniki (pusta, gdy nie ma cytatów)."""
+    if not quotes:
+        return ""
+    items = "".join(f"<blockquote><p>„{html.escape(strip_emoji(text))}”</p>"
+                    + (f'<div class="who">— {html.escape(who)}</div>' if who else "") + "</blockquote>"
+                    for text, who in quotes)
+    return f'<section class="quotes"><h2>Cytaty sesji</h2>{items}</section>'
 
 
 def write_pdf(session: Session, path: str) -> None:

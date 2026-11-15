@@ -27,7 +27,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (`src/rpg_chronicler/cli.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -104,6 +104,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>_podsumowanie.txt` | `SUMMARY_DIR` | kronika wygenerowana przez LLM |
 | `<nazwa>.glosy.json` | `TXT_DIR` | odciski głosu mówców (wektory wespeaker) do rozpoznawania graczy |
 | `<nazwa>_skrot.txt` | `SUMMARY_DIR` | skrót kroniki: jeden akapit opowieści o najważniejszych wydarzeniach (AI) |
+| `<nazwa>_cytaty.txt` | `SUMMARY_DIR` | 3–5 najlepszych cytatów z sesji, linie `„cytat” — Postać` (AI, można poprawiać ręcznie) |
 | `<nazwa>_zapowiedz.txt`, `_kronika.pdf`, `_discord.json` | `SUMMARY_DIR` | zapowiedź na Discord, PDF kroniki, kiedy wysłano |
 | `stan-kampanii-<kampania>.md` | `TXT_DIR` | pamięć kampanii (zatwierdzona), 1. linia `<!-- po sesji: NAZWA -->` |
 | `<nazwa>_wydarzenia.md` | `SUMMARY_DIR` | lista wydarzeń z części transkrypcji (krok pośredni kroniki w dwóch krokach) |
@@ -152,6 +153,10 @@ Progi w `voices.py` dobrano testem „każda sesja na podstawie pozostałych” 
 ## Skrót kroniki
 
 Po każdej nowej kronice (`ai.skrot_kroniki`, domyślnie włączone) AI pisze skrót z `prompts/brief.md`: **jeden akapit ciągłej opowieści** (6–10 zdań, ~1000 znaków), chronologicznie, z wydarzeniami łączonymi przyczyną i skutkiem, prostym językiem, kończący się tym, gdzie drużyna była na końcu sesji. Tak chce użytkownik — lista punktów („co się stało” w wyliczance) mu nie odpowiadała. Przykład stylu w prompcie jest celowo z wymyślonej kampanii, żeby AI nie przenosiło treści między kampaniami. Skrót jest nieaktualny, gdy kronika jest od niego nowsza (`chronicle.brief_is_current`); `brief` bez `--force` uzupełnia tylko brakujące/nieaktualne. W GUI przełącznik „Kronika / Skrót” w zakładce Kronika; w PDF ramka „W skrócie” na początku (PDF jest nieaktualny także, gdy skrót jest od niego nowszy).
+
+## Cytaty z sesji
+
+Po każdej nowej kronice (`ai.cytaty`, domyślnie włączone) AI wybiera 3–5 wypowiedzi z gry (`prompts/quotes.md`, JSON). Źródło: sekcje „### Cytaty” z listy wydarzeń (kronika w dwóch krokach - tanio), a gdy ich nie ma, transkrypcja. Kronika jest na początku promptu (ten sam prefiks co skrót, słownik i stan kampanii - cache w API). Cytaty trafiają na koniec PDF (sekcja „Cytaty sesji”; PDF jest nieaktualny, gdy cytaty są od niego nowsze) i pod zapowiedź na Discordzie (`discord.description_with_quotes`, cytaty, które nie mieszczą się w limicie 4000 znaków, odpadają; `--no-quotes` / przełącznik w oknie wysyłki). W GUI trzecia pozycja przełącznika „Kronika / Skrót / Cytaty”. Dla starszych sesji: `quotes`.
 
 ## Udostępnianie kronik (PDF, Discord)
 

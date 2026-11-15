@@ -242,6 +242,11 @@ def _ensure_pdf(session, force: bool = False) -> str:
     return path
 
 
+def cmd_quotes(args):
+    from .summary import quotes_sessions
+    quotes_sessions(list_sessions(args.sessions), args.provider, force=args.force)
+
+
 def cmd_revise(args):
     from . import chronicle
     session = _chronicle_session(args.session)
@@ -347,7 +352,8 @@ def cmd_discord(args):
     if chronicle.load_sent(session) and not args.force:
         raise SessionNotFound(f"Kronikę wysłano już {chronicle.sent_text(session)} - użyj --force, żeby wysłać ponownie.")
     footer = " · ".join(p for p in (session.system_name, chronicle.session_date_text(session) or session.name) if p)
-    message = discord.build_message(chronicle.chronicle_title(text), teaser, footer, os.path.basename(pdf))
+    quotes = [] if args.no_quotes else chronicle.read_quotes(session)
+    message = discord.build_message(chronicle.chronicle_title(text), teaser, footer, os.path.basename(pdf), quotes)
     progress.report("wysyłanie na Discord", session.name)
     try:
         message_id = discord.send(webhook, message, pdf)
@@ -573,6 +579,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--force", action="store_true", help="napisz ponownie, nawet jeśli skrót jest aktualny")
     p.set_defaults(func=cmd_brief)
 
+    p = sub.add_parser("quotes", help="wybierz najlepsze cytaty z sesji (do PDF i na Discord)")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie z kroniką bez cytatów)")
+    provider_arg(p)
+    p.add_argument("--force", action="store_true", help="wybierz ponownie, nawet jeśli cytaty są")
+    p.set_defaults(func=cmd_quotes)
+
     p = sub.add_parser("revise", help="popraw kronikę poleceniem dla AI (np. „to nie Hans, tylko Hanna”)")
     p.add_argument("session", metavar="SESJA")
     p.add_argument("instruction", nargs="?", metavar="POLECENIE", help="co poprawić")
@@ -606,6 +618,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="tylko przygotuj zapowiedź i PDF, bez wysyłania")
     p.add_argument("--nowa-zapowiedz", dest="new_teaser", action="store_true", help="napisz zapowiedź od nowa (AI)")
     p.add_argument("--force", action="store_true", help="wyślij ponownie, nawet jeśli już wysłano")
+    p.add_argument("--no-quotes", action="store_true", help="bez cytatów z sesji pod zapowiedzią")
     p.set_defaults(func=cmd_discord)
 
     p = sub.add_parser("discord-test", help="wyślij wiadomość testową na kanał Discord kampanii")

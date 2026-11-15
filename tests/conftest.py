@@ -48,6 +48,7 @@ def workspace(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))  # analizy ciszy, propozycje słownika
     monkeypatch.setattr(summary, "GLOSSARY_PROPOSALS", False)       # testy włączają je jawnie
     monkeypatch.setattr(summary, "CHRONICLE_BRIEF", False)          # jw. - skrót kroniki
+    monkeypatch.setattr(summary, "CHRONICLE_QUOTES", False)         # jw. - cytaty z sesji
     monkeypatch.setattr(summary, "CHRONICLE_TWO_STEP", False)       # jw. - kronika w dwóch krokach
     monkeypatch.setattr(summary, "CAMPAIGN_MEMORY", False)          # jw. - pamięć kampanii
 

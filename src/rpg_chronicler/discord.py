@@ -27,8 +27,24 @@ def is_valid_webhook(url: str) -> bool:
     return bool(WEBHOOK_RE.match(url.strip()))
 
 
-def build_message(title: str, teaser: str, footer: str, filename: str | None) -> dict:
-    embed = {"title": title[:TITLE_LIMIT], "description": teaser[:DESCRIPTION_LIMIT], "color": EMBED_COLOR,
+def description_with_quotes(teaser: str, quotes: list[tuple[str, str]] | None) -> str:
+    """Zapowiedź + „Cytaty sesji” jako cytaty Markdown; cytaty, które nie mieszczą się w limicie, odpadają."""
+    text = teaser[:DESCRIPTION_LIMIT]
+    lines = [f"> „{quote}”" + (f" — *{who}*" if who else "") for quote, who in quotes or []]
+    if not lines:
+        return text
+    section = "\n\n**Cytaty sesji**"
+    for line in lines:
+        if len(text) + len(section) + len(line) + 1 > DESCRIPTION_LIMIT:
+            break
+        section += "\n" + line
+    return text + section if section.count("\n") > 2 else text
+
+
+def build_message(title: str, teaser: str, footer: str, filename: str | None,
+                  quotes: list[tuple[str, str]] | None = None) -> dict:
+    embed = {"title": title[:TITLE_LIMIT], "description": description_with_quotes(teaser, quotes),
+             "color": EMBED_COLOR,
              "footer": {"text": footer[:2000]}}
     payload = {"username": "Kronikarz", "embeds": [embed], "allowed_mentions": {"parse": []}}
     if filename:

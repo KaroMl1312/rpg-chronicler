@@ -1,11 +1,13 @@
 import hashlib
+import json
 import os
+import re
 from pathlib import Path
 
 from . import glossary, memory, progress
 from .campaigns import campaign_key, session_date
 from .chronicle import brief_path
-from .config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_PART_SECONDS, CHRONICLE_TWO_STEP,
+from .config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_PART_SECONDS, CHRONICLE_QUOTES, CHRONICLE_TWO_STEP,
                      GLOSSARY_PROPOSALS, LLM_PROVIDER, SUMMARY_DIR)
 from .llm import LLMClient, LLMError, generate, get_client, with_retry
 from .prompts import chronicle_blocks, render, render_split
@@ -259,6 +261,11 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             except LLMError as e:
                 print(f"[OSTRZEŻENIE] Nie udało się napisać skrótu kroniki: {e} "
                       f"(spróbuj: rpg-chronicler brief {session.name})")
+        if CHRONICLE_QUOTES:
+            try:
+                write_quotes(client, session, summary)
+            except (LLMError, QuotesError) as e:
+                print(f"[OSTRZEŻENIE] Nie udało się wybrać cytatów: {e} (spróbuj: rpg-chronicler quotes {session.name})")
         if GLOSSARY_PROPOSALS:
             propose_glossary(client, session, summary)
         if CAMPAIGN_MEMORY:
@@ -298,6 +305,89 @@ def write_brief(client: LLMClient, session: Session, chronicle: str) -> str:
         f.write(brief + "\n")
     print(f"[SUKCES] Zapisano skrót kroniki w: {brief_path(session)}")
     return brief
+
+
+# --- cytaty z sesji ---
+
+MAX_QUOTES = 5
+
+
+class QuotesError(Exception):
+    pass
+
+
+def quotes_source(session: Session) -> tuple[str, str]:
+    """(materiał, opis do promptu): cytaty z listy wydarzeń (kronika w dwóch krokach) albo transkrypcja."""
+    try:
+        with open(events_path(session), encoding="utf-8") as f:
+            events = f.read()
+    except OSError:
+        events = ""
+    sections = re.findall(r"^#{2,4}\s*Cytaty\s*\n(.*?)(?=^#{1,4}\s|\Z)", events, re.MULTILINE | re.DOTALL)
+    candidates = "\n".join(part.strip() for part in sections if part.strip())
+    if candidates:
+        return (f"<kandydaci>\n{candidates}\n</kandydaci>",
+                "cytaty wybrane wcześniej z kolejnych części nagrania (kandydaci)")
+    if session.has_transcript:
+        text = session.load_transcript().compact_for_llm(load_speaker_mapping(session.txt_path))
+        return f"<transkrypcja>\n{text}\n</transkrypcja>", "transkrypcja nagrania (format „MÓWCA: wypowiedź”)"
+    raise QuotesError("brak transkrypcji, z której można wybrać cytaty")
+
+
+def parse_quotes_response(text: str) -> list[tuple[str, str]]:
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if not match:
+        raise QuotesError("Odpowiedź AI nie zawiera obiektu JSON.")
+    try:
+        data = json.loads(match[0])
+    except json.JSONDecodeError as e:
+        raise QuotesError(f"Niepoprawny JSON w odpowiedzi AI: {e}") from e
+    quotes = []
+    for item in data.get("cytaty", []) if isinstance(data, dict) else []:
+        if isinstance(item, dict):
+            quote = str(item.get("cytat", "")).strip().strip("„”\"").strip()
+            if quote:
+                quotes.append((quote, str(item.get("kto", "")).strip()))
+    if not quotes:
+        raise QuotesError("AI nie wybrało żadnego cytatu.")
+    return quotes[:MAX_QUOTES]
+
+
+def write_quotes(client: LLMClient, session: Session, chronicle: str) -> list[tuple[str, str]]:
+    """Najlepsze cytaty z sesji do <sesja>_cytaty.txt. Rzuca LLMError albo QuotesError."""
+    from .chronicle import quotes_path, save_quotes
+
+    source, description = quotes_source(session)
+    info = session.campaign.prompt_info()
+    # Kronika na początku - wspólny początek ze skrótem, słownikiem i stanem kampanii (cache w API)
+    prefix = chronicle_blocks([(session.name, chronicle)])
+    prompt = render("quotes", system_name=session.system_name, source_description=description, source=source,
+                    campaign_info=f"\nInformacje o kampanii (pisownia imion):\n{info}\n" if info else "")
+    progress.report("cytaty", session.name)
+    print(f"[{client.name}] Wybieranie cytatów z sesji {session.name}...")
+    quotes = parse_quotes_response(with_retry(lambda: generate(client, prompt, prefix), f"cytaty {session.name}"))
+    save_quotes(session, quotes)
+    print(f"[SUKCES] Zapisano {len(quotes)} cytatów w: {quotes_path(session)}")
+    return quotes
+
+
+def quotes_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
+    """Cytaty dla sesji z kroniką, które ich nie mają (`force` - wszystkie wskazane)."""
+    from .chronicle import quotes_path, read_chronicle
+    pending = [s for s in sessions if s.has_summary and (force or not os.path.exists(quotes_path(s)))]
+    if not pending:
+        print("Wszystkie kroniki mają już cytaty.")
+        return
+    llm = _LazyClient(provider)
+    for session in pending:
+        try:
+            write_quotes(llm.get(), session, read_chronicle(session))
+        except QuotesError as e:
+            print(f"[OSTRZEŻENIE] {session.name}: {e}")
+        except LLMError as e:
+            print(f"[OSTRZEŻENIE] {session.name}: {e}")
+            if not e.retryable:
+                return
 
 
 def brief_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
