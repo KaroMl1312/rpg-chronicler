@@ -84,3 +84,35 @@ def archive_on_gdrive(name: str, dry_run: bool = False) -> int:
         finally:
             os.unlink(lst.name)
     return total
+
+
+def delete_on_gdrive(name: str, plan, dry_run: bool = False) -> int:
+    """Usuwa pliki sesji z Drive wg zakresu `plan` (deletion.Plan) - do kosza Google Drive (30 dni).
+
+    Tylko pliki z głównych folderów (bez archiwum/). Zwraca liczbę usuniętych (w podglądzie: znalezionych).
+    """
+    import tempfile
+
+    from ..archive import remote_files
+
+    remotes = {"audio": (RCLONE_AUDIO_REMOTE, False), "txt": (RCLONE_TXT_REMOTE, False),
+               "summary": (RCLONE_SUMMARY_REMOTE, True)}
+    total = 0
+    for kind in plan.remote_kinds:
+        remote, in_summary = remotes[kind]
+        listing = subprocess.run(["rclone", "lsf", remote, "--files-only"], check=True,
+                                 capture_output=True, text=True).stdout.splitlines()
+        files = remote_files(listing, name, in_summary)
+        for f in files:
+            print(f"  {'[PODGLĄD] ' if dry_run else ''}{remote}/{f} -> kosz Google Drive")
+        total += len(files)
+        if dry_run or not files:
+            continue
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as lst:
+            lst.write("\n".join(files) + "\n")
+        try:
+            subprocess.run(["rclone", "delete", remote, "--files-from-raw", lst.name, "--drive-use-trash=true",
+                            "--quiet"], check=True)
+        finally:
+            os.unlink(lst.name)
+    return total

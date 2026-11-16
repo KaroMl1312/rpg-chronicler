@@ -15,7 +15,8 @@ def cmd_status(args):
     width = max(len(s.name) for s in sessions)
     system_width = max(len("SYSTEM"), *(len(s.system_name) for s in sessions))
     mark = lambda ok: "✓" if ok else "-"
-    transcript_mark = lambda s: "✓" if s.has_json else ("txt" if s.has_transcript else "-")
+    transcript_mark = lambda s: "✓" if s.has_json else ("txt" if s.has_transcript else
+                                                        ("notatki" if s.has_notes else "-"))
     print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE  UWAGI")
     for s in sessions:
         count = len(issues.get(s.name, []))
@@ -26,6 +27,43 @@ def cmd_status(args):
         print("\n! = podejrzane miejsca w transkrypcji; szczegóły: rpg-chronicler check")
     if any(s.has_transcript and not s.has_json for s in sessions):
         print("\ntxt = starszy format transkrypcji; zamień na JSON komendą: rpg-chronicler migrate")
+    if any(s.has_notes for s in sessions):
+        print("\nnotatki = sesja bez nagrania, kronika z notatek MG (rpg-chronicler add-session)")
+
+
+def cmd_add_session(args):
+    """Sesja bez nagrania: zapisuje notatki MG jako <nazwa>.notatki.md (kronikę pisze potem `summarize`)."""
+    import sys
+
+    from .. import notes
+    from ..session import Session, SessionNotFound
+
+    if args.file == "-":
+        text = sys.stdin.read()
+    else:
+        try:
+            with open(args.file, encoding="utf-8") as f:
+                text = f.read()
+        except OSError as e:
+            raise SessionNotFound(f"Nie można odczytać notatek: {e}")
+    session = Session(args.session)
+    try:
+        if session.has_notes and args.replace:
+            pass   # poprawione notatki istniejącej sesji z notatek
+        else:
+            notes.check_new_name(args.session)
+        present = tuple(n.strip() for n in (args.present or "").split(",") if n.strip())
+        if not present and session.has_notes and args.replace:
+            present = notes.read_notes(session).present   # bez --obecni zostają dotychczasowi obecni
+        path = notes.save_notes(args.session, notes.Notes(notes.parse(text).text, present))
+    except notes.NotesError as e:
+        raise SessionNotFound(str(e))
+    print(f"[SUKCES] Zapisano notatki sesji {args.session} w: {path}")
+    if session.has_summary:
+        print(f"[INFO] Kronika jest starsza niż notatki - wygeneruj ją ponownie: "
+              f"rpg-chronicler summarize {args.session} --force")
+    else:
+        print(f"[INFO] Kronikę napiszesz komendą: rpg-chronicler summarize {args.session}")
 
 
 def cmd_check(args):
@@ -147,6 +185,56 @@ def cmd_archive(args):
         if not args.dry_run:
             print(f"[SUKCES] {s.name}: zarchiwizowano ({len(moves)} plików lokalnie).")
     return 1 if failed else 0
+
+
+def cmd_delete(args):
+    """Usuwa kronikę / wszystko poza nagraniem / całą sesję - najpierw z Drive (do kosza), potem lokalnie."""
+    from .. import deletion
+    from ..session import SessionNotFound
+
+    if args.undo:
+        try:
+            restored = deletion.restore(args.session)
+        except deletion.DeletionError as e:
+            raise SessionNotFound(str(e))
+        for path in restored:
+            print(f"  przywrócono: {path}")
+        print(f"[SUKCES] Przywrócono {len(restored)} plików sesji {args.session}. Na Google Drive trafią przy "
+              f"wysyłaniu (rpg-chronicler upload); nagranie odzyskasz z kosza Google Drive.")
+        return 0
+
+    try:
+        plan = deletion.plan(args.session, args.scope)
+    except deletion.DeletionError as e:
+        raise SessionNotFound(str(e))
+    prefix = "[PODGLĄD] " if args.dry_run else ""
+    print(f"{prefix}Usuwanie ({deletion.SCOPE_LABELS[plan.scope]}) sesji {plan.name}:")
+    for path in plan.files:
+        print(f"  {prefix}{path} -> kosz")
+    if plan.scope == deletion.SESSION and not args.dry_run and not args.yes:
+        if not args.interactive:
+            raise SessionNotFound("Usunięcie całej sesji z nagraniem wymaga potwierdzenia: dodaj --yes.")
+        answer = input(f"To usunie CAŁĄ sesję razem z nagraniem. Wpisz jej nazwę ({plan.name}), żeby potwierdzić: ")
+        if answer.strip() != plan.name:
+            print("[POMINIĘTO] Nazwa się nie zgadza - nic nie usunięto.")
+            return 1
+
+    if not args.offline:
+        from ..storage.drive import delete_on_gdrive
+        try:
+            delete_on_gdrive(plan.name, plan, dry_run=args.dry_run)
+        except Exception as e:
+            # Bez usunięcia z Drive `sync` pobrałby pliki z powrotem - lokalnie też nic nie ruszamy
+            raise SessionNotFound(f"Nie udało się usunąć plików z Google Drive: {e}. Nic nie usunięto "
+                                  f"(tylko lokalnie: --offline - ale wtedy `sync` pobierze je z powrotem).")
+    if args.dry_run:
+        return 0
+    entry = deletion.delete_local(plan)
+    print(f"[SUKCES] Usunięto {len(plan.files)} plików sesji {plan.name} "
+          f"({deletion.SCOPE_LABELS[plan.scope]}). Kopia: {entry} (rpg-chronicler delete {plan.name} --undo).")
+    for warning in deletion.campaign_warnings(plan.name):
+        print(f"[INFO] {warning}")
+    return 0
 
 
 def cmd_sync(args):

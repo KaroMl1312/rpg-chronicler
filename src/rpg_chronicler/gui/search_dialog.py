@@ -5,7 +5,7 @@ from gi.repository import Adw, GLib, Gtk
 
 from ..campaigns import campaign_key
 from ..quality import format_time
-from ..search import KIND_CHRONICLE, Hit, TranscriptCache, search, summary_line
+from ..search import KIND_CHRONICLE, KIND_NOTES, Hit, TranscriptCache, search, summary_line
 from ..session import Session
 from .player import SnippetPlayer
 from .text import highlight_markup
@@ -84,13 +84,13 @@ class SearchDialog(Adw.Dialog):
             self.results.append(self._row(hit, sessions.get(hit.session), query))
 
     def _row(self, hit: Hit, session: Session | None, query: str) -> Gtk.Widget:
-        if hit.kind == KIND_CHRONICLE:
-            title = f"{hit.session} · kronika" + (f" · {hit.heading}" if hit.heading else "")
+        if hit.kind in (KIND_CHRONICLE, KIND_NOTES):
+            title = f"{hit.session} · {hit.kind}" + (f" · {hit.heading}" if hit.heading else "")
         else:
             title = f"{hit.session} · {format_time(hit.start)}" + (f" · {hit.speaker}" if hit.speaker else "")
         row = Adw.ActionRow(title=GLib.markup_escape_text(title), subtitle=highlight_markup(hit.text, query),
                             subtitle_lines=4)
-        if hit.kind != KIND_CHRONICLE and session is not None and session.audio_path:
+        if hit.start is not None and session is not None and session.audio_path:
             key = (hit.session, hit.start)
             play = Gtk.Button(icon_name="media-playback-start-symbolic", valign=Gtk.Align.CENTER,
                               tooltip_text="Odsłuchaj ten fragment nagrania", css_classes=["flat"])

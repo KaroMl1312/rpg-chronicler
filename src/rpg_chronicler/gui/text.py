@@ -3,6 +3,7 @@ import os
 import re
 
 from ..campaigns import campaign_key
+from ..notes import chronicle_is_stale
 from ..session import Session
 from ..transcript import Transcript
 
@@ -34,6 +35,12 @@ def has_speaker_labels(session: Session) -> bool:
 
 def session_stage(session: Session) -> tuple[str, bool]:
     """(opis następnego kroku, czy sesja jest ukończona)."""
+    if not session.has_transcript and session.has_notes:   # sesja bez nagrania - kronika z notatek MG
+        if not session.has_summary:
+            return "z notatek · czeka na kronikę", False
+        if chronicle_is_stale(session):
+            return "z notatek · notatki nowsze niż kronika", False
+        return "z notatek · gotowe", True
     if not session.has_transcript:
         return ("czeka na transkrypcję", False) if session.audio_path else ("brak nagrania", False)
     if not session.has_speakers and has_speaker_labels(session):
@@ -67,7 +74,7 @@ def campaign_filter_options(sessions: list[Session]) -> list[tuple[str | None, s
 def session_signature(session: Session) -> tuple:
     """Zmienia się, gdy zmieni się którykolwiek plik sesji - wtedy trzeba odświeżyć widok."""
     paths = (session.audio_path, session.json_path, session.txt_path, session.speakers_path,
-             session.speaker_suggestion_path, session.summary_path)
+             session.speaker_suggestion_path, session.summary_path, session.notes_path)
     signature = []
     for path in paths:
         try:

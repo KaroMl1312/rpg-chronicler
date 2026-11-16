@@ -18,6 +18,7 @@ class Application(Adw.Application):
         self.set_accels_for_action("win.preferences", ["<Control>comma"])
         self.set_accels_for_action("win.campaigns", ["<Control>k"])
         self.set_accels_for_action("win.search", ["<Control>f"])
+        self.set_accels_for_action("win.add-notes", ["<Control>n"])
         self.set_accels_for_action("window.close", ["<Control>w"])
         self.set_accels_for_action("app.quit", ["<Control>q"])
         quit_action = Gio.SimpleAction.new("quit", None)

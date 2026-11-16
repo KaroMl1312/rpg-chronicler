@@ -90,7 +90,7 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "filtr kampanii", "kronika", "skrót i cytaty", "transkrypcja", "mówcy",
                     "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
-                    "uzupełnianie"], report
+                    "uzupełnianie", "notatki", "usuwanie"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()
                 if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]

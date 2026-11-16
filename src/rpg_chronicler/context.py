@@ -25,7 +25,7 @@ def previous_session(session: Session) -> Session | None:
     return max(candidates, key=lambda item: item[0])[1] if candidates else None
 
 
-def campaign_context(session: Session, include_previous: bool = True) -> str:
+def campaign_context(session: Session, include_previous: bool = True, material: str = "transkrypcji") -> str:
     """Opis kampanii, słownik nazw, stan kampanii sprzed sesji i poprzednia kronika - ciągłość i pisownia."""
     parts = []
     info = session.campaign.prompt_info()
@@ -46,6 +46,6 @@ def campaign_context(session: Session, include_previous: bool = True) -> str:
             text = ""
         if text:
             parts.append(f"Kronika poprzedniej sesji ({previous.name}) - tylko dla ciągłości fabuły, wątków i imion; "
-                         f"nie streszczaj jej ponownie, opisuj wyłącznie wydarzenia z nowej transkrypcji:\n"
+                         f"nie streszczaj jej ponownie, opisuj wyłącznie wydarzenia z nowej {material}:\n"
                          f"<poprzednia_kronika>\n{text}\n</poprzednia_kronika>")
     return "".join(f"\n\n{part}" for part in parts)

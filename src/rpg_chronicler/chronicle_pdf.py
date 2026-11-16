@@ -6,6 +6,7 @@ w przeglądarkach PDF opartych na popplerze (np. domyślna przeglądarka GNOME) 
 import html
 import re
 
+from . import notes
 from .campaigns import campaign_key
 from .chronicle import (brief_is_current, chronicle_title, read_brief, read_chronicle, read_quotes,
                         session_date_text)
@@ -93,6 +94,9 @@ def chronicle_html(text: str, session: Session) -> str:
             campaign_key(session.name).casefold()):
         campaign_line = campaign.system  # „Warhammer Fantasy Roleplay · Warhammer” - bez powtórzenia
     date = session_date_text(session)
+    date_line = " · ".join(part for part in (f"Sesja z {date}" if date else "",
+                                             notes.ANNOTATION if session.has_notes else "") if part)
+    date_line = date_line[:1].upper() + date_line[1:]
     brief = ""
     if brief_is_current(session) and read_brief(session):
         brief_body = markdown.markdown(strip_emoji(read_brief(session)), extensions=["sane_lists"])
@@ -101,7 +105,7 @@ def chronicle_html(text: str, session: Session) -> str:
     return (f'<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>{html.escape(title)}</title>'
             f"</head><body><header><div class=\"campaign\">{html.escape(campaign_line)}</div>"
             f"<h1>{html.escape(title)}</h1>"
-            + (f'<div class="date">Sesja z {html.escape(date)}</div>' if date else "")
+            + (f'<div class="date">{html.escape(date_line)}</div>' if date_line else "")
             + f"</header>{brief}{body}{quotes}</body></html>")
 
 

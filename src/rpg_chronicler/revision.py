@@ -4,6 +4,7 @@ from .after_chronicle import write_brief
 from .chronicle_events import events_path
 from .config import CHRONICLE_BRIEF
 from .llm import LLMClient, LLMError, generate, with_retry
+from .notes import for_llm, read_notes
 from .prompts import chronicle_blocks, render
 from .session import Session
 from .transcript import load_speaker_mapping
@@ -17,7 +18,7 @@ class RevisionError(Exception):
 
 
 def revision_source(session: Session) -> tuple[str, str]:
-    """(materiał źródłowy, opis do promptu): lista wydarzeń z kroniki w dwóch krokach albo transkrypcja."""
+    """(materiał źródłowy, opis do promptu): lista wydarzeń z kroniki w dwóch krokach, transkrypcja albo notatki."""
     try:
         with open(events_path(session), encoding="utf-8") as f:
             return f.read().strip(), " oraz lista wydarzeń sesji spisana z nagrania (materiał źródłowy)"
@@ -26,6 +27,9 @@ def revision_source(session: Session) -> tuple[str, str]:
     if session.has_transcript:
         transcript = session.load_transcript().compact_for_llm(load_speaker_mapping(session.txt_path))
         return transcript, " oraz transkrypcja nagrania sesji (materiał źródłowy)"
+    session_notes = read_notes(session)
+    if session_notes is not None:
+        return for_llm(session_notes), " oraz notatki Mistrza Gry z sesji (materiał źródłowy, sesja nie była nagrywana)"
     return "", ""
 
 

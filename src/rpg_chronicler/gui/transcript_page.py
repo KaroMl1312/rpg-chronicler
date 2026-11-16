@@ -1,23 +1,27 @@
-"""Zakładka „Transkrypcja”: tekst z kolorami mówców, a przed transkrypcją - panel nagrania (cisza, przycinanie)."""
+"""Zakładka „Transkrypcja”: tekst z kolorami mówców, a przed transkrypcją - panel nagrania (cisza, przycinanie).
+
+Sesja bez nagrania pokazuje tu notatki MG (z przyciskiem edycji).
+"""
 from typing import Callable
 
 from gi.repository import Adw, Gtk, Pango
 
-from .. import quality, stats
+from .. import notes, quality, stats
 from ..session import Session
 from ..transcript import Transcript, load_speaker_mapping
 from .player import SnippetPlayer
 from .recording_page import RecordingPanel
 from .text import format_minutes, format_timestamp, transcript_blocks
-from .widgets import RegisterTaskButton, issues_button, stats_button, text_page
+from .widgets import RegisterTaskButton, issues_button, markdown_buffer, stats_button, text_page
 
 SPEAKER_COLORS = ["#3584e4", "#e66100", "#26a269", "#9141ac", "#c64600", "#1c71d8", "#a51d2d", "#865e3c"]
 
 
 class TranscriptPage(Adw.Bin):
     def __init__(self, player: SnippetPlayer, start_task: Callable[[str, list[str]], None],
-                 register_task_button: RegisterTaskButton):
+                 register_task_button: RegisterTaskButton, edit_notes: Callable[[Session], None]):
         super().__init__()
+        self._edit_notes = edit_notes
         self._player = player
         self._start_task = start_task
         self._register = register_task_button
@@ -34,6 +38,8 @@ class TranscriptPage(Adw.Bin):
             self.recording_panel.set_busy(busy)
 
     def _view(self, session: Session, transcript: Transcript | None) -> Gtk.Widget:
+        if transcript is None and session.has_notes:
+            return self._notes_view(session)
         if transcript is None:
             if session.audio_path:
                 self.recording_panel = RecordingPanel(session, self._player, self._start_task,
@@ -74,6 +80,21 @@ class TranscriptPage(Adw.Bin):
         if transcript.segments:
             buttons.append(stats_button(stats.session_stats(transcript, mapping, session.campaign)))
         return text_page(buffer, " · ".join(info), buttons, leading=leading)
+
+    def _notes_view(self, session: Session) -> Gtk.Widget:
+        """Notatki MG sesji bez nagrania: obecni, tekst i „Edytuj notatki…”."""
+        session_notes = notes.read_notes(session) or notes.Notes("")
+        info = ["sesja bez nagrania · notatki MG"]
+        if session_notes.present:
+            info.append("obecni: " + ", ".join(session_notes.present))
+        leading = None
+        if session.has_summary and notes.chronicle_is_stale(session):
+            leading = Gtk.Image(icon_name="dialog-warning-symbolic", css_classes=["warning"],
+                                tooltip_text="Notatki zmieniono po napisaniu kroniki - wygeneruj ją ponownie "
+                                             "(Kronika → ⋯ → Generuj ponownie).")
+        edit = Gtk.Button(label="Edytuj notatki…", tooltip_text="Popraw notatki albo listę obecnych postaci")
+        edit.connect("clicked", lambda _b: self._edit_notes(session))
+        return text_page(markdown_buffer(session_notes.text), " · ".join(info), [edit], leading=leading)
 
     def _issues_widget(self, session: Session, issues: list[quality.Issue]) -> Gtk.Widget | None:
         """Uwagi jakości (z „Usuń powtórzenia” przy pętlach Whispera) albo „Przywróć” po ich usunięciu."""

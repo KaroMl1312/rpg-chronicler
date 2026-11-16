@@ -3,7 +3,7 @@
 Starsze sesje powstały, zanim aplikacja pisała skróty, cytaty i PDF-y, a encyklopedie i dzienniki
 postaci nie odświeżają się same po nowej kronice. Plan wynika tylko z plików (jak reszta stanu):
 - skrót: brak albo starszy niż kronika (`chronicle.brief_is_current`),
-- cytaty: brak pliku,
+- cytaty: brak pliku (poza sesjami z notatek - nie ma czego cytować),
 - PDF: nieaktualny (`chronicle.pdf_is_current`) albo zmieni się, bo dojdzie skrót lub cytaty,
 - encyklopedia: każda kampania z kronikami - brak albo starsza niż kronika, skrót lub stan kampanii,
 - dziennik postaci: tylko istniejące - starsze niż kronika kampanii (wpisy są w cache, AI pisze tylko nowe).
@@ -63,7 +63,7 @@ def plan(sessions) -> list[Step]:
     steps: list[Step] = []
     for s in chronicled:
         brief = not brief_is_current(s)
-        quotes = not os.path.exists(quotes_path(s))
+        quotes = not s.has_notes and not os.path.exists(quotes_path(s))   # sesja z notatek nie ma cytatów
         if brief:
             steps.append(Step(BRIEF, s.name))
         if quotes:

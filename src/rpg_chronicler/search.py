@@ -17,12 +17,13 @@ WINDOW = 3            # tyle kolejnych segmentów transkrypcji może obejmować 
 SNIPPET_LIMIT = 240   # znaków fragmentu w wyniku
 KIND_CHRONICLE = "kronika"
 KIND_TRANSCRIPT = "transkrypcja"
+KIND_NOTES = "notatki"     # sesja bez nagrania: notatki MG (liczą się jak transkrypcja)
 
 
 @dataclass(frozen=True)
 class Hit:
     session: str
-    kind: str                      # KIND_CHRONICLE | KIND_TRANSCRIPT
+    kind: str                      # KIND_CHRONICLE | KIND_TRANSCRIPT | KIND_NOTES
     text: str                      # fragment z trafieniem
     start: float | None = None     # transkrypcja: czas w nagraniu (s)
     end: float | None = None
@@ -59,8 +60,9 @@ def _shorten(text: str, limit: int = SNIPPET_LIMIT) -> str:
     return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
 
 
-def search_chronicle(session_name: str, text: str, stems: list[tuple[str, ...]]) -> list[Hit]:
-    """Akapity kroniki (i punkty list) z trafieniem; z nagłówkiem sekcji, w której są."""
+def search_chronicle(session_name: str, text: str, stems: list[tuple[str, ...]],
+                     kind: str = KIND_CHRONICLE) -> list[Hit]:
+    """Akapity kroniki albo notatek (i punkty list) z trafieniem; z nagłówkiem sekcji, w której są."""
     hits, heading = [], None
     for line in text.splitlines():
         stripped = line.strip()
@@ -70,7 +72,7 @@ def search_chronicle(session_name: str, text: str, stems: list[tuple[str, ...]])
         if stripped.startswith("#") or (stripped.startswith("**") and stripped.endswith("**")):
             heading = chronicle_title(plain) or plain
         if matches_stems(words(stripped), stems):
-            hits.append(Hit(session_name, KIND_CHRONICLE, _shorten(plain), heading=heading))
+            hits.append(Hit(session_name, kind, _shorten(plain), heading=heading))
     return hits
 
 
@@ -105,7 +107,10 @@ def _order(session_name: str) -> tuple:
 
 def search(sessions, query: str, campaign: str | None = None, chronicles: bool = True,
            transcripts: bool = True, cache: TranscriptCache | None = None) -> list[Hit]:
-    """Wszystkie trafienia (od najstarszej sesji; w sesji: najpierw kronika, potem transkrypcja wg czasu)."""
+    """Wszystkie trafienia (od najstarszej sesji; w sesji: najpierw kronika, potem transkrypcja wg czasu).
+
+    `transcripts` obejmuje też notatki sesji bez nagrania.
+    """
     stems = query_stems(query)
     if not stems:
         return []
@@ -124,6 +129,12 @@ def search(sessions, query: str, campaign: str | None = None, chronicles: bool =
             transcript = cache.get(session)
             if transcript is not None:
                 hits += search_transcript(session.name, transcript, load_speaker_mapping(session.txt_path), stems)
+        elif transcripts and session.has_notes:
+            try:
+                with open(session.notes_path, encoding="utf-8") as f:
+                    hits += search_chronicle(session.name, f.read(), stems, KIND_NOTES)
+            except OSError:
+                pass
     return hits
 
 

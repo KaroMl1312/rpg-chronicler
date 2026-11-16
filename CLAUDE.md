@@ -28,7 +28,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `diary KAMPANIA POSTAĆ [--force]`, `stats [SESJA...] [--campaign K]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `fix-loops [SESJA...] [--dry-run] [--undo]`, `backfill [--dry-run]`, `archive SESJA... [--dry-run] [--offline]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `add-session NAZWA --plik PLIK [--obecni "A, B"] [--replace]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `diary KAMPANIA POSTAĆ [--force]`, `stats [SESJA...] [--campaign K]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `fix-loops [SESJA...] [--dry-run] [--undo]`, `backfill [--dry-run]`, `archive SESJA... [--dry-run] [--offline]`, `delete SESJA [--zakres kronika|od-nowa|sesja] [--dry-run] [--offline] [--yes] [--undo]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -41,6 +41,7 @@ src/rpg_chronicler/
   cli/                        # komendy: __init__ (main), parser (argparse), common (pomocniki), sessions (przebieg),
                               #   audio (nagrania), chronicles (kroniki, PDF, Discord, szukanie), campaigns; ciężkie importy leniwie w cmd_*
   session.py                  # Session (nazwa + ścieżki pochodne), list_sessions(), SessionNotFound
+  notes.py                    # sesje bez nagrania: notatki MG (<nazwa>.notatki.md), obecni, nazwa sesji, adnotacja; stdlib
   campaigns.py                # Campaign (system, opis, postacie graczy, słownik), odczyt/zapis kampanie.toml, session_date()
   voices.py                   # odciski głosu (.glosy.json), profile głosów kampanii, podpowiedzi imion; tylko stdlib
   glossary.py                 # propozycje słownika od AI z kronik, oczekujące w ~/.cache/rpg-chronicler/kampanie/
@@ -59,6 +60,7 @@ src/rpg_chronicler/
   stats.py                    # statystyki sesji: kto ile mówił, MG a gracze, czas gry i przerw; stdlib
   quality.py                  # kontrola jakości transkrypcji: mało tekstu, dziury, pętle Whispera (i ich usuwanie), kopie; stdlib
   backfill.py                 # „Uzupełnij brakujące”: plan skrótów, cytatów, PDF-ów, encyklopedii, dzienników; stdlib
+  deletion.py                 # usuwanie: kronika / wszystko poza nagraniem / cała sesja; kosz aplikacji, przywracanie; stdlib
   archive.py                  # archiwizacja sesji do podfolderów archiwum/ (lokalnie; Drive w storage/drive.py); stdlib
   audio_trim.py               # wykrywanie ciszy (ffmpeg silencedetect) i przycinanie nagrań; tylko stdlib + ffmpeg
   chronicle.py                # kronika do udostępnienia: tytuł, data sesji, zapowiedź, stan wysyłki, webhooki; stdlib
@@ -76,6 +78,7 @@ src/rpg_chronicler/
     speakers_page.py          #   zakładka „Mówcy”: sugestia AI, imiona, odsłuch próbek
     discord_dialog.py         #   okno „Wyślij na Discord”: kanał, zapowiedź (edytowalna/AI), załącznik PDF
     campaigns_dialog.py       #   okno „Kampanie” (Ctrl+K): opis, stan kampanii, encyklopedia, postacie graczy, słownik, propozycje AI
+    notes_dialog.py           #   okno „Dodaj sesję z notatek” (Ctrl+N): kampania, data, obecni, notatki; też edycja notatek
     search_dialog.py          #   okno „Szukaj w sesjach” (Ctrl+F): wyniki z pogrubieniem, odsłuch fragmentu, przejście do sesji
     recording_page.py         #   panel nagrania przed transkrypcją: cisza, oś czasu, przycinanie, „Transkrybuj”
     settings_dialog.py        #   okno ustawień (Adw.PreferencesDialog), zapis od razu przy zmianie
@@ -109,6 +112,7 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>.transkrypcja.json` | `TXT_DIR` | **źródło prawdy** transkrypcji (`Transcript.to_dict`, `version=1`) |
 | `<nazwa>.txt` | `TXT_DIR` | wersja do czytania, generowana z JSON; starsze sesje mają tylko .txt |
 | `<nazwa>.mowcy.json` | `TXT_DIR` | mapowanie `{"SPEAKER_00": "MG", ...}` |
+| `<nazwa>.notatki.md` | `TXT_DIR` | sesja bez nagrania: notatki MG zamiast transkrypcji; 1. linia opcjonalnie `<!-- obecni: A, B -->` |
 | `<nazwa>.mowcy-sugestia.md` | `TXT_DIR` | ostatnia sugestia AI co do mówców (`.md`, żeby nie była brana za transkrypcję) |
 | `<nazwa>_podsumowanie.txt` | `SUMMARY_DIR` | kronika wygenerowana przez LLM |
 | `<nazwa>.glosy.json` | `TXT_DIR` | odciski głosu mówców (wektory wespeaker) do rozpoznawania graczy |
@@ -132,6 +136,10 @@ Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówc
 **Archiwizacja** (`archive`): pliki sesji (`<nazwa>.*` w folderach nagrań/transkrypcji, `<nazwa>_<rodzaj>.*` w kronikach) trafiają do podfolderu `archiwum/`, lokalnie i na Drive (`rclone move --files-from-raw`) — inaczej `sync` pobrałby je z powrotem. `list_sessions` nie widzi podfolderów.
 
 Stan przetwarzania wynika **wyłącznie z istnienia plików** (`Session.has_*`) — nie ma bazy danych. Każdy krok pomija sesje już przetworzone (chyba że `--force`). `sync` pobiera też gotowe transkrypcje/podsumowania z Drive, żeby nie powtarzać pracy.
+
+**Usuwanie** (`delete`, GUI: menu „⋯” w nagłówku sesji): zakresy `kronika` (pliki `<nazwa>_*` w kronikach: kronika, skrót, cytaty, PDF, zapowiedź, `_discord.json`, lista wydarzeń - transkrypcja/notatki zostają), `od-nowa` (do tego `<nazwa>.*` w transkrypcjach - zostaje tylko nagranie; odmowa bez nagrania) i `sesja` (do tego nagranie i `oryginaly/<nazwa>.*`; CLI pyta o wpisanie nazwy albo wymaga `--yes`, GUI - zaznaczenia „Rozumiem…”). Najpierw Drive (`storage/drive.delete_on_gdrive`: `rclone delete --files-from-raw` do **kosza Google Drive**), a gdy się nie uda - nic lokalnie (inaczej `sync` pobrałby pliki z powrotem; `--offline` świadomie tylko lokalnie). Lokalnie pliki idą do kosza aplikacji `~/.local/share/rpg-chronicler/kosz/<nazwa>__<czas>/` z `usuniete.json` (oryginalne ścieżki); `--undo` przywraca najnowsze usunięcie, wpisy starsze niż 30 dni czyści każde kolejne usuwanie. Pamięć podręczna sesji (wydarzenia, poprzednie wersje kroniki i transkrypcji, analiza ciszy) jest kasowana. Encyklopedii, dzienników ani stanu kampanii usuwanie nie zmienia - `deletion.campaign_warnings` podpowiada, co odświeżyć.
+
+**Sesje bez nagrania** (`notes.py`, `add-session`, GUI: „+” nad listą sesji / Ctrl+N): `<nazwa>.notatki.md` w `TXT_DIR` (na Drive jak transkrypcje); `list_sessions` je widzi, `Session.has_notes`, `has_source` = transkrypcja albo notatki (`has_transcript` zostaje fałszywe - mówcy, statystyki, jakość, cytaty po prostu ich nie dotyczą). Nazwa `Kampania_RRMMDD` z kampanii i daty (`notes.session_name`, istniejąca sesja = odmowa). Kronika z promptu `prompts/summary_notes.md` (notatki to zwykle punkty MG: rozwiń w opowieść, **nie dopisuj zdarzeń**, długość wg ilości materiału), bez mówców i dwóch kroków; po niej skrót, słownik i stan kampanii, **bez cytatów** (też w `backfill`). Lista obecnych zastępuje mapowanie mówców (`after_chronicle.session_characters`, `diary.was_present`). Notatki są materiałem poprawki kroniki i wyszukiwarki (`KIND_NOTES`, razem z transkrypcjami). Kronika starsza od notatek = nieaktualna (`notes.chronicle_is_stale`, etap na liście i ostrzeżenie w GUI). PDF i stopka Discorda mają adnotację „spisana z notatek Mistrza Gry” (`notes.ANNOTATION`). W GUI zakładka „Transkrypcja” nazywa się wtedy „Notatki” (podgląd + „Edytuj notatki…”), a „Mówcy” jest ukryta.
 
 ## Kampanie
 
@@ -196,7 +204,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 ## GUI
 
 - **Dwa interpretery:** GUI działa na systemowym `/usr/bin/python3` (Fedora: PyGObject, GTK 4, libadwaita), bo PyGObject nie ma w `.venv`. Ciężką pracę (transkrypcja, LLM, rclone) zleca procesowi `.venv/bin/rpg-chronicler` z `--no-interactive` i `RPG_CHRONICLER_PROGRESS=json`.
-- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `transcript`, `campaigns`, `glossary`, `voices`, `chronicle`, `discord`, `audio_trim`, `progress`, `quality`, `archive`, `memory`, `stats`, `diary`, `encyclopedia`, `backfill` (`diary` liczy ścieżkę listy wydarzeń sam, bo `chronicle_events` importuje `llm`; `memory` importuje `llm` dopiero w funkcjach z klientem; `glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
+- Dlatego `gui/` może importować tylko moduły bez zależności zewnętrznych: `config`, `settings`, `session`, `notes`, `transcript`, `campaigns`, `glossary`, `voices`, `chronicle`, `discord`, `audio_trim`, `progress`, `quality`, `archive`, `deletion`, `memory`, `stats`, `diary`, `encyclopedia`, `backfill` (`diary` liczy ścieżkę listy wydarzeń sam, bo `chronicle_events` importuje `llm`; `memory` importuje `llm` dopiero w funkcjach z klientem; `glossary` importuje `llm` dopiero wewnątrz `extract_proposals`). **Nie importuj w GUI** `summary`, `llm`, `transcription`, `storage`. Te moduły muszą działać na Pythonie 3.11 (`.venv`) i systemowym (obecnie 3.15).
 - Interakcja z użytkownikiem w GUI zamiast `input()`: sugestia mówców przez `speakers --suggest-only` (zapis do `.mowcy-sugestia.md`), imiona zapisuje GUI bezpośrednio (`save_speaker_mapping`).
 - Nowy długi etap w CLI → wołaj `progress.report(etap, sesja, zrobione, razem)`; bez zmiennej środowiskowej nic nie wypisuje. Wyjście `\r` (np. rclone -P) GUI pokazuje tylko w pasku stanu, nie w logu.
 - Przy starcie GUI sprawdza w tle, czy `.venv` importuje faster-whisper/pyannote/torchcodec; jeśli nie, pokazuje `Adw.Banner` z instrukcją `./sprawdz-srodowisko --napraw`. Wynik `audio_trim.has_duration_header` (ffprobe) jest zapamiętywany per wersja pliku (ścieżka, rozmiar, data).

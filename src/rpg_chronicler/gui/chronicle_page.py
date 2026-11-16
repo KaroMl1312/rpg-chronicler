@@ -3,7 +3,7 @@ from typing import Callable
 
 from gi.repository import Adw, Gio, Gtk
 
-from .. import chronicle
+from .. import chronicle, notes
 from ..session import Session
 from .player import SnippetPlayer
 from .widgets import RegisterTaskButton, markdown_buffer, task_button, text_page, text_view
@@ -49,8 +49,9 @@ class ChroniclePage(Adw.Bin):
     def _view(self, session: Session) -> Gtk.Widget:
         if not session.has_summary:
             status = Adw.StatusPage(icon_name="x-office-document-symbolic", title="Brak kroniki")
-            if session.has_transcript:
-                status.set_description(f"AI ({self._provider_label()}) napisze kronikę sesji w klimacie "
+            if session.has_source:
+                source = "z notatek MG " if session.has_notes and not session.has_transcript else ""
+                status.set_description(f"AI ({self._provider_label()}) napisze kronikę sesji {source}w klimacie "
                                        f"systemu {session.system_name}.")
                 status.set_child(task_button("Generuj kronikę", lambda: self._summarize(session, False),
                                              self._register))
@@ -108,12 +109,20 @@ class ChroniclePage(Adw.Bin):
         sent = chronicle.sent_text(session)
         info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
+        if session.has_notes:
+            info = f"{session.system_name} · z notatek MG" + (
+                " · notatki zmieniono po kronice - wygeneruj ponownie" if notes.chronicle_is_stale(session)
+                else f" · wysłano na Discord {sent}" if sent else "")
         more = _menu_button(more_items, tooltip=f"Więcej (ponowne generowanie: {self._provider_label()})")
         return text_page(stack, info, [revise_button, pdf_button, discord_button, more], leading=toggles)
 
     def _quotes_view(self, session: Session) -> Gtk.Widget:
         """Najlepsze cytaty z sesji albo zachęta do ich wybrania."""
         quotes = chronicle.read_quotes(session)
+        if not quotes and session.has_notes:
+            return Adw.StatusPage(icon_name="user-available-symbolic", title="Brak cytatów",
+                                  description="Sesja nie była nagrywana - kronika powstała z notatek MG, "
+                                              "więc nie ma wypowiedzi do cytowania.")
         if not quotes:
             status = Adw.StatusPage(icon_name="user-available-symbolic", title="Brak cytatów",
                                     description="AI wybierze po cytacie każdej postaci i 2–3 najciekawsze wypowiedzi "

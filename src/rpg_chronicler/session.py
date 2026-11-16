@@ -8,6 +8,7 @@ from .config import AUDIO_DIR, SUMMARY_DIR, SUPPORTED_EXTS, TXT_DIR
 from .transcript import Transcript, load_transcript, speakers_json_path
 
 TRANSCRIPT_JSON_SUFFIX = ".transkrypcja.json"
+NOTES_SUFFIX = ".notatki.md"   # sesja bez nagrania: notatki MG zamiast transkrypcji (notes.py)
 
 
 class SessionNotFound(Exception):
@@ -37,6 +38,10 @@ class Session:
         return os.path.join(TXT_DIR, f"{self.name}.mowcy-sugestia.md")
 
     @property
+    def notes_path(self) -> str:
+        return os.path.join(TXT_DIR, f"{self.name}{NOTES_SUFFIX}")
+
+    @property
     def summary_path(self) -> str:
         return os.path.join(SUMMARY_DIR, f"{self.name}_podsumowanie.txt")
 
@@ -55,6 +60,16 @@ class Session:
     @property
     def has_json(self) -> bool:
         return os.path.exists(self.json_path)
+
+    @property
+    def has_notes(self) -> bool:
+        """Sesja bez nagrania - kronika z notatek MG (wtedy nie ma transkrypcji)."""
+        return os.path.exists(self.notes_path)
+
+    @property
+    def has_source(self) -> bool:
+        """Jest materiał do kroniki: transkrypcja albo notatki."""
+        return self.has_transcript or self.has_notes
 
     @property
     def has_speakers(self) -> bool:
@@ -99,11 +114,12 @@ def _find_audio() -> dict[str, str]:
 
 
 def list_sessions(names: list[str] | None = None) -> list[Session]:
-    """Zwraca sesje znalezione na podstawie nagrań i transkrypcji (opcjonalnie tylko wskazane)."""
+    """Zwraca sesje znalezione na podstawie nagrań, transkrypcji i notatek (opcjonalnie tylko wskazane)."""
     audio = _find_audio()
     transcripts = {_name_from_path(p, ".txt") for p in glob.glob(os.path.join(TXT_DIR, "*.txt"))}
     transcripts |= {_name_from_path(p, TRANSCRIPT_JSON_SUFFIX)
                     for p in glob.glob(os.path.join(TXT_DIR, f"*{TRANSCRIPT_JSON_SUFFIX}"))}
+    transcripts |= {_name_from_path(p, NOTES_SUFFIX) for p in glob.glob(os.path.join(TXT_DIR, f"*{NOTES_SUFFIX}"))}
 
     sessions = {name: Session(name, audio.get(name)) for name in audio.keys() | transcripts}
     if not names:

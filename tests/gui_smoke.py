@@ -141,6 +141,57 @@ def steps(win):
         dialog.force_close()
     yield "uzupełnianie", backfill
 
+    def notes_session():
+        import datetime
+        from rpg_chronicler.gui.notes_dialog import NotesDialog
+        win.show_notes_dialog(None)
+        dialog = win.get_visible_dialog()
+        assert isinstance(dialog, NotesDialog), dialog
+        dialog.campaign_row.set_text("Warhammer")
+        dialog._date = datetime.date(2026, 1, 2)
+        assert not dialog.save_button.get_sensitive()          # bez notatek
+        dialog.buffer.set_text("- Drużyna dotarła do Ubersreiku.")
+        assert dialog.save_button.get_sensitive() and dialog.name_row.get_subtitle() == "Warhammer_260102"
+        assert [name for name, _row in dialog._present_rows] == ["Fen", "Sir Amos"]
+        dialog._present_rows[1][1].set_active(False)
+        dialog.generate_row.set_active(False)
+        dialog._save()
+        assert win.current.name == "Warhammer_260102" and win.current.has_notes
+        assert win.view_stack.get_page(win.transcript_page).get_title() == "Notatki"
+        assert not win.view_stack.get_page(win.speakers_page).get_visible()
+        texts = labels(win.transcript_page)
+        assert "Edytuj notatki…" in texts and any("obecni: Fen" in t for t in texts), texts
+        assert "Generuj kronikę" in labels(win.chronicle_page), labels(win.chronicle_page)
+
+        win.show_notes_dialog(win.current)                      # edycja: nazwa stała, notatki wczytane
+        edit = win.get_visible_dialog()
+        assert edit.save_button.get_sensitive() and "Ubersreiku" in edit._text()
+        edit.force_close()
+        win.open_session(FULL, "transcript")                    # zwykła sesja: znów „Transkrypcja” i „Mówcy”
+        assert win.view_stack.get_page(win.speakers_page).get_visible()
+    yield "notatki", notes_session
+
+    def delete_dialogs():
+        win.open_session(FULL, "summary")
+        for scope in ("kronika", "od-nowa", "sesja"):
+            assert win.lookup_action(f"delete-{scope}").get_enabled(), scope
+        win.confirm_delete("kronika")
+        dialog = win.get_visible_dialog()
+        assert dialog.get_heading() == "Usunąć kronikę?" and dialog.get_response_enabled("delete")
+        assert any("Warhammer_261105_podsumowanie.txt" in t for t in labels(dialog.get_extra_child()))
+        dialog.force_close()
+        win.confirm_delete("sesja")
+        dialog = win.get_visible_dialog()
+        assert not dialog.get_response_enabled("delete")        # najpierw „Rozumiem…”
+        check = next(w for w in _walk(dialog.get_extra_child()) if isinstance(w, Gtk.CheckButton))
+        check.set_active(True)
+        assert dialog.get_response_enabled("delete")
+        dialog.force_close()
+        win.open_session("Warhammer_260102", "transcript")      # sesja z notatek: bez kroniki i nagrania
+        assert not win.lookup_action("delete-kronika").get_enabled()
+        assert not win.lookup_action("delete-od-nowa").get_enabled()
+    yield "usuwanie", delete_dialogs
+
 
 def main() -> int:
     app = Adw.Application(application_id="pl.rpgchronicler.TestDymny")

@@ -6,8 +6,8 @@ from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
 from .chronicles import (cmd_backfill, cmd_brief, cmd_diary, cmd_discord, cmd_discord_test, cmd_encyclopedia,
                          cmd_pdf, cmd_quotes, cmd_revise, cmd_search)
-from .sessions import (cmd_archive, cmd_check, cmd_fix_loops, cmd_migrate, cmd_run, cmd_speakers, cmd_stats,
-                       cmd_status, cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
+from .sessions import (cmd_add_session, cmd_archive, cmd_check, cmd_delete, cmd_fix_loops, cmd_migrate, cmd_run,
+                       cmd_speakers, cmd_stats, cmd_status, cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
 
 
 PROVIDERS = ["claude-code", "anthropic", "gemini"]
@@ -84,6 +84,15 @@ def build_parser() -> argparse.ArgumentParser:
     interactive_args(p)
     p.add_argument("--force", action="store_true", help="wygeneruj ponownie istniejące podsumowania")
     p.set_defaults(func=cmd_summarize)
+
+    p = sub.add_parser("add-session", help="dodaj sesję bez nagrania: kronika powstanie z notatek MG")
+    p.add_argument("session", metavar="NAZWA", help="nazwa sesji z datą, np. Warhammer_261116 (Kampania_RRMMDD)")
+    p.add_argument("--plik", dest="file", required=True, metavar="PLIK",
+                   help="plik z notatkami (.txt/.md, zwykle punkty); „-” = standardowe wejście")
+    p.add_argument("--obecni", dest="present", metavar="POSTACIE",
+                   help="obecne postacie graczy, po przecinku (dziennik postaci, kronika)")
+    p.add_argument("--replace", action="store_true", help="zastąp notatki istniejącej sesji z notatek")
+    p.set_defaults(func=cmd_add_session)
 
     p = sub.add_parser("benchmark", help="zmierz szybkość transkrypcji na fragmencie nagrania")
     p.add_argument("session", metavar="SESJA", help="sesja z lokalnym nagraniem")
@@ -218,6 +227,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie przeniesione")
     p.add_argument("--offline", action="store_true", help="tylko lokalnie, bez Google Drive")
     p.set_defaults(func=cmd_archive)
+
+    p = sub.add_parser("delete", help="usuń kronikę, wszystko poza nagraniem albo całą sesję (lokalnie i z Drive)")
+    p.add_argument("session", metavar="SESJA")
+    p.add_argument("--zakres", dest="scope", choices=("kronika", "od-nowa", "sesja"), default="kronika",
+                   help="kronika (domyślnie): kronika, skrót, cytaty, PDF…; od-nowa: wszystko poza nagraniem; "
+                        "sesja: wszystko razem z nagraniem")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostanie usunięte")
+    p.add_argument("--offline", action="store_true", help="tylko lokalnie (uwaga: `sync` pobierze pliki z Drive)")
+    p.add_argument("--yes", action="store_true", help="bez pytania o potwierdzenie (zakres „sesja”)")
+    p.add_argument("--undo", action="store_true", help="przywróć ostatnio usunięte pliki sesji z kosza")
+    p.set_defaults(func=cmd_delete)
 
     p = sub.add_parser("upload", help="wyślij transkrypcje i podsumowania na Google Drive")
     p.set_defaults(func=cmd_upload)

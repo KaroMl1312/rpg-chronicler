@@ -1,7 +1,7 @@
 """Komendy kronik: skrót, cytaty, poprawki, PDF, Discord, wyszukiwarka, encyklopedia i dziennik postaci."""
 import os
 
-from .. import progress
+from .. import notes, progress
 from ..session import SessionNotFound, list_sessions
 from .common import chronicle_session, ensure_pdf
 
@@ -70,7 +70,8 @@ def cmd_discord(args):
                               "(GUI: Kampanie → Discord).")
     if chronicle.load_sent(session) and not args.force:
         raise SessionNotFound(f"Kronikę wysłano już {chronicle.sent_text(session)} - użyj --force, żeby wysłać ponownie.")
-    footer = " · ".join(p for p in (session.system_name, chronicle.session_date_text(session) or session.name) if p)
+    footer = " · ".join(p for p in (session.system_name, chronicle.session_date_text(session) or session.name,
+                                    notes.ANNOTATION if session.has_notes else "") if p)
     quotes = [] if args.no_quotes else chronicle.read_quotes(session)
     message = discord.build_message(chronicle.chronicle_title(text), teaser, footer, os.path.basename(pdf), quotes)
     progress.report("wysyłanie na Discord", session.name)
@@ -101,7 +102,7 @@ def cmd_discord_test(args):
 
 
 def cmd_search(args):
-    from ..search import KIND_CHRONICLE, search, summary_line
+    from ..search import search, summary_line
     from ..quality import format_time
 
     hits = search(list_sessions(), args.query, campaign=args.campaign,
@@ -112,8 +113,8 @@ def cmd_search(args):
         if hit.session != current:
             current = hit.session
             print(f"\n== {hit.session}")
-        if hit.kind == KIND_CHRONICLE:
-            print(f"  [kronika{' · ' + hit.heading if hit.heading else ''}] {hit.text}")
+        if hit.start is None:   # kronika albo notatki
+            print(f"  [{hit.kind}{' · ' + hit.heading if hit.heading else ''}] {hit.text}")
         else:
             print(f"  [{format_time(hit.start)}{' · ' + hit.speaker if hit.speaker else ''}] {hit.text}")
     if len(hits) > args.limit:

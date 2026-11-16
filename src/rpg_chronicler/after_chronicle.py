@@ -25,7 +25,7 @@ def run_all(client: LLMClient, session: Session, chronicle: str) -> None:
         except LLMError as e:
             print(f"[OSTRZEŻENIE] Nie udało się napisać skrótu kroniki: {e} "
                   f"(spróbuj: rpg-chronicler brief {session.name})")
-    if CHRONICLE_QUOTES:
+    if CHRONICLE_QUOTES and not session.has_notes:   # sesja z notatek nie ma wypowiedzi do cytowania
         try:
             write_quotes(client, session, chronicle)
         except (LLMError, QuotesError) as e:
@@ -105,8 +105,12 @@ def session_characters(session: Session) -> list[str]:
     """Postacie graczy obecne na sesji (z mapowania mówców; gracz → jego postać, bez MG).
 
     Bez mapowania - postacie graczy z kampanii (transkrypcja ma wtedy same etykiety SPEAKER_XX).
+    Sesja z notatek - obecni wpisani w notatkach.
     """
+    from .notes import read_notes
     from .voices import GAME_MASTER, NameResolver
+    if not session.has_transcript and (session_notes := read_notes(session)) is not None and session_notes.present:
+        return list(session_notes.present)
     mapping = load_speaker_mapping(session.txt_path) if session.has_transcript else {}
     if not mapping:
         return list(session.campaign.player_characters)
@@ -184,7 +188,8 @@ def write_quotes(client: LLMClient, session: Session, chronicle: str) -> list:
 def quotes_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, force: bool = False) -> None:
     """Cytaty dla sesji z kroniką, które ich nie mają (`force` - wszystkie wskazane)."""
     from .chronicle import quotes_path, read_chronicle
-    pending = [s for s in sessions if s.has_summary and (force or not os.path.exists(quotes_path(s)))]
+    pending = [s for s in sessions if s.has_summary and not s.has_notes
+               and (force or not os.path.exists(quotes_path(s)))]
     if not pending:
         print("Wszystkie kroniki mają już cytaty.")
         return

@@ -5,7 +5,7 @@ dodatki po kronice (skrót, cytaty, słownik, stan kampanii) - after_chronicle.p
 """
 import os
 
-from . import after_chronicle, memory, progress
+from . import after_chronicle, memory, notes, progress
 from . import session as _session
 from .chronicle_events import chronicle_source
 from .campaigns import campaign_key
@@ -61,9 +61,45 @@ def name_speakers(sessions: list[Session], provider: str = LLM_PROVIDER, force: 
             print(f"[SUKCES] Zapisano mówców w: {session.speakers_path}")
 
 
+def _unaccepted_state_warning(session: Session) -> None:
+    warning = memory.unaccepted_warning(campaign_key(session.name), session.name)
+    if warning:
+        print(f"[OSTRZEŻENIE] {warning} Zatwierdź ją przed kroniką: "
+              f"rpg-chronicler memory {campaign_key(session.name)} --accept (albo w GUI: Kampanie).")
+
+
+def _summarize_from_notes(llm: LazyClient, session: Session) -> bool:
+    """Kronika sesji bez nagrania z notatek MG. False = AI niedostępne (przerwij przebieg)."""
+    session_notes = notes.read_notes(session)
+    if session_notes is None or not session_notes.text:
+        print(f"[POMINIĘTO] {session.name}: notatki są puste.")
+        return True
+    try:
+        client = llm.get()
+    except LLMError as e:
+        print(f"[OSTRZEŻENIE] {e}")
+        return False
+    _unaccepted_state_warning(session)
+    progress.report("kronika", session.name)
+    print(f"\n[{client.name}] Generowanie kroniki {session.name} z notatek MG w klimacie '{session.system_name}'...")
+    prompt = render("summary_notes", system_name=session.system_name,
+                    campaign_context=campaign_context(session, material="sesji (z notatek)"),
+                    source=notes.for_llm(session_notes))
+    try:
+        summary = with_retry(lambda: client.generate(prompt), f"podsumowanie {session.name}")
+    except LLMError as e:
+        print(f"[PORAŻKA] Pomijam {session.name}.")
+        return e.retryable
+    with open(session.summary_path, "w", encoding="utf-8") as f:
+        f.write(summary)
+    print(f"[SUKCES] Zapisano kronikę z notatek ({session.system_name}) w: {session.summary_path}")
+    after_chronicle.run_all(client, session, summary)
+    return True
+
+
 def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
                        interactive: bool, allow_unnamed: bool = False, force: bool = False) -> None:
-    """Generuje podsumowania dla sesji z transkrypcją.
+    """Generuje podsumowania dla sesji z transkrypcją albo notatkami MG (sesja bez nagrania).
 
     Sesje bez przypisanych mówców: w trybie interaktywnym pytamy, czy je nazwać;
     w nieinteraktywnym pomijamy (chyba że `allow_unnamed`), żeby nie tworzyć kronik bez imion.
@@ -73,11 +109,15 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
 
     llm = LazyClient(provider)
     for session in sessions:
-        if not session.has_transcript:
+        if not session.has_source:
             continue
         # Jeśli podsumowanie już istnieje lokalnie lub na GDrive -> pomijamy!
         if session.has_summary and not force:
             print(f"[POMINIĘTO] Podsumowanie dla {session.name} już istnieje.")
+            continue
+        if not session.has_transcript:
+            if not _summarize_from_notes(llm, session):
+                return
             continue
 
         transcript = session.load_transcript()
@@ -109,10 +149,7 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
             print(f"[OSTRZEŻENIE] {e}")
             return
 
-        warning = memory.unaccepted_warning(campaign_key(session.name), session.name)
-        if warning:
-            print(f"[OSTRZEŻENIE] {warning} Zatwierdź ją przed kroniką: "
-                  f"rpg-chronicler memory {campaign_key(session.name)} --accept (albo w GUI: Kampanie).")
+        _unaccepted_state_warning(session)
 
         try:
             source = chronicle_source(client, session, transcript, mapping)

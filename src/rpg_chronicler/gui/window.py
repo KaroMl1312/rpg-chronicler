@@ -8,13 +8,14 @@ import sys
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import backfill, chronicle, glossary, memory, settings
+from .. import backfill, chronicle, deletion, glossary, memory, settings
 from ..campaigns import campaign_key
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
 from .campaigns_dialog import CampaignsDialog
 from .chronicle_page import ChroniclePage
 from .discord_dialog import DiscordDialog
+from .notes_dialog import NotesDialog
 from .environment import EnvironmentBanner
 from .player import SnippetPlayer
 from .search_dialog import SearchDialog
@@ -84,6 +85,9 @@ class MainWindow(Adw.ApplicationWindow):
         add("preferences", self.show_settings)
         add("campaigns", lambda: self.show_campaigns(None))
         add("search", self.show_search)
+        add("add-notes", lambda: self.show_notes_dialog(None))
+        for scope in deletion.SCOPES:
+            add(f"delete-{scope}", lambda s=scope: self.confirm_delete(s))
         add("backfill", self.show_backfill)
         add("restart", self.restart)
         add("cancel", self.runner.cancel)
@@ -135,6 +139,8 @@ class MainWindow(Adw.ApplicationWindow):
         header.pack_start(icon_button("view-refresh-symbolic", "Odśwież listę (Ctrl+R)", "win.refresh"))
         header.pack_start(icon_button("system-search-symbolic", "Szukaj w kronikach i transkrypcjach (Ctrl+F)",
                                       "win.search"))
+        header.pack_start(icon_button("list-add-symbolic", "Dodaj sesję bez nagrania - kronika z notatek MG (Ctrl+N)",
+                                      "win.add-notes"))
 
         menu = Gio.Menu()
         section = Gio.Menu()
@@ -149,6 +155,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append_section("Dostawca AI", providers)
         other = Gio.Menu()
         other.append("Szukaj w sesjach", "win.search")
+        other.append("Dodaj sesję z notatek…", "win.add-notes")
         other.append("Uzupełnij brakujące…", "win.backfill")
         other.append("Kampanie", "win.campaigns")
         other.append("Ustawienia", "win.preferences")
@@ -187,7 +194,8 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _build_content(self) -> Adw.NavigationPage:
         self.view_stack = Adw.ViewStack()
-        self.transcript_page = TranscriptPage(self.player, self.start_task, self._register_task_button)
+        self.transcript_page = TranscriptPage(self.player, self.start_task, self._register_task_button,
+                                              lambda s: self.show_notes_dialog(s))
         self.speakers_page = SpeakersPage(self.player, self.suggest_speakers, self._on_speakers_saved, self.start_task)
         self.chronicle_page = ChroniclePage(
             summarize=self.summarize, write_brief=self.write_brief, revise=self.revise,
@@ -204,6 +212,12 @@ class MainWindow(Adw.ApplicationWindow):
         self.campaign_button = Gtk.Button(tooltip_text="Opis świata, postacie graczy i słownik nazw tej kampanii")
         self.campaign_button.connect("clicked", lambda _b: self.current and self.show_campaigns(
             self.current.campaign.key or None))
+        session_menu = Gio.Menu()
+        session_menu.append("Usuń kronikę…", f"win.delete-{deletion.CHRONICLE}")
+        session_menu.append("Zacznij od nowa (zostaw nagranie)…", f"win.delete-{deletion.RESTART}")
+        session_menu.append("Usuń całą sesję…", f"win.delete-{deletion.SESSION}")
+        self.content_header.pack_end(Gtk.MenuButton(icon_name="view-more-symbolic", menu_model=session_menu,
+                                                    tooltip_text="Usuwanie kroniki albo sesji"))
         self.content_header.pack_end(self.campaign_button)
         session_view = Adw.ToolbarView(content=self.view_stack)
         session_view.add_top_bar(self.content_header)
@@ -340,11 +354,15 @@ class MainWindow(Adw.ApplicationWindow):
         self.speakers_page.show_session(session, transcript, keep_edits)
         self.speakers_page.set_busy(busy)
         self.chronicle_page.show_session(session)
+        self._update_delete_actions()
+        from_notes = session.has_notes and not session.has_transcript
+        self.view_stack.get_page(self.transcript_page).set_title("Notatki" if from_notes else "Transkrypcja")
+        self.view_stack.get_page(self.speakers_page).set_visible(not from_notes)
 
         if not keep_view:
             stage, _ = session_stage(session)
             page = {"czeka na transkrypcję": "transcript", "mówcy bez imion": "speakers"}.get(stage, "summary")
-            if page == "summary" and not session.has_summary and not session.has_transcript:
+            if page == "summary" and not session.has_summary and not session.has_source:
                 page = "transcript"
             self.view_stack.set_visible_child_name(page)
 
@@ -384,7 +402,7 @@ class MainWindow(Adw.ApplicationWindow):
             dialog.present(self)
 
         self._autosave_speakers()
-        if not session.has_speakers and session.load_transcript().speakers:
+        if session.has_transcript and not session.has_speakers and session.load_transcript().speakers:
             dialog = Adw.AlertDialog(
                 heading="Mówcy nie mają imion",
                 body="Kronika powstanie z etykietami SPEAKER_00, SPEAKER_01… zamiast imion postaci. "
@@ -482,6 +500,7 @@ class MainWindow(Adw.ApplicationWindow):
         self._session_task_buttons = [b for b in self._session_task_buttons if b.get_root() is not None]
         for button in self._session_task_buttons:
             button.set_sensitive(not busy)
+        self._update_delete_actions()
         self.speakers_page.set_busy(busy)
         self.transcript_page.set_busy(busy)
 
@@ -576,6 +595,75 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.connect("response", lambda _d, r: r == "run" and self.start_task(
             "Uzupełnianie brakujących", ["backfill", *self._provider_args()]))
         dialog.present(self)
+
+    def _update_delete_actions(self) -> None:
+        """Usuwanie: kronika - gdy jest; „od nowa” - gdy jest nagranie i coś poza nim; nic w trakcie zadania."""
+        session, idle = self.current, not self.runner.running
+        enabled = {deletion.CHRONICLE: session is not None and session.has_summary,
+                   deletion.RESTART: session is not None and session.audio_path is not None
+                   and (session.has_source or session.has_summary),
+                   deletion.SESSION: session is not None}
+        for scope, ok in enabled.items():
+            self.lookup_action(f"delete-{scope}").set_enabled(idle and ok)
+
+    def confirm_delete(self, scope: str) -> None:
+        """Okno z listą plików; cała sesja wymaga zaznaczenia „Rozumiem…”. Usuwa zadanie `delete` (z Drive)."""
+        session = self.current
+        if session is None:
+            return
+        try:
+            plan = deletion.plan(session.name, scope)
+        except deletion.DeletionError as e:
+            self.toast(str(e))
+            return
+        headings = {deletion.CHRONICLE: "Usunąć kronikę?", deletion.RESTART: "Zacząć sesję od nowa?",
+                    deletion.SESSION: "Usunąć całą sesję?"}
+        effects = {
+            deletion.CHRONICLE: "Kronika, skrót, cytaty, PDF i zapowiedź znikną. Transkrypcja"
+                                + (" i notatki zostają" if session.has_notes else " i mówcy zostają")
+                                + " - kronikę można potem napisać od nowa.",
+            deletion.RESTART: "Zostanie tylko nagranie. Znikną transkrypcja, mówcy, odciski głosu, kronika i wszystko, "
+                              "co z niej powstało - sesja wróci do etapu „czeka na transkrypcję”.",
+            deletion.SESSION: "Sesja zniknie z listy: nagranie, transkrypcja albo notatki, kronika i wszystko, "
+                              "co z nich powstało.",
+        }
+        body = (f"{effects[scope]}\n\nPliki ({len(plan.files)}) zostaną usunięte z dysku i z Google Drive. "
+                f"Przez {deletion.TRASH_DAYS} dni będą w koszu Google Drive i w koszu aplikacji "
+                f"(przywrócenie: rpg-chronicler delete {session.name} --undo).")
+        files = Gtk.Label(label=deletion.describe(plan), wrap=True, xalign=0, selectable=True,
+                          css_classes=["dim-label", "caption"])
+        extra = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        extra.append(Gtk.ScrolledWindow(child=files, max_content_height=160, propagate_natural_height=True,
+                                        hscrollbar_policy=Gtk.PolicyType.NEVER))
+        dialog = Adw.AlertDialog(heading=headings[scope], body=body, extra_child=extra)
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("delete", "Usuń" if scope != deletion.RESTART else "Usuń i zacznij od nowa")
+        dialog.set_response_appearance("delete", Adw.ResponseAppearance.DESTRUCTIVE)
+        dialog.set_default_response("cancel")
+        dialog.set_close_response("cancel")
+        if scope == deletion.SESSION:   # pełne wymazanie: świadome potwierdzenie
+            understand = Gtk.CheckButton(label="Rozumiem, że usuwam całą sesję razem z nagraniem")
+            understand.connect("toggled", lambda b: dialog.set_response_enabled("delete", b.get_active()))
+            extra.append(understand)
+            dialog.set_response_enabled("delete", False)
+        dialog.connect("response", lambda _d, r: r == "delete" and self.start_task(
+            f"Usuwanie: {deletion.SCOPE_LABELS[scope]} ({session.name})",
+            ["delete", session.name, "--zakres", scope, "--yes"]))
+        dialog.present(self)
+
+    def show_notes_dialog(self, session: Session | None) -> None:
+        """Nowa sesja z notatek (`session` None) albo edycja notatek istniejącej."""
+        def saved(name: str, generate: bool) -> None:
+            self.refresh(force=True)
+            self.open_session(name, "summary" if generate else "transcript")
+            target = next((s for s in self.sessions if s.name == name), None)
+            if generate and target is not None:
+                self.summarize(target, force=target.has_summary)
+            else:
+                self.toast(f"Zapisano notatki sesji {name}")
+
+        campaign = self.campaign_filter or (self.current.campaign.key if self.current is not None else None)
+        NotesDialog(saved, campaign or None, session).present(self)
 
     def show_search(self) -> None:
         campaign = self.current.campaign.key if self.current is not None else None

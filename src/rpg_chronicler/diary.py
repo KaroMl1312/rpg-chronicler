@@ -75,11 +75,16 @@ def _read(path: str) -> str:
 
 
 def was_present(session, campaign: Campaign, character: str, chronicle: str) -> bool:
-    """Postać (albo skrót jej imienia) jest w kronice albo mówiła na sesji (mapowanie mówców, gracz → postać)."""
+    """Postać (albo skrót jej imienia) jest w kronice albo mówiła na sesji (mapowanie mówców, gracz → postać).
+
+    Sesja z notatek: postać jest na liście obecnych w notatkach.
+    """
     if any(contains_name(chronicle, name) for name in aliases(character)):
         return True
-    if not session.has_transcript:
-        return False
+    if not session.has_transcript:   # sesja z notatek: obecni wpisani w notatkach
+        from .notes import read_notes
+        session_notes = read_notes(session)
+        return session_notes is not None and any(_is_alias(n, character) for n in session_notes.present)
     from .voices import NameResolver
     resolver = NameResolver(campaign)
     return any(_is_alias(resolver.resolve(n), character)
