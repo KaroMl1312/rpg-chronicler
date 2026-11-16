@@ -44,7 +44,9 @@ def _make_data(base: Path) -> dict[str, str]:
     save_transcript(transcript, str(dirs["transkrypcje"] / "Warhammer_261105.transkrypcja.json"), str(txt))
     save_speaker_mapping(str(txt), {"SPEAKER_00": "MG", "SPEAKER_01": "Fen"})
     (dirs["transkrypcje"] / "kampanie.toml").write_text(
-        '[Warhammer]\nsystem = "Warhammer"\n[Warhammer.postacie_graczy]\nFen = ""\n"Sir Amos" = "Ola"\n',
+        '[Warhammer]\nsystem = "Warhammer"\nnpc = ["Ojciec Romulus"]\n'
+        '[Warhammer.opisy]\n"Ojciec Romulus" = "Kapłan Morra."\n'
+        '[Warhammer.postacie_graczy]\nFen = ""\n"Sir Amos" = "Ola"\n',
         encoding="utf-8")
 
     summary = dirs["kroniki"]
@@ -90,7 +92,7 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "filtr kampanii", "kronika", "skrót i cytaty", "transkrypcja", "mówcy",
                     "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
-                    "uzupełnianie", "notatki", "usuwanie"], report
+                    "uzupełnianie", "notatki", "usuwanie", "opisy haseł"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()
                 if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]

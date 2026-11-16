@@ -28,7 +28,7 @@ Projekt ma własne środowisko `.venv` na **Pythonie 3.11** (systemowy `python` 
 ./rpg-chronicler-gui --instaluj          # wpis w menu aplikacji (~/.local/share); --pulpit dodaje skrót na pulpicie; --odinstaluj usuwa
 ```
 
-Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `add-session NAZWA --plik PLIK [--obecni "A, B"] [--replace]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `diary KAMPANIA POSTAĆ [--force]`, `stats [SESJA...] [--campaign K]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `fix-loops [SESJA...] [--dry-run] [--undo]`, `backfill [--dry-run]`, `archive SESJA... [--dry-run] [--offline]`, `delete SESJA [--zakres kronika|od-nowa|sesja] [--dry-run] [--offline] [--yes] [--undo]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
+Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--offline]`, `status`, `sync`, `transcribe`, `speakers [--suggest-only]`, `summarize [--force] [--allow-unnamed]`, `add-session NAZWA --plik PLIK [--obecni "A, B"] [--replace]`, `benchmark SESJA`, `voices [SESJA...] [--force]`, `brief [SESJA...] [--force]`, `quotes [SESJA...] [--force]`, `pdf SESJA...`, `discord SESJA [--przygotuj] [--nowa-zapowiedz] [--force] [--no-quotes]`, `discord-test KAMPANIA`, `glossary KAMPANIA`, `memory KAMPANIA [--rebuild] [--accept]`, `revise SESJA "POLECENIE" [--undo]`, `search FRAZA [--campaign K] [--chronicles-only|--transcripts-only]`, `encyclopedia KAMPANIA [--no-ai]`, `describe KAMPANIA`, `diary KAMPANIA POSTAĆ [--force]`, `stats [SESJA...] [--campaign K]`, `silence SESJA`, `trim SESJA [--start] [--end] [--cut-gaps MIN] [--dry-run]`, `check [SESJA...]`, `fix-loops [SESJA...] [--dry-run] [--undo]`, `backfill [--dry-run]`, `archive SESJA... [--dry-run] [--offline]`, `delete SESJA [--zakres kronika|od-nowa|sesja] [--dry-run] [--offline] [--yes] [--undo]`, `migrate [--dry-run]`, `upload`. Większość przyjmuje opcjonalną listę nazw sesji; `--provider` wybiera LLM; `--interactive/--no-interactive` (domyślnie: czy stdin to TTY — dla crona tryb nieinteraktywny).
 
 ## Struktura
 
@@ -79,6 +79,7 @@ src/rpg_chronicler/
     discord_dialog.py         #   okno „Wyślij na Discord”: kanał, zapowiedź (edytowalna/AI), załącznik PDF
     campaigns_dialog.py       #   okno „Kampanie” (Ctrl+K): opis, stan kampanii, encyklopedia, postacie graczy, słownik, propozycje AI
     notes_dialog.py           #   okno „Dodaj sesję z notatek” (Ctrl+N): kampania, data, obecni, notatki; też edycja notatek
+    entry_page.py             #   hasło słownika: dymek z opisem i miniaturą, strona z edycją opisu i zdjęciem
     search_dialog.py          #   okno „Szukaj w sesjach” (Ctrl+F): wyniki z pogrubieniem, odsłuch fragmentu, przejście do sesji
     recording_page.py         #   panel nagrania przed transkrypcją: cisza, oś czasu, przycinanie, „Transkrybuj”
     settings_dialog.py        #   okno ustawień (Adw.PreferencesDialog), zapis od razu przy zmianie
@@ -123,7 +124,8 @@ Pliki (katalogi lokalne z `config.py`, domyślnie w `~/Documents/`):
 | `<nazwa>_wydarzenia.md` | `SUMMARY_DIR` | lista wydarzeń z części transkrypcji (krok pośredni kroniki w dwóch krokach) |
 | `encyklopedia-<kampania>.md`, `.pdf` | `SUMMARY_DIR` | encyklopedia kampanii (komenda `encyclopedia`, przycisk w oknie Kampanie) |
 | `dziennik-<kampania>-<postać>.md`, `.pdf` | `SUMMARY_DIR` | dziennik postaci (komenda `diary`, okno Kampanie); spacje w imieniu → `_` |
-| `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw (synchronizowany z Drive) |
+| `kampanie.toml` | `TXT_DIR` | kampanie: system, opis świata, postacie graczy, słownik nazw, opisy haseł `[K.opisy]` (synchronizowany z Drive) |
+| `obrazy/<kampania>/<nazwa>.jpg/.png/.webp` | `TXT_DIR` | zdjęcia haseł (postacie, BN-i, miejsca…); nazwa pliku = nazwa hasła małymi literami, `_` zamiast spacji |
 
 Format linii .txt: `[SPEAKER_00] [12.34s -> 15.67s] tekst` lub (stare, bez mówców) `[12.34s -> 15.67s] tekst`. `load_transcript` preferuje JSON, a w razie braku parsuje .txt. Komenda `migrate` tworzy JSON z .txt, nie ruszając .txt.
 
@@ -149,6 +151,8 @@ Klucz kampanii = prefiks nazwy sesji przed `_`. Plik `TXT_DIR/kampanie.toml` (fo
 - sugestii mówców: lista postaci graczy w prompcie; w GUI menu imion przy polach mówców.
 
 Słownik budowany z AI: `glossary KAMPANIA` (wszystkie kroniki) i automatycznie po każdej nowej kronice (`ai.propozycje_slownika`). Propozycje nie trafiają od razu do pliku — czekają w cache (`glossary.load_proposals`/`pending_for`), aż użytkownik je zatwierdzi w oknie „Kampanie”. Prompt prosi o nazwy w mianowniku i JSON; `parse_response` toleruje tekst wokół JSON-a. Synchronizacja `TXT_DIR`/`SUMMARY_DIR` używa `rclone --update`, żeby starsza wersja z Drive nie nadpisała lokalnych zmian (kampanie, mówcy) i odwrotnie.
+
+**Opisy haseł** (`Campaign.descriptions`, `[Kampania.opisy]` w `kampanie.toml`, nazwa → krótki opis): każda postać gracza i nazwa ze słownika może mieć opis i zdjęcie (`campaigns.set_image`/`image_path`, folder `obrazy/` w `TXT_DIR` - `rclone copy` przenosi podfoldery, `list_sessions` ich nie widzi). Opisy nazw usuniętych ze słownika odpadają przy zapisie. Brakujące opisy uzupełnia `describe KAMPANIA` (GUI: „Uzupełnij z kronik”) i każda encyklopedia z AI - z **tej samej odpowiedzi AI co encyklopedia** (`encyclopedia.ai_entries`, cache), więc bez nowych kronik nic nie kosztuje; istniejących (np. poprawionych ręcznie) nie zmienia, a encyklopedia bierze opis z kampanii przed opisem AI. GUI (okno Kampanie): wiersz nazwy z podglądem opisu i miniaturą, dymek z pełnym opisem i zdjęciem (`gui/entry_page.attach_tooltip`), kliknięcie → `EntryPage` (opis zapisuje się przy wyjściu ze strony, zdjęcie od razu). Do promptów kronik opisy na razie nie trafiają.
 
 ## Pamięć kampanii
 
@@ -192,6 +196,8 @@ PDF: emoji są usuwane (`chronicle_pdf.strip_emoji`) — systemowa czcionka Noto
 ## Przepływ podsumowania
 
 `summarize_sessions` → dla sesji z transkrypcją bez podsumowania: wczytaj mapowanie mówców → jeśli brak i tryb interaktywny, zapytaj i wywołaj `identify_speakers`; jeśli nieinteraktywny i brak `--allow-unnamed`, pomiń → `chronicle_source()`: lista wydarzeń z części (kronika w dwóch krokach) albo `transcript.compact_for_llm(mapping)` (bez czasów, sklejone wypowiedzi — oszczędność tokenów) → `render("summary", ..., source=...)` → `with_retry(client.generate)` → zapis → `after_chronicle.run_all`: skrót, cytaty, propozycje słownika, propozycja stanu kampanii.
+
+**Długość kroniki** (`prompts/summary.md`): zwięźle, ale wszystkie ważne wydarzenia; punkty tylko dla konkretów (łupy, pieniądze, ustalenia, transakcje, decyzje), nie dla każdej akcji graczy; zakaz pomijania imion, miejsc i przedmiotów zostaje (korzystają z nich słownik, encyklopedia, dziennik). **Nie dodawaj limitu słów ani liczby sekcji** - użytkownik miał je wcześniej i AI wycinało wtedy kawałki sesji. Typowa kronika ma 600–1000 słów (3–5 min czytania); za długie były te, w których AI wypunktowało każdą akcję (50–75 punktów).
 
 Klient LLM tworzony leniwie (`llm.LazyClient`; w testach podmienia się `llm.get_client`), więc brak klucza API nie przeszkadza, gdy nic nie ma do zrobienia.
 

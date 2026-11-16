@@ -49,10 +49,22 @@ def pdf_path(key: str) -> str:
 # --- hasła ---
 
 def glossary_entries(campaign: Campaign) -> list[Entry]:
-    entries = [Entry(name, PLAYER_CHARACTERS) for name in campaign.player_characters]
+    """Hasła ze słownika z opisami z kampanii (wpisane ręcznie albo przyjęte wcześniej mają pierwszeństwo przed AI)."""
+    entries = [Entry(name, PLAYER_CHARACTERS, campaign.description(name)) for name in campaign.player_characters]
     for category in GLOSSARY_CATEGORIES:
-        entries += [Entry(name, category) for name in campaign.names(category)]
+        entries += [Entry(name, category, campaign.description(name)) for name in campaign.names(category)]
     return entries
+
+
+def fill_descriptions(campaign: Campaign, from_ai: list[Entry]) -> tuple[Campaign, list[str]]:
+    """Kampania z opisami od AI dla nazw ze słownika, które opisu nie mają (istniejących nie zmienia)."""
+    by_name = {e.name.casefold(): e.description for e in from_ai if e.description}
+    filled = []
+    for name in campaign.all_names():
+        if not campaign.description(name) and by_name.get(name.casefold()):
+            campaign = campaign.with_description(name, by_name[name.casefold()])
+            filled.append(name)
+    return campaign, filled
 
 
 def parse_entries(text: str) -> list[Entry]:

@@ -12,8 +12,9 @@ import os
 
 from .. import chronicle, diary, discord, encyclopedia, glossary, memory
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
-                         load_campaigns, update_campaign)
+                         image_path, load_campaigns, update_campaign)
 from ..session import list_sessions
+from .entry_page import EntryPage, attach_tooltip, image_widget, preview
 
 CATEGORY_LABELS = {glossary.PLAYER_CHARACTERS: "Postacie graczy", **GLOSSARY_CATEGORIES}
 
@@ -132,6 +133,9 @@ class CampaignsDialog(Adw.Dialog):
     def start_diary(self, key: str, character: str) -> None:
         self._start_task(f"Dziennik postaci {character}", ["diary", key, character, "--provider", self._provider()])
 
+    def start_descriptions(self, key: str) -> None:
+        self._start_task(f"Opisy haseł kampanii {key}", ["describe", key, "--provider", self._provider()])
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -170,6 +174,7 @@ class CampaignPage(Adw.NavigationPage):
         box.append(self._encyclopedia_group())
         box.append(self._diary_group(campaign))
         box.append(self._proposals_group(campaign))
+        box.append(self._descriptions_group(campaign))
         box.append(self._characters_group(campaign))
         box.append(self._discord_group())
         for category, label in GLOSSARY_CATEGORIES.items():
@@ -451,6 +456,48 @@ class CampaignPage(Adw.NavigationPage):
 
     # --- postacie graczy ---
 
+    # --- opisy haseł (dymek, strona z edycją i zdjęciem) ---
+
+    def _descriptions_group(self, campaign: Campaign) -> Gtk.Widget:
+        names = campaign.all_names()
+        described = sum(1 for n in names if campaign.description(n))
+        group = Adw.PreferencesGroup(
+            title="Opisy haseł",
+            description=f"Krótki opis postaci, BN-ów, miejsc i przedmiotów ze słownika poniżej - najedź na "
+                        f"nazwę, żeby go zobaczyć, kliknij, żeby edytować i dodać zdjęcie. "
+                        f"Opisane: {described} z {len(names)}.")
+        if names and described < len(names):
+            fill = Gtk.Button(label="Uzupełnij z kronik", valign=Gtk.Align.CENTER,
+                              tooltip_text="AI opisze nazwy bez opisu na podstawie kronik (te same opisy co "
+                                           "w encyklopedii); opisów wpisanych ręcznie nie zmienia")
+            fill.add_css_class("flat")
+            fill.connect("clicked", lambda _b: self.dialog.start_descriptions(self.key))
+            self.dialog.register_task_button(fill)
+            group.set_header_suffix(fill)
+        return group
+
+    def open_entry(self, name: str, category: str) -> None:
+        def save(entry_name: str, text: str) -> None:
+            self.save(self.campaign.with_description(entry_name, text))
+            self.dialog.toast(f"Zapisano opis: {entry_name}")
+
+        campaign = self.campaign
+        self.dialog.nav.push(EntryPage(self.key, name, category, campaign.description(name), save, self.dialog.toast))
+
+    def _entry_row(self, campaign: Campaign, name: str, category: str, delete: Gtk.Widget) -> Adw.ActionRow:
+        """Wiersz nazwy: podgląd opisu, miniatura zdjęcia, dymek z pełnym opisem; kliknięcie - strona hasła."""
+        description = campaign.description(name)
+        row = Adw.ActionRow(title=name, subtitle=preview(description), use_markup=False, activatable=True,
+                            subtitle_lines=1)
+        thumbnail = image_widget(image_path(self.key, name), 32)
+        if thumbnail is not None:
+            row.add_prefix(thumbnail)
+        attach_tooltip(row, self.key, name, description)
+        row.connect("activated", lambda _r: self.open_entry(name, category))
+        row.add_suffix(delete)
+        row.add_suffix(Gtk.Image(icon_name="go-next-symbolic", css_classes=["dim-label"]))
+        return row
+
     def _characters_group(self, campaign: Campaign) -> Gtk.Widget:
         group = Adw.PreferencesGroup(
             title="Postacie graczy",
@@ -458,6 +505,10 @@ class CampaignPage(Adw.NavigationPage):
         for name, player in campaign.player_characters.items():
             row = Adw.EntryRow(title=f"{name} – gracz", text=player, show_apply_button=True)
             row.connect("apply", lambda e, n=name: self._set_player(n, e.get_text().strip()))
+            info = Gtk.Button(icon_name="document-edit-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
+            attach_tooltip(info, self.key, name, campaign.description(name))
+            info.connect("clicked", lambda _b, n=name: self.open_entry(n, "Postać gracza"))
+            row.add_suffix(info)
             row.add_suffix(_delete_button(f"Usuń postać {name}", lambda n=name: self._remove_character(n)))
             group.add(row)
         add = Adw.EntryRow(title="Dodaj postać (np. „Fen” albo „Fen = Ania”)", show_apply_button=True)
@@ -498,9 +549,8 @@ class CampaignPage(Adw.NavigationPage):
             expander.connect("notify::expanded", lambda e, _p: (self._expanded.add if e.get_expanded()
                                                                  else self._expanded.discard)(category))
             for name in names:
-                row = Adw.ActionRow(title=name, use_markup=False)
-                row.add_suffix(_delete_button(f"Usuń {name}", lambda n=name: self._remove_name(category, n)))
-                expander.add_row(row)
+                delete = _delete_button(f"Usuń {name}", lambda n=name: self._remove_name(category, n))
+                expander.add_row(self._entry_row(campaign, name, label, delete))
             group.add(expander)
         return group
 

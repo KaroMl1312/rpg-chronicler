@@ -4,8 +4,8 @@ import argparse
 from ..config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS
 from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
-from .chronicles import (cmd_backfill, cmd_brief, cmd_diary, cmd_discord, cmd_discord_test, cmd_encyclopedia,
-                         cmd_pdf, cmd_quotes, cmd_revise, cmd_search)
+from .chronicles import (cmd_backfill, cmd_brief, cmd_describe, cmd_diary, cmd_discord, cmd_discord_test,
+                         cmd_encyclopedia, cmd_pdf, cmd_quotes, cmd_revise, cmd_search)
 from .sessions import (cmd_add_session, cmd_archive, cmd_check, cmd_delete, cmd_fix_loops, cmd_migrate, cmd_run,
                        cmd_speakers, cmd_stats, cmd_status, cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
 
@@ -174,6 +174,11 @@ def build_parser() -> argparse.ArgumentParser:
     provider_arg(p)
     p.add_argument("--no-ai", action="store_true", help="bez opisów od AI - tylko hasła ze słownika i oś czasu")
     p.set_defaults(func=cmd_encyclopedia)
+
+    p = sub.add_parser("describe", help="uzupełnij krótkie opisy postaci, BN-ów, miejsc… ze słownika (AI z kronik)")
+    p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")
+    provider_arg(p)
+    p.set_defaults(func=cmd_describe)
 
     p = sub.add_parser("backfill", help="uzupełnij brakujące skróty, cytaty, PDF-y, encyklopedie i dzienniki postaci")
     provider_arg(p)

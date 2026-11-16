@@ -8,6 +8,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import tomllib
 from dataclasses import dataclass, field, replace
 
@@ -29,7 +30,10 @@ FILE_HEADER = """\
 #   kontekst        - opis świata/kampanii dla AI
 #   postacie_graczy - postać = "gracz" (gracz opcjonalny)
 #   npc, miejsca, przedmioty, inne - słownik nazw: poprawna pisownia w transkrypcji i kronikach
+#   opisy           - nazwa = "krótki opis: kto to albo co to jest" (zdjęcia: folder obrazy/<kampania>/)
 """
+IMAGES_DIR = "obrazy"                                  # TXT_DIR/obrazy/<kampania>/<nazwa>.<rozszerzenie>
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 @dataclass(frozen=True)
@@ -39,6 +43,18 @@ class Campaign:
     context: str = ""
     player_characters: dict[str, str] = field(default_factory=dict)  # postać -> gracz ("" = nieznany)
     glossary: dict[str, tuple[str, ...]] = field(default_factory=dict)  # kategoria -> nazwy
+    descriptions: dict[str, str] = field(default_factory=dict)  # nazwa (postać, BN, miejsce…) -> krótki opis
+
+    def description(self, name: str) -> str:
+        """Opis nazwy (bez względu na wielkość liter); pusty, gdy go nie ma."""
+        wanted = name.strip().casefold()
+        return next((text for known, text in self.descriptions.items() if known.casefold() == wanted), "")
+
+    def with_description(self, name: str, text: str) -> "Campaign":
+        descriptions = {k: v for k, v in self.descriptions.items() if k.casefold() != name.strip().casefold()}
+        if text.strip():
+            descriptions[name.strip()] = text.strip()
+        return replace(self, descriptions=descriptions)
 
     def names(self, category: str) -> tuple[str, ...]:
         return self.glossary.get(category, ())
@@ -135,6 +151,9 @@ def _campaign_from_toml(key: str, values: dict) -> Campaign:
         characters = {name: "" for name in strings(characters)}
     elif not isinstance(characters, dict):
         characters = {}
+    descriptions = values.get("opisy", {})
+    if not isinstance(descriptions, dict):
+        descriptions = {}
     return Campaign(
         key=key,
         system=str(values.get("system", key)),
@@ -142,6 +161,8 @@ def _campaign_from_toml(key: str, values: dict) -> Campaign:
         player_characters={str(k).strip(): str(v).strip() for k, v in characters.items() if str(k).strip()},
         glossary={category: names for category in GLOSSARY_CATEGORIES
                   if (names := tuple(_unique(strings(values.get(category, [])))))},
+        descriptions={str(k).strip(): str(v).strip() for k, v in descriptions.items()
+                      if str(k).strip() and str(v).strip()},
     )
 
 
@@ -189,8 +210,13 @@ def _campaign_to_toml(campaign: Campaign) -> str:
         if names:
             items = "".join(f"    {_toml_string(n)},\n" for n in names)
             lines.append(f"{category} = [\n{items}]")
+    known = {n.casefold() for n in campaign.all_names()}
+    descriptions = {k: v for k, v in campaign.descriptions.items() if k.casefold() in known}  # bez usuniętych nazw
+    if descriptions:
+        lines.append(f"\n[{key}.opisy]")
+        lines += [f"{_toml_key(name)} = {_toml_string(text)}" for name, text in descriptions.items()]
     if campaign.player_characters:
-        # Podtabela na końcu: po nagłówku [X.postacie_graczy] kolejne klucze należałyby już do niej
+        # Podtabele na końcu: po nagłówku [X.postacie_graczy] kolejne klucze należałyby już do niej
         lines.append(f"\n[{key}.postacie_graczy]")
         lines += [f"{_toml_key(name)} = {_toml_string(player)}" for name, player in campaign.player_characters.items()]
     return "\n".join(lines) + "\n"
@@ -207,6 +233,45 @@ def _toml_string(value: str) -> str:
         # Zamknięcie w osobnej linii (dopisany \n znika przy odczycie, bo opis jest przycinany)
         return "'''\n" + value + "\n'''"
     return json.dumps(value, ensure_ascii=False)
+
+
+# --- zdjęcia haseł (postacie, BN-i, miejsca…) ---
+
+def images_dir(key: str) -> str:
+    """Folder zdjęć kampanii - w folderze transkrypcji, więc synchronizuje się z Drive."""
+    return os.path.join(config.TXT_DIR, IMAGES_DIR, key)
+
+
+def _image_stem(name: str) -> str:
+    return re.sub(r"[^\w-]+", "_", name.strip()).strip("_").casefold() or "hasło"
+
+
+def image_path(key: str, name: str) -> str | None:
+    """Zdjęcie hasła albo None."""
+    for ext in IMAGE_EXTENSIONS:
+        path = os.path.join(images_dir(key), _image_stem(name) + ext)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def remove_image(key: str, name: str) -> None:
+    while (path := image_path(key, name)) is not None:
+        os.remove(path)
+
+
+def set_image(key: str, name: str, source: str) -> str:
+    """Kopiuje zdjęcie do folderu kampanii (zastępuje poprzednie); zwraca nową ścieżkę. Rzuca ValueError/OSError."""
+    ext = os.path.splitext(source)[1].lower()
+    if ext not in IMAGE_EXTENSIONS:
+        raise ValueError(f"Nieobsługiwany format zdjęcia ({ext or 'brak rozszerzenia'}) - użyj JPG, PNG albo WebP.")
+    os.makedirs(images_dir(key), exist_ok=True)
+    target = os.path.join(images_dir(key), _image_stem(name) + ext)
+    tmp = target + ".part"
+    shutil.copyfile(source, tmp)
+    remove_image(key, name)
+    os.replace(tmp, target)
+    return target
 
 
 # --- kolejność sesji ---

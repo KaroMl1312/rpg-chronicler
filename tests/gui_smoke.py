@@ -192,6 +192,25 @@ def steps(win):
         assert not win.lookup_action("delete-od-nowa").get_enabled()
     yield "usuwanie", delete_dialogs
 
+    def entry_descriptions():
+        from rpg_chronicler.campaigns import load_campaigns
+        from rpg_chronicler.gui.entry_page import EntryPage
+        win.show_campaigns("Warhammer")
+        page = win._campaigns_dialog.nav.get_visible_page()
+        rows = [w for w in _walk(page) if isinstance(w, Adw.ActionRow) and w.get_title() == "Ojciec Romulus"]
+        assert rows and rows[0].get_subtitle() == "Kapłan Morra." and rows[0].get_has_tooltip(), rows
+        assert any("Opisane: 1 z 3" in (w.get_description() or "") for w in _walk(page)
+                   if isinstance(w, Adw.PreferencesGroup))
+        page.open_entry("Sir Amos", "Postać gracza")
+        entry = win._campaigns_dialog.nav.get_visible_page()
+        assert isinstance(entry, EntryPage) and entry.text() == ""
+        assert "Dodaj zdjęcie…" in labels(entry)
+        entry.buffer.set_text("Rycerz z Bretonii.")
+        win._campaigns_dialog.nav.pop()                          # zapis przy wyjściu ze strony
+        assert load_campaigns()["Warhammer"].description("Sir Amos") == "Rycerz z Bretonii."
+        win._campaigns_dialog.force_close()
+    yield "opisy haseł", entry_descriptions
+
 
 def main() -> int:
     app = Adw.Application(application_id="pl.rpgchronicler.TestDymny")

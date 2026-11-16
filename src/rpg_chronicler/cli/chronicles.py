@@ -129,9 +129,38 @@ def _write_markdown(text: str, md_path: str, pdf_path: str, system: str) -> None
     write_markdown_pdf(text, pdf_path, system)
 
 
-def write_encyclopedia(campaign, llm) -> None:
-    """Encyklopedia kampanii (.md + PDF). `llm` None = bez opisów AI. Rzuca LLMError / EncyclopediaError."""
+def fill_descriptions(campaign, llm):
+    """Uzupełnia puste opisy haseł kampanii opisami z encyklopedii AI (z cache, gdy kroniki się nie zmieniły).
+
+    Zwraca kampanię po zmianach. Rzuca LLMError / EncyclopediaError."""
     from .. import encyclopedia
+    from ..campaigns import update_campaign
+    from ..glossary import chronicles_for
+    chronicles = chronicles_for(campaign.key, list_sessions())
+    if not chronicles:
+        raise encyclopedia.EncyclopediaError(f"Kampania {campaign.key} nie ma jeszcze żadnych kronik.")
+    progress.report("opisy haseł", campaign.key)
+    updated, filled = encyclopedia.fill_descriptions(campaign, encyclopedia.ai_entries(llm, campaign, chronicles))
+    if filled:
+        update_campaign(updated)
+        print(f"[SUKCES] Opisy haseł kampanii {campaign.key}: dodano {len(filled)} ({', '.join(filled[:8])}"
+              f"{'…' if len(filled) > 8 else ''}).")
+    else:
+        print(f"[INFO] Kampania {campaign.key}: brak nowych opisów do dodania.")
+    missing = [n for n in updated.all_names() if not updated.description(n)]
+    if missing:
+        print(f"[INFO] Bez opisu ({len(missing)}): {', '.join(missing[:10])}{'…' if len(missing) > 10 else ''} "
+              f"- AI nie znalazło ich w kronikach; opis można wpisać w oknie Kampanie.")
+    return updated
+
+
+def write_encyclopedia(campaign, llm) -> None:
+    """Encyklopedia kampanii (.md + PDF). `llm` None = bez opisów AI. Rzuca LLMError / EncyclopediaError.
+
+    Z AI najpierw uzupełnia puste opisy haseł w kampanii (ta sama odpowiedź AI, z cache)."""
+    from .. import encyclopedia
+    if llm is not None:
+        campaign = fill_descriptions(campaign, llm)
     progress.report("encyklopedia", campaign.key)
     text = encyclopedia.build(campaign, list_sessions(), llm)
     progress.report("PDF", campaign.key)
@@ -163,6 +192,17 @@ def cmd_encyclopedia(args):
         write_encyclopedia(campaign, None if args.no_ai else get_client(args.provider))
     except (LLMError, encyclopedia.EncyclopediaError) as e:
         raise SessionNotFound(f"Nie udało się utworzyć encyklopedii: {e}")
+
+
+def cmd_describe(args):
+    from .. import encyclopedia
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    try:
+        fill_descriptions(campaign_for(f"{args.campaign}_"), get_client(args.provider))
+    except (LLMError, encyclopedia.EncyclopediaError) as e:
+        raise SessionNotFound(f"Nie udało się uzupełnić opisów: {e}")
 
 
 def cmd_diary(args):
