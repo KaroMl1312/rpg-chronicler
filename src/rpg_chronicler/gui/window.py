@@ -22,7 +22,8 @@ from .settings_dialog import PROVIDERS, SettingsDialog
 from .speakers_page import SpeakersPage
 from .task_bar import TaskBar
 from .tasks import TaskRunner
-from .text import new_proposals, proposals_snapshot, session_signature, session_stage
+from .text import (ALL_CAMPAIGNS, campaign_filter_options, new_proposals, proposals_snapshot, session_campaign,
+                   session_signature, session_stage)
 from .transcript_page import TranscriptPage
 from .widgets import icon_button
 
@@ -37,11 +38,15 @@ class MainWindow(Adw.ApplicationWindow):
         self._list_signature = None
         self._detail_signature = None
         self._rows: dict[str, Adw.ActionRow] = {}
+        self._row_campaigns: dict[str, str] = {}
         self._session_task_buttons: list[Gtk.Button] = []
         self._campaigns_dialog: CampaignsDialog | None = None
         self._discord_dialog: DiscordDialog | None = None
         self._open_pdf_after: str | None = None
         self._proposals_before: dict = {}
+        self.campaign_filter: str | None = ALL_CAMPAIGNS
+        self._filter_keys: list[str | None] = []
+        self._updating_filter = False
 
         self.runner = TaskRunner()
         self.runner.connect("line", self._on_task_line)
@@ -156,6 +161,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.session_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.session_list.add_css_class("navigation-sidebar")
         self.session_list.connect("row-selected", self._on_row_selected)
+        self.session_list.set_filter_func(self._row_visible)
         self.session_list.set_placeholder(Gtk.Label(
             label="Brak sesji.\nPobierz nagrania z Google Drive.", justify=Gtk.Justification.CENTER,
             margin_top=24, css_classes=["dim-label"]))
@@ -169,8 +175,13 @@ class MainWindow(Adw.ApplicationWindow):
                                      margin_top=6, margin_bottom=12, margin_start=12, margin_end=12)
         run_button.add_css_class("suggested-action")
 
+        self.filter_dropdown = Gtk.DropDown(model=Gtk.StringList(), tooltip_text="Pokaż sesje jednej kampanii",
+                                            margin_start=12, margin_end=12, margin_bottom=6, visible=False)
+        self.filter_dropdown.connect("notify::selected", self._on_filter_changed)
+
         view = Adw.ToolbarView(content=scrolled)
         view.add_top_bar(header)
+        view.add_top_bar(self.filter_dropdown)
         view.add_bottom_bar(run_button)
         return Adw.NavigationPage(title="Sesje", child=view)
 
@@ -232,6 +243,7 @@ class MainWindow(Adw.ApplicationWindow):
     def _rebuild_list(self) -> None:
         selected = self.current.name if self.current else None
         self._rows = {}
+        self._row_campaigns = {s.name: session_campaign(s) for s in self.sessions}
         self.session_list.remove_all()
         for session in self.sessions:
             stage, done = session_stage(session)
@@ -245,8 +257,41 @@ class MainWindow(Adw.ApplicationWindow):
             row.add_suffix(icon)
             self._rows[session.name] = row
             self.session_list.append(row)
+        self._update_filter_options()
         if selected in self._rows:
             self.session_list.select_row(self._rows[selected])
+
+    def _update_filter_options(self) -> None:
+        """Kampanie w filtrze (z liczbą sesji); wybór zostaje, dopóki kampania ma sesje."""
+        options = campaign_filter_options(self.sessions)
+        keys = [key for key, _label in options]
+        if self.campaign_filter not in keys:
+            self.campaign_filter = ALL_CAMPAIGNS
+        self._updating_filter = True
+        self._filter_keys = keys
+        self.filter_dropdown.set_model(Gtk.StringList.new([label for _key, label in options]))
+        self.filter_dropdown.set_selected(keys.index(self.campaign_filter))
+        self._updating_filter = False
+        self.filter_dropdown.set_visible(len(keys) > 2)   # filtr ma sens przy co najmniej dwóch kampaniach
+        self.session_list.invalidate_filter()
+
+    def _on_filter_changed(self, dropdown, _param) -> None:
+        index = dropdown.get_selected()
+        if self._updating_filter or index >= len(self._filter_keys):
+            return
+        self.set_campaign_filter(self._filter_keys[index])
+
+    def set_campaign_filter(self, key: str | None) -> None:
+        self.campaign_filter = key
+        if key in self._filter_keys and self.filter_dropdown.get_selected() != self._filter_keys.index(key):
+            self.filter_dropdown.set_selected(self._filter_keys.index(key))  # wywoła _on_filter_changed
+            return
+        self.session_list.invalidate_filter()
+
+    def _row_visible(self, row) -> bool:
+        if self.campaign_filter is ALL_CAMPAIGNS:
+            return True
+        return self._row_campaigns.get(row.get_title()) == self.campaign_filter
 
     def _on_row_selected(self, _list, row) -> None:
         if row is None:
@@ -542,6 +587,8 @@ class MainWindow(Adw.ApplicationWindow):
         if row is None:
             self.toast(f"Nie ma już sesji {name}")
             return
+        if not self._row_visible(row):   # np. wynik wyszukiwania z innej kampanii niż filtr
+            self.set_campaign_filter(ALL_CAMPAIGNS)
         self.session_list.select_row(row)  # wywoła _on_row_selected → _show_session
         self.view_stack.set_visible_child_name(page)
         self.split.set_show_content(True)

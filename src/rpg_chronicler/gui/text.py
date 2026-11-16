@@ -2,6 +2,7 @@
 import os
 import re
 
+from ..campaigns import campaign_key
 from ..session import Session
 from ..transcript import Transcript
 
@@ -40,6 +41,27 @@ def session_stage(session: Session) -> tuple[str, bool]:
     if not session.has_summary:
         return "czeka na kronikę", False
     return "gotowe", True
+
+
+ALL_CAMPAIGNS = None   # filtr listy sesji: wszystkie kampanie
+NO_CAMPAIGN = ""       # sesje bez „_” w nazwie
+
+
+def session_campaign(session: Session) -> str:
+    """Klucz kampanii do filtra listy sesji (NO_CAMPAIGN, gdy nazwa nie ma prefiksu)."""
+    return campaign_key(session.name) or NO_CAMPAIGN
+
+
+def campaign_filter_options(sessions: list[Session]) -> list[tuple[str | None, str]]:
+    """[(klucz, etykieta)] do filtra: „Wszystkie kampanie”, potem kampanie alfabetycznie, na końcu bez kampanii."""
+    counts: dict[str, int] = {}
+    for s in sessions:
+        counts[session_campaign(s)] = counts.get(session_campaign(s), 0) + 1
+    keys = sorted((k for k in counts if k != NO_CAMPAIGN), key=str.casefold)
+    if NO_CAMPAIGN in counts:
+        keys.append(NO_CAMPAIGN)
+    return [(ALL_CAMPAIGNS, f"Wszystkie kampanie ({len(sessions)})")] + [
+        (k, f"{k or 'Bez kampanii'} ({counts[k]})") for k in keys]
 
 
 def session_signature(session: Session) -> tuple:

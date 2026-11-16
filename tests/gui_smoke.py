@@ -19,6 +19,7 @@ from rpg_chronicler.gui.settings_dialog import SettingsDialog  # noqa: E402
 
 FULL = "Warhammer_261105"      # transkrypcja, mówcy, kronika, skrót, cytaty
 AUDIO_ONLY = "Warhammer_261112"  # samo nagranie - panel przed transkrypcją
+OTHER = "Fallout_261014"         # samo nagranie innej kampanii - filtr listy sesji
 
 
 def labels(widget, found=None) -> list[str]:
@@ -42,8 +43,20 @@ def _walk(widget):
 
 def steps(win):
     def window():
-        assert {s.name for s in win.sessions} == {FULL, AUDIO_ONLY}, [s.name for s in win.sessions]
+        assert {s.name for s in win.sessions} == {FULL, AUDIO_ONLY, OTHER}, [s.name for s in win.sessions]
     yield "okno", window
+
+    def campaign_filter():
+        def shown():
+            return [name for name, row in win._rows.items() if row.get_child_visible()]
+        assert win.filter_dropdown.get_visible() and len(shown()) == 3, shown()
+        win.filter_dropdown.set_selected(win._filter_keys.index("Fallout"))
+        assert win.campaign_filter == "Fallout" and shown() == [OTHER], shown()
+        win.refresh(force=True)                      # wybór przetrwa przebudowę listy
+        assert shown() == [OTHER], shown()
+        win.open_session(FULL, "summary")            # sesja spoza filtra → filtr się zdejmuje
+        assert win.campaign_filter is None and len(shown()) == 3, shown()
+    yield "filtr kampanii", campaign_filter
 
     def full_session():
         win.open_session(FULL, "summary")

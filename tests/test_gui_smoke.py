@@ -54,7 +54,7 @@ def _make_data(base: Path) -> dict[str, str]:
     (summary / "Warhammer_261105_skrot.txt").write_text("Dotarliście do Doliny.\n", encoding="utf-8")
     (summary / "Warhammer_261105_cytaty.txt").write_text("[0:00:04–0:00:07] „Tak?” — Fen\n", encoding="utf-8")
 
-    for name, seconds in (("Warhammer_261112", 1), ("Warhammer_261105", 8)):  # cisza
+    for name, seconds in (("Warhammer_261112", 1), ("Warhammer_261105", 8), ("Fallout_261014", 1)):  # cisza
         with wave.open(str(dirs["nagrania"] / f"{name}.wav"), "wb") as audio:
             audio.setnchannels(1)
             audio.setsampwidth(2)
@@ -88,8 +88,9 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     report = f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     assert proc.returncode == 0, report
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
-    assert done == ["okno", "kronika", "skrót i cytaty", "transkrypcja", "mówcy", "poprawka kroniki",
-                    "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia", "uzupełnianie"], report
+    assert done == ["okno", "filtr kampanii", "kronika", "skrót i cytaty", "transkrypcja", "mówcy",
+                    "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
+                    "uzupełnianie"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()
                 if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]

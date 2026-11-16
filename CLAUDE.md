@@ -67,7 +67,7 @@ src/rpg_chronicler/
   doctor.py                   # ./sprawdz-srodowisko: diagnostyka i naprawa .venv (systemowy Python, tylko stdlib)
   progress.py                 # protokół postępu dla GUI: linie `@@postep {json}` gdy RPG_CHRONICLER_PROGRESS=json
   gui/                        # GTK4 + libadwaita, uruchamiane systemowym Pythonem (skrypt ./rpg-chronicler-gui)
-    app.py, window.py         #   Adw.Application, główne okno: lista sesji, składa zakładki, uruchamia zadania
+    app.py, window.py         #   Adw.Application, główne okno: lista sesji (z filtrem kampanii), składa zakładki, uruchamia zadania
     transcript_page.py        #   zakładka „Transkrypcja”: tekst z kolorami mówców + uwagi jakości albo panel nagrania
     chronicle_page.py         #   zakładka „Kronika”: kronika / skrót, PDF, Discord, ponowne generowanie
     task_bar.py               #   pasek zadania na dole (etap, postęp, szacowany czas)

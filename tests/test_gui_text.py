@@ -1,6 +1,6 @@
 """Logika GUI bez GTK (rpg_chronicler.gui.text nie importuje gi)."""
-from rpg_chronicler.gui.text import (estimate_remaining, format_minutes, format_timestamp, markdown_spans,
-                                     session_stage, transcript_blocks)
+from rpg_chronicler.gui.text import (campaign_filter_options, estimate_remaining, format_minutes,
+                                     format_timestamp, markdown_spans, session_stage, transcript_blocks)
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript, save_speaker_mapping
 
@@ -68,3 +68,12 @@ def test_new_proposals_after_task(workspace):
         ("Warhammer", "Nowy stan kampanii Warhammer do przejrzenia"),
         ("Fallout", "Nowe propozycje do słownika kampanii Fallout: 2"),
     ]
+
+
+def test_campaign_filter_options(workspace):
+    for name in ("Warhammer_261015", "Warhammer_261105", "fallout_261014", "nagranie"):
+        workspace.add_transcript(name, "[0.00s -> 1.00s] Witajcie.\n")
+    assert campaign_filter_options(list_sessions()) == [
+        (None, "Wszystkie kampanie (4)"), ("fallout", "fallout (1)"), ("Warhammer", "Warhammer (2)"),
+        ("", "Bez kampanii (1)")]
+    assert campaign_filter_options([]) == [(None, "Wszystkie kampanie (0)")]
