@@ -5,9 +5,10 @@ dodatki po kronice (skrót, cytaty, słownik, stan kampanii) - after_chronicle.p
 """
 import os
 
-from . import after_chronicle, progress
+from . import after_chronicle, memory, progress
 from . import session as _session
 from .chronicle_events import chronicle_source
+from .campaigns import campaign_key
 from .config import LLM_PROVIDER
 from .context import campaign_context, speaker_mapping_info
 from .llm import LazyClient, LLMError, with_retry
@@ -107,6 +108,11 @@ def summarize_sessions(sessions: list[Session], provider: str = LLM_PROVIDER, *,
         except LLMError as e:
             print(f"[OSTRZEŻENIE] {e}")
             return
+
+        warning = memory.unaccepted_warning(campaign_key(session.name), session.name)
+        if warning:
+            print(f"[OSTRZEŻENIE] {warning} Zatwierdź ją przed kroniką: "
+                  f"rpg-chronicler memory {campaign_key(session.name)} --accept (albo w GUI: Kampanie).")
 
         try:
             source = chronicle_source(client, session, transcript, mapping)

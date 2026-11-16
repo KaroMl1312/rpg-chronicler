@@ -23,8 +23,11 @@ def task_button(label: str, callback: Callable[[], None], register: RegisterTask
     return button
 
 
-def issues_button(issues: list[quality.Issue]) -> Gtk.Widget:
-    """Ikona ostrzeżenia z listą podejrzanych miejsc w transkrypcji (kontrola jakości)."""
+def issues_button(issues: list[quality.Issue], actions: list[Gtk.Button] | None = None) -> Gtk.Widget:
+    """Ikona ostrzeżenia z listą podejrzanych miejsc w transkrypcji (kontrola jakości).
+
+    `actions` - przyciski pod listą (np. „Usuń powtórzenia”); kliknięcie zamyka okienko.
+    """
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12,
                   margin_start=12, margin_end=12)
     title = Gtk.Label(label="Podejrzane miejsca w transkrypcji", xalign=0)
@@ -32,7 +35,12 @@ def issues_button(issues: list[quality.Issue]) -> Gtk.Widget:
     box.append(title)
     for issue in issues:
         box.append(Gtk.Label(label=f"• {issue.message}", xalign=0, wrap=True, max_width_chars=60))
-    button = Gtk.MenuButton(icon_name="dialog-warning-symbolic", popover=Gtk.Popover(child=box),
+    popover = Gtk.Popover(child=box)
+    for action in actions or []:
+        action.set_halign(Gtk.Align.START)
+        action.connect("clicked", lambda _b: popover.popdown())
+        box.append(action)
+    button = Gtk.MenuButton(icon_name="dialog-warning-symbolic", popover=popover,
                             tooltip_text=f"Uwagi do transkrypcji: {len(issues)}")
     button.add_css_class("flat")
     button.add_css_class("warning")

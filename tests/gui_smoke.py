@@ -77,7 +77,10 @@ def steps(win):
         menu = next(w for w in _walk(win.transcript_page) if isinstance(w, Gtk.MenuButton)
                     and w.get_label() == "Statystyki")
         texts = labels(menu.get_popover())
-        assert "MG" in texts and "Fen" in texts and any("57%" in t for t in texts), texts
+        assert "MG" in texts and "Fen" in texts and any("80%" in t for t in texts), texts
+        issues = next(w for w in _walk(win.transcript_page) if isinstance(w, Gtk.MenuButton)
+                      and w.get_icon_name() == "dialog-warning-symbolic")
+        assert "Usuń powtórzenia" in labels(issues.get_popover()), labels(issues.get_popover())
         menu.popup()
         menu.popdown()
     yield "transkrypcja", transcript_tab
@@ -116,6 +119,14 @@ def steps(win):
     yield "discord", discord
 
     yield "ustawienia", lambda: SettingsDialog("claude-code", lambda _k: None, lambda: None)
+
+    def backfill():
+        win.show_backfill()
+        dialog = win.get_visible_dialog()
+        assert isinstance(dialog, Adw.AlertDialog), dialog
+        assert "PDF-y: 1 (Warhammer_261105)" in dialog.get_body(), dialog.get_body()
+        dialog.force_close()
+    yield "uzupełnianie", backfill
 
 
 def main() -> int:

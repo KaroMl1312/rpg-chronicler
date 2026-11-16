@@ -4,10 +4,10 @@ import argparse
 from ..config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS
 from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
-from .chronicles import (cmd_brief, cmd_diary, cmd_discord, cmd_discord_test, cmd_encyclopedia, cmd_pdf, cmd_quotes,
-                         cmd_revise, cmd_search)
-from .sessions import (cmd_archive, cmd_check, cmd_migrate, cmd_run, cmd_speakers, cmd_stats, cmd_status,
-                       cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
+from .chronicles import (cmd_backfill, cmd_brief, cmd_diary, cmd_discord, cmd_discord_test, cmd_encyclopedia,
+                         cmd_pdf, cmd_quotes, cmd_revise, cmd_search)
+from .sessions import (cmd_archive, cmd_check, cmd_fix_loops, cmd_migrate, cmd_run, cmd_speakers, cmd_stats,
+                       cmd_status, cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
 
 
 PROVIDERS = ["claude-code", "anthropic", "gemini"]
@@ -51,6 +51,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="sprawdź transkrypcje: dziury, pętle Whispera, mało tekstu, kopie sesji")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
     p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("fix-loops", help="usuń pętle Whispera (to samo zdanie wiele razy pod rząd), z kopią")
+    sessions_arg(p, "nazwy sesji (domyślnie wszystkie z powtórzeniami)")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostałoby usunięte")
+    p.add_argument("--undo", action="store_true", help="przywróć transkrypcję sprzed usunięcia")
+    p.set_defaults(func=cmd_fix_loops)
 
     p = sub.add_parser("stats", help="statystyki sesji: kto ile mówił, MG a gracze, czas gry i przerw")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie z transkrypcją)")
@@ -159,6 +165,11 @@ def build_parser() -> argparse.ArgumentParser:
     provider_arg(p)
     p.add_argument("--no-ai", action="store_true", help="bez opisów od AI - tylko hasła ze słownika i oś czasu")
     p.set_defaults(func=cmd_encyclopedia)
+
+    p = sub.add_parser("backfill", help="uzupełnij brakujące skróty, cytaty, PDF-y, encyklopedie i dzienniki postaci")
+    provider_arg(p)
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co zostałoby uzupełnione")
+    p.set_defaults(func=cmd_backfill)
 
     p = sub.add_parser("diary", help="dziennik postaci: wydarzenia kampanii z jej perspektywy (wpisy AI) w PDF")
     p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")

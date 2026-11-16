@@ -120,50 +120,106 @@ def cmd_search(args):
         print(f"\n… i {len(hits) - args.limit} więcej (--limit N)")
 
 
+def _write_markdown(text: str, md_path: str, pdf_path: str, system: str) -> None:
+    from ..chronicle_pdf import write_markdown_pdf
+    os.makedirs(os.path.dirname(md_path), exist_ok=True)
+    with open(md_path, "w", encoding="utf-8") as f:
+        f.write(text)
+    write_markdown_pdf(text, pdf_path, system)
+
+
+def write_encyclopedia(campaign, llm) -> None:
+    """Encyklopedia kampanii (.md + PDF). `llm` None = bez opisów AI. Rzuca LLMError / EncyclopediaError."""
+    from .. import encyclopedia
+    progress.report("encyklopedia", campaign.key)
+    text = encyclopedia.build(campaign, list_sessions(), llm)
+    progress.report("PDF", campaign.key)
+    _write_markdown(text, encyclopedia.markdown_path(campaign.key), encyclopedia.pdf_path(campaign.key),
+                    campaign.system)
+    print(f"[SUKCES] Encyklopedia kampanii {campaign.key}: {encyclopedia.pdf_path(campaign.key)} "
+          f"(i {os.path.basename(encyclopedia.markdown_path(campaign.key))})")
+
+
+def write_diary(campaign, character: str, get_client, force: bool = False) -> None:
+    """Dziennik postaci (.md + PDF). Rzuca LLMError / DiaryError."""
+    from .. import diary
+    text = diary.build(get_client, campaign, character, list_sessions(), force=force,
+                       progress=lambda done, total: progress.report("dziennik postaci", character, done, total))
+    progress.report("PDF", character)
+    path = diary.markdown_path(campaign.key, character)
+    _write_markdown(text, path, diary.pdf_path(campaign.key, character), campaign.system)
+    print(f"[SUKCES] Dziennik postaci {character}: {diary.pdf_path(campaign.key, character)} "
+          f"(i {os.path.basename(path)})")
+
+
 def cmd_encyclopedia(args):
     from .. import encyclopedia
     from ..campaigns import campaign_for
-    from ..chronicle_pdf import write_markdown_pdf
+    from ..llm import LLMError, get_client
 
     campaign = campaign_for(f"{args.campaign}_")
-    llm = None
-    if not args.no_ai:
-        from ..llm import get_client
-        llm = get_client(args.provider)
-    progress.report("encyklopedia", campaign.key)
-    from ..llm import LLMError
     try:
-        text = encyclopedia.build(campaign, list_sessions(), llm)
+        write_encyclopedia(campaign, None if args.no_ai else get_client(args.provider))
     except (LLMError, encyclopedia.EncyclopediaError) as e:
         raise SessionNotFound(f"Nie udało się utworzyć encyklopedii: {e}")
-    os.makedirs(os.path.dirname(encyclopedia.markdown_path(campaign.key)), exist_ok=True)
-    with open(encyclopedia.markdown_path(campaign.key), "w", encoding="utf-8") as f:
-        f.write(text)
-    progress.report("PDF", campaign.key)
-    write_markdown_pdf(text, encyclopedia.pdf_path(campaign.key), campaign.system)
-    print(f"[SUKCES] Encyklopedia kampanii {campaign.key}: {encyclopedia.pdf_path(campaign.key)} "
-          f"(i {os.path.basename(encyclopedia.markdown_path(campaign.key))})")
 
 
 def cmd_diary(args):
     from .. import diary
     from ..campaigns import campaign_for
-    from ..chronicle_pdf import write_markdown_pdf
-    from ..llm import LLMError, LazyClient
+    from ..llm import LazyClient, LLMError
 
     campaign = campaign_for(f"{args.campaign}_")
     character = diary.canonical_character(campaign, args.character)
     llm = LazyClient(args.provider)   # wpisy z cache nie potrzebują klienta
     try:
-        text = diary.build(llm.get, campaign, character, list_sessions(), force=args.force,
-                           progress=lambda done, total: progress.report("dziennik postaci", character, done, total))
+        write_diary(campaign, character, llm.get, force=args.force)
     except (LLMError, diary.DiaryError) as e:
         raise SessionNotFound(f"Nie udało się utworzyć dziennika: {e}")
-    path = diary.markdown_path(campaign.key, character)
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-    progress.report("PDF", character)
-    write_markdown_pdf(text, diary.pdf_path(campaign.key, character), campaign.system)
-    print(f"[SUKCES] Dziennik postaci {character}: {diary.pdf_path(campaign.key, character)} "
-          f"(i {os.path.basename(path)})")
+
+
+def cmd_backfill(args):
+    from .. import backfill, diary, encyclopedia
+    from ..after_chronicle import QuotesError, write_brief, write_quotes
+    from ..campaigns import campaign_for
+    from ..chronicle import read_chronicle
+    from ..llm import LazyClient, LLMError
+
+    sessions = {s.name: s for s in list_sessions()}
+    steps = backfill.plan(list(sessions.values()))
+    if not steps:
+        print("Wszystko jest aktualne - nie ma czego uzupełniać.")
+        return
+    print(f"Do uzupełnienia (zapytań do AI: ok. {backfill.ai_requests(steps)}):\n{backfill.summary(steps)}")
+    if args.dry_run:
+        return
+
+    llm = LazyClient(args.provider)
+    done, failed = 0, []
+    for index, step in enumerate(steps):
+        progress.report("uzupełnianie", step.label, index, len(steps))
+        try:
+            if step.kind == backfill.BRIEF:
+                session = sessions[step.target]
+                write_brief(llm.get(), session, read_chronicle(session))
+            elif step.kind == backfill.QUOTES:
+                session = sessions[step.target]
+                write_quotes(llm.get(), session, read_chronicle(session))
+            elif step.kind == backfill.PDF:
+                ensure_pdf(sessions[step.target], force=True)
+            elif step.kind == backfill.ENCYCLOPEDIA:
+                write_encyclopedia(campaign_for(f"{step.target}_"), llm.get())
+            elif step.kind == backfill.DIARY:
+                write_diary(campaign_for(f"{step.target}_"), step.character, llm.get)
+            done += 1
+        except LLMError as e:
+            print(f"[OSTRZEŻENIE] {step.label}: {e}")
+            failed.append(step.label)
+            if not e.retryable:
+                print("[PORAŻKA] AI jest niedostępne - przerywam uzupełnianie.")
+                break
+        except (QuotesError, encyclopedia.EncyclopediaError, diary.DiaryError, OSError) as e:
+            print(f"[OSTRZEŻENIE] {step.label}: {e}")
+            failed.append(step.label)
+    failed_text = f" Nie udało się: {', '.join(failed)}." if failed else ""
+    print(f"\n[SUKCES] Uzupełniono: {done} z {len(steps)}.{failed_text}")

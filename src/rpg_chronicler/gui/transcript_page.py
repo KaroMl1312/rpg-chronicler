@@ -69,7 +69,34 @@ class TranscriptPage(Adw.Bin):
         if not session.has_json:
             info.append("starszy format .txt")
         issues = quality.check(transcript)
+        leading = self._issues_widget(session, issues)
         buttons = []
         if transcript.segments:
             buttons.append(stats_button(stats.session_stats(transcript, mapping, session.campaign)))
-        return text_page(buffer, " · ".join(info), buttons, leading=issues_button(issues) if issues else None)
+        return text_page(buffer, " · ".join(info), buttons, leading=leading)
+
+    def _issues_widget(self, session: Session, issues: list[quality.Issue]) -> Gtk.Widget | None:
+        """Uwagi jakości (z „Usuń powtórzenia” przy pętlach Whispera) albo „Przywróć” po ich usunięciu."""
+        def task_button(label: str, title: str, args: list[str], tooltip: str) -> Gtk.Button:
+            button = Gtk.Button(label=label, tooltip_text=tooltip)
+            button.connect("clicked", lambda _b: self._start_task(title, args))
+            self._register(button)
+            return button
+
+        undo = None
+        if quality.backups(session):
+            undo = task_button("Przywróć sprzed usunięcia powtórzeń", f"Przywracanie transkrypcji {session.name}",
+                               ["fix-loops", session.name, "--undo"],
+                               "Wróć do transkrypcji sprzed ostatniego usunięcia powtórzeń Whispera")
+        if issues:
+            actions = []
+            if any(i.kind == "petla" for i in issues):
+                actions.append(task_button("Usuń powtórzenia", f"Usuwanie powtórzeń {session.name}",
+                                           ["fix-loops", session.name],
+                                           "Z każdego ciągu zostaje pierwsza wypowiedź; kopia do cofnięcia zostaje"))
+            return issues_button(issues, actions + ([undo] if undo else []))
+        if undo is not None:
+            undo.set_label("")
+            undo.set_icon_name("edit-undo-symbolic")
+            undo.add_css_class("flat")
+        return undo

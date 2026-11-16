@@ -43,6 +43,42 @@ def cmd_check(args):
             print(f"  [OSTRZEŻENIE] {issue.message}")
     ok = len(results) - len(bad)
     print(f"\nSprawdzono {len(results)} transkrypcji: {ok} bez uwag, {len(bad)} z uwagami.")
+    loops = [name for name, issues in bad.items() if any(i.kind == "petla" for i in issues)]
+    if loops:
+        print(f"Powtórzenia Whispera usuniesz (z kopią): rpg-chronicler fix-loops {' '.join(loops)}")
+
+
+def cmd_fix_loops(args):
+    from ..quality import find_loops, fix_loops, format_time, remove_loops, undo_fix
+
+    sessions = [s for s in list_sessions(args.sessions) if s.has_transcript]
+    if args.undo:
+        for s in sessions:
+            if undo_fix(s):
+                print(f"[SUKCES] {s.name}: przywrócono transkrypcję sprzed usunięcia powtórzeń.")
+            elif args.sessions:
+                print(f"[POMINIĘTO] {s.name}: brak kopii do przywrócenia.")
+        return
+    found = False
+    for s in sessions:
+        transcript = s.load_transcript()
+        loops = find_loops(transcript)
+        if not loops:
+            if args.sessions:
+                print(f"[POMINIĘTO] {s.name}: brak powtórzeń.")
+            continue
+        found = True
+        print(f"\n{s.name}:")
+        for start, end, text, count in loops:
+            print(f"  {count}× „{text}” ({format_time(start)} – {format_time(end)})")
+        if args.dry_run:
+            print(f"  [INFO] Do usunięcia: {remove_loops(transcript)[1]} wypowiedzi (--dry-run, bez zmian).")
+        else:
+            removed = fix_loops(s)
+            print(f"[SUKCES] {s.name}: usunięto {removed} powtórzonych wypowiedzi (cofnięcie: "
+                  f"rpg-chronicler fix-loops {s.name} --undo).")
+    if not found:
+        print("Brak powtórzeń Whispera do usunięcia.")
 
 
 def cmd_stats(args):

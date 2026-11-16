@@ -4,11 +4,15 @@ Progi dobrane na nazwanych sesjach użytkownika (2026-11): zwykle 82–107 słó
 najdłuższa przerwa ≤ 3 min, a powtórzenia tego samego zdania (≥ 3 słowa) pod rząd ≤ 7. Pętla Whispera
 (np. „To jest to” co równe 2 s przez kilka minut ciszy) daje 8+ powtórzeń. Tylko stdlib (używane też przez GUI).
 """
+import dataclasses
+import datetime
 import hashlib
+import os
 import re
+import shutil
 from dataclasses import dataclass
 
-from .transcript import Transcript
+from .transcript import Transcript, save_transcript
 
 MIN_WORDS_PER_MINUTE = 40      # poniżej - prawdopodobnie zgubiony tekst albo złe nagranie
 MAX_GAP = 5 * 60               # sekundy bez żadnej wypowiedzi
@@ -34,10 +38,9 @@ def _normalized(text: str) -> str:
     return re.sub(r"[^\w ]+", "", text.lower()).strip()
 
 
-def find_loops(transcript: Transcript) -> list[tuple[float, float, str, int]]:
-    """Ciągi identycznych wypowiedzi: (początek, koniec, tekst, liczba powtórzeń)."""
-    loops = []
-    segments = transcript.segments
+def _loop_runs(segments) -> list[tuple[int, int]]:
+    """Indeksy [i, j) ciągów identycznych wypowiedzi uznanych za pętlę Whispera."""
+    runs = []
     i = 0
     while i < len(segments):
         text = _normalized(segments[i].text)
@@ -45,9 +48,75 @@ def find_loops(transcript: Transcript) -> list[tuple[float, float, str, int]]:
         while j < len(segments) and _normalized(segments[j].text) == text:
             j += 1
         if j - i >= LOOP_MIN_REPEATS and len(text.split()) >= LOOP_MIN_WORDS:
-            loops.append((segments[i].start, segments[j - 1].end, segments[i].text.strip(), j - i))
+            runs.append((i, j))
         i = j
-    return loops
+    return runs
+
+
+def find_loops(transcript: Transcript) -> list[tuple[float, float, str, int]]:
+    """Ciągi identycznych wypowiedzi: (początek, koniec, tekst, liczba powtórzeń)."""
+    segments = transcript.segments
+    return [(segments[i].start, segments[j - 1].end, segments[i].text.strip(), j - i)
+            for i, j in _loop_runs(segments)]
+
+
+def remove_loops(transcript: Transcript) -> tuple[Transcript, int]:
+    """Transkrypcja bez pętli Whispera: z każdego ciągu zostaje pierwsza wypowiedź. Zwraca też liczbę usuniętych."""
+    drop = {k for i, j in _loop_runs(transcript.segments) for k in range(i + 1, j)}
+    kept = [s for k, s in enumerate(transcript.segments) if k not in drop]
+    return dataclasses.replace(transcript, segments=kept), len(drop)
+
+
+# --- usuwanie pętli z plików sesji (z kopią do cofnięcia) ---
+
+def backups_dir(session) -> str:
+    """Kopie transkrypcji sprzed usunięcia pętli - lokalnie w cache (nie na Drive)."""
+    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(cache_home, "rpg-chronicler", "transkrypcje-poprzednie", session.name)
+
+
+def backups(session) -> list[str]:
+    """Katalogi kopii, od najnowszej."""
+    try:
+        names = sorted(os.listdir(backups_dir(session)), reverse=True)
+    except OSError:
+        return []
+    return [os.path.join(backups_dir(session), n) for n in names
+            if os.path.isdir(os.path.join(backups_dir(session), n))]
+
+
+def fix_loops(session) -> int:
+    """Usuwa pętle Whispera z transkrypcji sesji (najpierw kopia .txt i .json); zwraca liczbę usuniętych wypowiedzi."""
+    transcript = session.load_transcript()
+    cleaned, removed = remove_loops(transcript)
+    if not removed:
+        return 0
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    backup = os.path.join(backups_dir(session), stamp)
+    os.makedirs(backup)
+    for path in (session.txt_path, session.json_path):
+        if os.path.exists(path):
+            shutil.copy2(path, backup)
+    save_transcript(cleaned, session.json_path, session.txt_path)
+    return removed
+
+
+def undo_fix(session) -> str | None:
+    """Przywraca transkrypcję z najnowszej kopii (i usuwa kopię); None, gdy nie ma kopii."""
+    found = backups(session)
+    if not found:
+        return None
+    backup = found[0]
+    for path in (session.txt_path, session.json_path):
+        copy = os.path.join(backup, os.path.basename(path))
+        if os.path.exists(copy):
+            tmp = path + ".part"
+            shutil.copy2(copy, tmp)
+            os.replace(tmp, path)
+        elif path == session.json_path and os.path.exists(path):
+            os.unlink(path)   # przed usunięciem pętli sesja miała tylko .txt (starszy format)
+    shutil.rmtree(backup)
+    return backup
 
 
 def check(transcript: Transcript, audio_duration: float | None = None) -> list[Issue]:

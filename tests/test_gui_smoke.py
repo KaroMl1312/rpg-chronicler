@@ -37,8 +37,9 @@ def _make_data(base: Path) -> dict[str, str]:
     for path in dirs.values():
         path.mkdir()
 
+    loop = [Segment(7.0 + i, 8.0 + i, "To jest to", "SPEAKER_00") for i in range(8)]  # pętla Whispera
     transcript = Transcript(segments=[Segment(0.0, 4.0, "Szukamy Romulusa w Dolinie.", "SPEAKER_00"),
-                                      Segment(4.0, 7.0, "Tak?", "SPEAKER_01")], duration=7.0)
+                                      Segment(4.0, 7.0, "Tak?", "SPEAKER_01"), *loop], duration=15.0)
     txt = dirs["transkrypcje"] / "Warhammer_261105.txt"
     save_transcript(transcript, str(dirs["transkrypcje"] / "Warhammer_261105.transkrypcja.json"), str(txt))
     save_speaker_mapping(str(txt), {"SPEAKER_00": "MG", "SPEAKER_01": "Fen"})
@@ -88,7 +89,7 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     assert proc.returncode == 0, report
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "kronika", "skrót i cytaty", "transkrypcja", "mówcy", "poprawka kroniki",
-                    "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia"], report
+                    "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia", "uzupełnianie"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()
                 if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]

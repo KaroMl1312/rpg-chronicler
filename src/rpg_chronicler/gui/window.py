@@ -8,7 +8,8 @@ import sys
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import chronicle, glossary, memory, settings
+from .. import backfill, chronicle, glossary, memory, settings
+from ..campaigns import campaign_key
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
 from .campaigns_dialog import CampaignsDialog
@@ -78,6 +79,7 @@ class MainWindow(Adw.ApplicationWindow):
         add("preferences", self.show_settings)
         add("campaigns", lambda: self.show_campaigns(None))
         add("search", self.show_search)
+        add("backfill", self.show_backfill)
         add("restart", self.restart)
         add("cancel", self.runner.cancel)
 
@@ -142,6 +144,7 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append_section("Dostawca AI", providers)
         other = Gio.Menu()
         other.append("Szukaj w sesjach", "win.search")
+        other.append("Uzupełnij brakujące…", "win.backfill")
         other.append("Kampanie", "win.campaigns")
         other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
@@ -308,13 +311,32 @@ class MainWindow(Adw.ApplicationWindow):
     # ------------------------------------------------------------ operacje
 
     def summarize(self, session: Session, force: bool = False) -> None:
-        def run(allow_unnamed: bool):
+        def start(allow_unnamed: bool):
             args = ["summarize", "--no-interactive", *self._provider_args()]
             if allow_unnamed:
                 args.append("--allow-unnamed")
             if force:
                 args.append("--force")
             self.start_task(f"Kronika {session.name}", args + [session.name])
+
+        def run(allow_unnamed: bool):
+            """Najpierw ostrzeżenie o niezatwierdzonym stanie kampanii (kronika by go nie znała)."""
+            key = campaign_key(session.name)
+            warning = memory.unaccepted_warning(key, session.name)
+            if warning is None:
+                start(allow_unnamed)
+                return
+            dialog = Adw.AlertDialog(
+                heading="Stan kampanii czeka na zatwierdzenie",
+                body=f"{warning}\n\nZatwierdź propozycję w oknie „Kampanie”, żeby kronika znała najnowszy stan świata.")
+            dialog.add_response("cancel", "Anuluj")
+            dialog.add_response("campaigns", "Otwórz Kampanie")
+            dialog.add_response("generate", "Generuj mimo to")
+            dialog.set_response_appearance("campaigns", Adw.ResponseAppearance.SUGGESTED)
+            dialog.set_default_response("campaigns")
+            dialog.connect("response", lambda _d, r: self.show_campaigns(key) if r == "campaigns"
+                           else r == "generate" and start(allow_unnamed))
+            dialog.present(self)
 
         self._autosave_speakers()
         if not session.has_speakers and session.load_transcript().speakers:
@@ -489,6 +511,25 @@ class MainWindow(Adw.ApplicationWindow):
 
         dialog.connect("closed", closed)
         self._campaigns_dialog = dialog
+        dialog.present(self)
+
+    def show_backfill(self) -> None:
+        """„Uzupełnij brakujące”: plan (skróty, cytaty, PDF-y, encyklopedie, dzienniki) i potwierdzenie."""
+        steps = backfill.plan(list_sessions())
+        if not steps:
+            self.toast("Wszystko jest aktualne - nie ma czego uzupełniać")
+            return
+        requests = backfill.ai_requests(steps)
+        dialog = Adw.AlertDialog(
+            heading="Uzupełnić brakujące?",
+            body=f"{backfill.summary(steps)}\n\nZapytań do AI: ok. {requests} ({self._provider_label()}). "
+                 "Gotowe pliki zostają, powstają tylko brakujące i nieaktualne.")
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("run", "Uzupełnij")
+        dialog.set_response_appearance("run", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("run")
+        dialog.connect("response", lambda _d, r: r == "run" and self.start_task(
+            "Uzupełnianie brakujących", ["backfill", *self._provider_args()]))
         dialog.present(self)
 
     def show_search(self) -> None:

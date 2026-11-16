@@ -144,6 +144,29 @@ def state_for_prompt(key: str | None, session_name: str) -> State | None:
     return state if state is not None and is_before(state, session_name) else None
 
 
+def unaccepted_proposal(key: str | None, session_name: str) -> State | None:
+    """Niezatwierdzona propozycja stanu sprzed sesji - AI piszące jej kronikę jej nie zobaczy (tylko stan
+    zatwierdzony), więc kronika może nie znać ostatnich wydarzeń kampanii."""
+    if not key:
+        return None
+    proposal = load_proposal(key)
+    return proposal if proposal is not None and is_before(proposal, session_name) else None
+
+
+def unaccepted_warning(key: str | None, session_name: str) -> str | None:
+    """Komunikat dla użytkownika (CLI i GUI) albo None, gdy nie ma czego zatwierdzać."""
+    proposal = unaccepted_proposal(key, session_name)
+    if proposal is None:
+        return None
+    state = state_for_prompt(key, session_name)
+    if state is None:
+        used = "żadnego stanu kampanii (nic jeszcze nie zatwierdzono)"
+    else:
+        used = f"stan zatwierdzony po sesji {state.session}" if state.session else "stan wpisany ręcznie"
+    after = f" (po sesji {proposal.session})" if proposal.session else ""
+    return f"Kampania {key} ma niezatwierdzoną propozycję stanu{after}. Kronika {session_name} dostanie {used}."
+
+
 # --- zapytania do AI ---
 
 def clean_response(text: str) -> str:
