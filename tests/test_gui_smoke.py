@@ -79,7 +79,8 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
         time.sleep(1)
         assert broadway.poll() is None, "gtk4-broadwayd nie wystartował"
         env = {**os.environ, **_make_data(tmp_path), "GDK_BACKEND": "broadway", "BROADWAY_DISPLAY": display,
-               "PYTHONPATH": str(ROOT / "src"), "GSETTINGS_BACKEND": "memory"}
+               "PYTHONPATH": str(ROOT / "src"), "GSETTINGS_BACKEND": "memory",
+               "CLOUDFLARE_ACCOUNT_ID": "test", "CLOUDFLARE_API_TOKEN": "test"}   # przycisk obrazka (bez sieci)
         env.pop("RPG_CHRONICLER_PROGRESS", None)
         proc = subprocess.run([SYSTEM_PYTHON, str(ROOT / "tests" / "gui_smoke.py")], env=env, cwd=ROOT,
                               capture_output=True, text=True, timeout=120)
@@ -92,7 +93,8 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "filtr kampanii", "kronika", "skrót i cytaty", "transkrypcja", "mówcy",
                     "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
-                    "uzupełnianie", "notatki", "usuwanie", "opisy haseł"], report
+                    "uzupełnianie", "notatki", "usuwanie", "opisy haseł",
+                    "przed sesją", "obrazek AI"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()
                 if "-CRITICAL" in line or "Gtk-WARNING" in line or "Adwaita-WARNING" in line]

@@ -83,6 +83,95 @@ def cmd_discord(args):
     print(f"[SUKCES] Wysłano kronikę {session.name} na Discord.")
 
 
+def cmd_recap(args):
+    """„Poprzednio w kampanii…”: pisze tekst (gdy go nie ma, jest nieaktualny albo --force) i opcjonalnie wysyła."""
+    from .. import chronicle, discord, prep
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    sessions = list_sessions()
+    path = prep.recap_path(campaign.key)
+    after, text = prep.read(path)
+    if args.force or not prep.is_current(path, campaign.key, sessions):
+        progress.report("poprzednio w kampanii", campaign.key)
+        try:
+            text = prep.write_recap(get_client(args.provider), campaign, sessions)
+        except (LLMError, prep.PrepError) as e:
+            raise SessionNotFound(f"Nie udało się napisać „{prep.RECAP_TITLE}…”: {e}")
+        after, _ = prep.read(path)
+        print(f"[SUKCES] Zapisano w: {path}")
+    print(f"\n{text}\n")
+    if not args.discord:
+        return
+    webhook = chronicle.webhook_for(campaign.key)
+    if not webhook:
+        raise SessionNotFound(f"Kampania '{campaign.key}' nie ma ustawionego webhooka Discorda "
+                              "(GUI: Kampanie → Discord).")
+    message = discord.build_message(f"{prep.RECAP_TITLE} {campaign.key}…", text,
+                                    f"{campaign.system} · przed kolejną sesją (po {after})", None)
+    progress.report("wysyłanie na Discord", campaign.key)
+    try:
+        discord.send(webhook, message)
+    except discord.DiscordError as e:
+        raise SessionNotFound(str(e))
+    print(f"[SUKCES] Wysłano „{prep.RECAP_TITLE}…” na Discord kampanii {campaign.key}.")
+
+
+def cmd_gm_notes(args):
+    from .. import prep
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    progress.report("notatki MG", campaign.key)
+    try:
+        text = prep.write_gm_notes(get_client(args.provider), campaign, list_sessions())
+    except (LLMError, prep.PrepError) as e:
+        raise SessionNotFound(f"Nie udało się napisać notatek MG: {e}")
+    from ..chronicle_pdf import write_markdown_pdf
+    progress.report("PDF", campaign.key)
+    write_markdown_pdf(text, prep.gm_notes_pdf_path(campaign.key), campaign.system)   # .md zapisał prep (z nagłówkiem)
+    print(f"[SUKCES] Notatki MG kampanii {campaign.key}: {prep.gm_notes_pdf_path(campaign.key)}")
+
+
+def cmd_ask(args):
+    from .. import ask
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    progress.report("pytanie do kronikarza", campaign.key)
+    try:
+        answer = ask.ask(get_client(args.provider), campaign, list_sessions(), args.question)
+    except (LLMError, ask.AskError) as e:
+        raise SessionNotFound(f"Kronikarz nie odpowiedział: {e}")
+    print(f"\n{answer.answer}\n")
+    if answer.sessions:
+        print(f"[INFO] Sesje: {', '.join(answer.sessions)}")
+
+
+def cmd_image(args):
+    """Propozycja obrazka hasła kampanii (Cloudflare FLUX); z --zachowaj od razu jako zdjęcie hasła."""
+    from .. import images
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    name = next((n for n in campaign.all_names() if n.casefold() == args.name.strip().casefold()), args.name.strip())
+    progress.report("obrazek", name)
+    try:
+        path = images.generate_candidate(get_client(args.provider), images.get_image_client(), campaign, name)
+        if args.keep:
+            path = images.keep_candidate(campaign.key, name)
+    except (LLMError, images.ImageError) as e:
+        raise SessionNotFound(f"Nie udało się wygenerować obrazka: {e}")
+    print(f"[SUKCES] {'Zdjęcie' if args.keep else 'Propozycja obrazka'} „{name}”: {path}")
+    if not args.keep:
+        print(f"[INFO] Zachowasz ją w oknie Kampanie (strona hasła) albo: rpg-chronicler image {campaign.key} "
+              f"\"{name}\" --zachowaj (wygeneruje nowy).")
+
+
 def cmd_discord_test(args):
     from .. import chronicle, discord
     from ..campaigns import campaign_for

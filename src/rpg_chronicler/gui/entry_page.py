@@ -9,6 +9,7 @@ from typing import Callable
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
+from .. import config, images
 from ..campaigns import IMAGE_EXTENSIONS, image_path, remove_image, set_image
 
 TOOLTIP_IMAGE_SIZE = 160
@@ -63,13 +64,17 @@ def attach_tooltip(widget: Gtk.Widget, key: str, name: str, description: str) ->
 
 
 class EntryPage(Adw.NavigationPage):
-    """`save(nazwa, opis)` - zapis opisu w kampanii (przy wyjściu ze strony, jeśli zmieniony)."""
+    """`save(nazwa, opis)` - zapis opisu w kampanii (przy wyjściu ze strony, jeśli zmieniony);
+    `generate(nazwa)` - zadanie „obrazek od AI” (None = bez tej opcji); `register` - przycisk zadania."""
 
     def __init__(self, key: str, name: str, category: str, description: str,
-                 save: Callable[[str, str], None], toast: Callable[[str], None]):
+                 save: Callable[[str, str], None], toast: Callable[[str], None],
+                 generate: Callable[[str], None] | None = None,
+                 register: Callable[[Gtk.Widget], None] | None = None):
         super().__init__(title=name, tag=f"haslo-{key}-{name}")
         self.key, self.name = key, name
         self._save, self._toast = save, toast
+        self._generate, self._register = generate, register
         self._original = description
 
         page = Adw.PreferencesPage()
@@ -104,9 +109,28 @@ class EntryPage(Adw.NavigationPage):
 
     # --- zdjęcie ---
 
+    def refresh(self) -> None:
+        """Po zadaniu z zewnątrz (np. wygenerowany obrazek)."""
+        self._show_image()
+
+    def _task_button(self, label: str, tooltip: str, callback, css: str | None = None) -> Gtk.Button:
+        button = Gtk.Button(label=label, tooltip_text=tooltip, css_classes=[css] if css else [])
+        button.connect("clicked", lambda _b: callback())
+        if self._register is not None:
+            self._register(button)
+        return button
+
+    def _start_generation(self) -> None:
+        self.save_if_changed()   # zadanie czyta opis z kampanie.toml
+        self._generate(self.name)
+
     def _show_image(self) -> None:
         while (child := self._image_box.get_first_child()) is not None:
             self._image_box.remove(child)
+        proposal = images.candidate(self.key, self.name)
+        if proposal is not None:
+            self._show_proposal(proposal)
+            return
         path = image_path(self.key, self.name)
         picture = image_widget(path, PAGE_IMAGE_SIZE)
         if picture is not None:
@@ -116,11 +140,41 @@ class EntryPage(Adw.NavigationPage):
                             tooltip_text="JPG, PNG albo WebP - kopia trafi do folderu kampanii (i na Drive)")
         choose.connect("clicked", lambda _b: self._choose_image())
         buttons.append(choose)
+        if self._generate is not None and config.CLOUDFLARE_ACCOUNT_ID and config.CLOUDFLARE_API_TOKEN:
+            buttons.append(self._task_button(
+                "Wygeneruj obrazek (AI)", "AI narysuje obrazek z opisu w stylu kampanii (Cloudflare FLUX, "
+                "darmowy limit dzienny). Najpierw zobaczysz propozycję.", self._start_generation))
         if path:
             remove = Gtk.Button(label="Usuń zdjęcie", css_classes=["destructive-action"])
             remove.connect("clicked", lambda _b: self._remove_image())
             buttons.append(remove)
         self._image_box.append(buttons)
+
+    def _show_proposal(self, path: str) -> None:
+        """Propozycja od AI: podgląd z „Zachowaj” / „Spróbuj ponownie” / „Odrzuć”."""
+        self._image_box.append(Gtk.Label(label="Propozycja AI - jeszcze nie zapisana", css_classes=["dim-label"]))
+        picture = image_widget(path, PAGE_IMAGE_SIZE)
+        if picture is not None:
+            picture.set_tooltip_text(images.prompt_for(self.key, self.name) or None)
+            self._image_box.append(picture)
+        buttons = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        keep = Gtk.Button(label="Zachowaj", css_classes=["suggested-action"])
+        keep.connect("clicked", lambda _b: self._keep_proposal())
+        buttons.append(keep)
+        if self._generate is not None:
+            buttons.append(self._task_button("Spróbuj ponownie", "Nowa propozycja (inny obrazek z tego samego opisu)",
+                                             self._start_generation))
+        discard = Gtk.Button(label="Odrzuć", css_classes=["flat"])
+        discard.connect("clicked", lambda _b: (images.discard_candidates(self.key, self.name), self._show_image()))
+        buttons.append(discard)
+        self._image_box.append(buttons)
+
+    def _keep_proposal(self) -> None:
+        try:
+            images.keep_candidate(self.key, self.name)
+        except (OSError, images.ImageError) as e:
+            self._toast(f"Nie można zapisać obrazka: {e}")
+        self._show_image()
 
     def _choose_image(self) -> None:
         images = Gtk.FileFilter(name="Zdjęcia (JPG, PNG, WebP)")

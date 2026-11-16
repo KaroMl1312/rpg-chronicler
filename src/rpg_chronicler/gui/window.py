@@ -567,7 +567,12 @@ class MainWindow(Adw.ApplicationWindow):
     def show_campaigns(self, key: str | None) -> None:
         if self._campaigns_dialog is not None:
             self._campaigns_dialog.force_close()
-        dialog = CampaignsDialog(self.start_task, lambda: self.provider, self._register_task_button, key)
+        def open_session(name: str) -> None:
+            dialog.force_close()
+            self.open_session(name, "summary")
+
+        dialog = CampaignsDialog(self.start_task, lambda: self.provider, self._register_task_button, key,
+                                 open_session)
 
         def closed(_d):
             self._campaigns_dialog = None

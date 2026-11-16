@@ -52,6 +52,12 @@ SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 HUGGINGFACE_TOKEN = os.environ.get("HUGGINGFACE_TOKEN", "")
 
+# Obrazki haseł kampanii: Cloudflare Workers AI (darmowe 10 000 „neuronów” dziennie ≈ 200 obrazków FLUX schnell)
+CLOUDFLARE_ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+CLOUDFLARE_API_TOKEN = os.environ.get("CLOUDFLARE_API_TOKEN", "")   # tylko uprawnienie Workers AI (Read + Edit)
+IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell"
+IMAGE_STEPS = 4   # FLUX schnell: 1–8 kroków; 4 = dobra jakość, ok. 43 neurony na obrazek
+
 # Dostawca LLM: "claude-code" (plan Pro/Max przez `claude -p`), "anthropic" (płatne API) lub "gemini"
 LLM_PROVIDER = _setting("ai.dostawca", os.environ.get("LLM_PROVIDER", "claude-code"))
 LLM_MAX_RETRIES = 3

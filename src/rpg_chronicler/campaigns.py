@@ -31,6 +31,7 @@ FILE_HEADER = """\
 #   postacie_graczy - postać = "gracz" (gracz opcjonalny)
 #   npc, miejsca, przedmioty, inne - słownik nazw: poprawna pisownia w transkrypcji i kronikach
 #   opisy           - nazwa = "krótki opis: kto to albo co to jest" (zdjęcia: folder obrazy/<kampania>/)
+#   styl_obrazow    - styl obrazków generowanych przez AI (po angielsku, np. "grimdark ink and watercolor")
 """
 IMAGES_DIR = "obrazy"                                  # TXT_DIR/obrazy/<kampania>/<nazwa>.<rozszerzenie>
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
@@ -44,6 +45,14 @@ class Campaign:
     player_characters: dict[str, str] = field(default_factory=dict)  # postać -> gracz ("" = nieznany)
     glossary: dict[str, tuple[str, ...]] = field(default_factory=dict)  # kategoria -> nazwy
     descriptions: dict[str, str] = field(default_factory=dict)  # nazwa (postać, BN, miejsce…) -> krótki opis
+    image_style: str = ""   # styl generowanych obrazków (cechy po angielsku, bez nazw artystów i wydawców)
+
+    def category_of(self, name: str) -> str | None:
+        """Kategoria nazwy: "postacie_graczy" albo klucz słownika (npc, miejsca…); None, gdy jej nie ma."""
+        wanted = name.strip().casefold()
+        if any(n.casefold() == wanted for n in self.player_characters):
+            return "postacie_graczy"
+        return next((c for c in GLOSSARY_CATEGORIES if any(n.casefold() == wanted for n in self.names(c))), None)
 
     def description(self, name: str) -> str:
         """Opis nazwy (bez względu na wielkość liter); pusty, gdy go nie ma."""
@@ -163,6 +172,7 @@ def _campaign_from_toml(key: str, values: dict) -> Campaign:
                   if (names := tuple(_unique(strings(values.get(category, [])))))},
         descriptions={str(k).strip(): str(v).strip() for k, v in descriptions.items()
                       if str(k).strip() and str(v).strip()},
+        image_style=str(values.get("styl_obrazow", "")).strip(),
     )
 
 
@@ -205,6 +215,8 @@ def _campaign_to_toml(campaign: Campaign) -> str:
     lines = [f"[{key}]", f"system = {_toml_string(campaign.system)}"]
     if campaign.context:
         lines.append(f"kontekst = {_toml_string(campaign.context)}")
+    if campaign.image_style:
+        lines.append(f"styl_obrazow = {_toml_string(campaign.image_style)}")
     for category in GLOSSARY_CATEGORIES:
         names = campaign.names(category)
         if names:
@@ -242,14 +254,14 @@ def images_dir(key: str) -> str:
     return os.path.join(config.TXT_DIR, IMAGES_DIR, key)
 
 
-def _image_stem(name: str) -> str:
+def image_stem(name: str) -> str:
     return re.sub(r"[^\w-]+", "_", name.strip()).strip("_").casefold() or "hasło"
 
 
 def image_path(key: str, name: str) -> str | None:
     """Zdjęcie hasła albo None."""
     for ext in IMAGE_EXTENSIONS:
-        path = os.path.join(images_dir(key), _image_stem(name) + ext)
+        path = os.path.join(images_dir(key), image_stem(name) + ext)
         if os.path.isfile(path):
             return path
     return None
@@ -266,7 +278,7 @@ def set_image(key: str, name: str, source: str) -> str:
     if ext not in IMAGE_EXTENSIONS:
         raise ValueError(f"Nieobsługiwany format zdjęcia ({ext or 'brak rozszerzenia'}) - użyj JPG, PNG albo WebP.")
     os.makedirs(images_dir(key), exist_ok=True)
-    target = os.path.join(images_dir(key), _image_stem(name) + ext)
+    target = os.path.join(images_dir(key), image_stem(name) + ext)
     tmp = target + ".part"
     shutil.copyfile(source, tmp)
     remove_image(key, name)

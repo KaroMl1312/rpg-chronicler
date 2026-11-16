@@ -10,7 +10,7 @@ from gi.repository import Adw, Gio, GLib, Gtk
 
 import os
 
-from .. import chronicle, diary, discord, encyclopedia, glossary, memory
+from .. import ask, chronicle, diary, discord, encyclopedia, glossary, memory, prep
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          image_path, load_campaigns, update_campaign)
 from ..session import list_sessions
@@ -19,12 +19,15 @@ from .entry_page import EntryPage, attach_tooltip, image_widget, preview
 CATEGORY_LABELS = {glossary.PLAYER_CHARACTERS: "Postacie graczy", **GLOSSARY_CATEGORIES}
 
 StartTask = Callable[[str, list[str]], None]
+ASK_HISTORY_SHOWN = 5   # ostatnie pytania widoczne w oknie (historia ma ich więcej)
 
 
 class CampaignsDialog(Adw.Dialog):
     def __init__(self, start_task: StartTask, provider: Callable[[], str],
-                 register_task_button: Callable[[Gtk.Button], None], initial_key: str | None = None):
+                 register_task_button: Callable[[Gtk.Button], None], initial_key: str | None = None,
+                 open_session: Callable[[str], None] | None = None):
         super().__init__(title="Kampanie", content_width=780, content_height=820)
+        self.open_session = open_session   # przejście do kroniki sesji (np. z odpowiedzi kronikarza)
         self._start_task = start_task
         self._provider = provider
         self._register = register_task_button
@@ -48,6 +51,8 @@ class CampaignsDialog(Adw.Dialog):
         page = self.nav.get_visible_page()
         if isinstance(page, CampaignPage):
             page.reload()
+        elif isinstance(page, EntryPage):
+            page.refresh()
 
     # ------------------------------------------------------------ lista kampanii
 
@@ -136,6 +141,22 @@ class CampaignsDialog(Adw.Dialog):
     def start_descriptions(self, key: str) -> None:
         self._start_task(f"Opisy haseł kampanii {key}", ["describe", key, "--provider", self._provider()])
 
+    def start_recap(self, key: str, discord_too: bool = False) -> None:
+        if discord_too:
+            self._start_task(f"Poprzednio w kampanii {key} → Discord",
+                             ["recap", key, "--discord", "--provider", self._provider()])
+        else:
+            self._start_task(f"Poprzednio w kampanii {key}", ["recap", key, "--force", "--provider", self._provider()])
+
+    def start_gm_notes(self, key: str) -> None:
+        self._start_task(f"Notatki MG {key}", ["gm-notes", key, "--provider", self._provider()])
+
+    def start_ask(self, key: str, question: str) -> None:
+        self._start_task(f"Pytanie do kronikarza ({key})", ["ask", key, question, "--provider", self._provider()])
+
+    def start_image(self, key: str, name: str) -> None:
+        self._start_task(f"Obrazek: {name}", ["image", key, name, "--provider", self._provider()])
+
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
 
@@ -170,6 +191,8 @@ class CampaignPage(Adw.NavigationPage):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
                       margin_top=24, margin_bottom=24, margin_start=12, margin_end=12)
         box.append(self._general_group(campaign))
+        box.append(self._prep_group())
+        box.append(self._ask_group())
         box.append(self._memory_group())
         box.append(self._encyclopedia_group())
         box.append(self._diary_group(campaign))
@@ -209,6 +232,13 @@ class CampaignPage(Adw.NavigationPage):
         box.append(view)
         box.append(save)
         group.add(box)
+
+        style = Adw.EntryRow(title="Styl obrazków AI (po angielsku; pusty - AI zaproponuje przy pierwszym obrazku)",
+                             text=campaign.image_style, show_apply_button=True)
+        style.set_tooltip_text("Cechy stylu, np. „grimdark fantasy, ink and watercolor, muted palette”. "
+                               "Bez nazwisk artystów i nazw wydawców.")
+        style.connect("apply", lambda e: self.save(_replace(self.campaign, image_style=e.get_text().strip())))
+        group.add(style)
         return group
 
     # --- pamięć kampanii ---
@@ -456,6 +486,111 @@ class CampaignPage(Adw.NavigationPage):
 
     # --- postacie graczy ---
 
+    # --- przed sesją: „Poprzednio w kampanii…” i notatki MG ---
+
+    def _prep_status(self, path: str, sessions) -> str:
+        after, text = prep.read(path)
+        if not text:
+            return "jeszcze nie napisane"
+        if prep.is_current(path, self.key, sessions):
+            return f"po sesji {after}"
+        latest = prep.latest_session(self.key, sessions)
+        return f"nieaktualne - po sesji {after}, a jest już kronika {latest.name if latest else '?'}"
+
+    def _prep_group(self) -> Gtk.Widget:
+        sessions = list_sessions()
+        has_chronicles = prep.latest_session(self.key, sessions) is not None
+        group = Adw.PreferencesGroup(
+            title="Przed sesją",
+            description="Na początek kolejnej sesji: tekst do przeczytania graczom na głos i ściągawka dla MG "
+                        "(otwarte wątki, obietnice, niewykorzystane tropy, BN-i). Pisze je AI z kronik.")
+
+        recap_file = prep.recap_path(self.key)
+        _after, recap = prep.read(recap_file)
+        recap_row = Adw.ExpanderRow(title=f"{prep.RECAP_TITLE}…", subtitle=self._prep_status(recap_file, sessions),
+                                    enable_expansion=bool(recap), use_markup=False)
+        write = Gtk.Button(label="Odśwież" if recap else "Napisz", valign=Gtk.Align.CENTER, sensitive=has_chronicles,
+                           tooltip_text="AI napisze tekst z ostatniej kroniki i otwartych wątków (1–2 min czytania)")
+        write.add_css_class("flat" if recap else "suggested-action")
+        write.connect("clicked", lambda _b: self.dialog.start_recap(self.key))
+        if has_chronicles:   # bez kronik zostaje nieaktywny (rejestracja włączałaby go po każdym zadaniu)
+            self.dialog.register_task_button(write)
+        recap_row.add_suffix(write)
+        if recap and chronicle.webhook_for(self.key):
+            send = Gtk.Button(icon_name="mail-send-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                              tooltip_text="Wyślij na kanał Discord kampanii (przed sesją)")
+            send.connect("clicked", lambda _b: self._confirm_recap_discord())
+            self.dialog.register_task_button(send)
+            recap_row.add_suffix(send)
+        if recap:
+            recap_row.add_row(Gtk.Label(label=recap, wrap=True, xalign=0, selectable=True, margin_top=12,
+                                        margin_bottom=12, margin_start=12, margin_end=12))
+        group.add(recap_row)
+
+        notes_md, notes_pdf = prep.gm_notes_path(self.key), prep.gm_notes_pdf_path(self.key)
+        exists = os.path.exists(notes_pdf)
+        notes_row = Adw.ActionRow(title="Notatki MG", subtitle=self._prep_status(notes_md, sessions),
+                                  activatable=exists, use_markup=False)
+        if exists:
+            notes_row.add_suffix(Gtk.Image(icon_name="x-office-document-symbolic"))
+            notes_row.connect("activated", lambda _r: Gtk.FileLauncher.new(Gio.File.new_for_path(notes_pdf)).launch(
+                self.get_root(), None, None))
+            notes_row.set_tooltip_text("Otwórz PDF z notatkami (tylko dla MG - nie trafia na Discord)")
+        build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
+                           sensitive=has_chronicles, tooltip_text="AI przejrzy wszystkie kroniki i stan kampanii")
+        build.add_css_class("flat" if exists else "suggested-action")
+        build.connect("clicked", lambda _b: self.dialog.start_gm_notes(self.key))
+        if has_chronicles:
+            self.dialog.register_task_button(build)
+        notes_row.add_suffix(build)
+        group.add(notes_row)
+        return group
+
+    def _confirm_recap_discord(self) -> None:
+        dialog = Adw.AlertDialog(heading=f"Wysłać „{prep.RECAP_TITLE}…” na Discord?",
+                                 body=f"Tekst trafi na kanał kampanii {self.key} - zobaczą go gracze.")
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("send", "Wyślij")
+        dialog.set_response_appearance("send", Adw.ResponseAppearance.SUGGESTED)
+        dialog.connect("response", lambda _d, r: r == "send" and self.dialog.start_recap(self.key, discord_too=True))
+        dialog.present(self.get_root())
+
+    # --- zapytaj kronikarza ---
+
+    def _ask_group(self) -> Gtk.Widget:
+        group = Adw.PreferencesGroup(
+            title="Zapytaj kronikarza",
+            description="Pytanie o kampanię, np. „Kiedy poznaliśmy Ojca Romulusa?” albo „Komu jesteśmy winni "
+                        "pieniądze?”. AI odpowie z kronik i stanu kampanii i wskaże sesje.")
+        has_chronicles = prep.latest_session(self.key, list_sessions()) is not None
+        entry = Adw.EntryRow(title="Twoje pytanie" if has_chronicles else "Twoje pytanie (najpierw potrzebna kronika)",
+                             show_apply_button=True, sensitive=has_chronicles)
+        entry.connect("apply", lambda e: e.get_text().strip() and self.dialog.start_ask(self.key, e.get_text().strip()))
+        if has_chronicles:
+            self.dialog.register_task_button(entry)
+        group.add(entry)
+        for index, item in enumerate(ask.load_history(self.key)[:ASK_HISTORY_SHOWN]):
+            row = Adw.ExpanderRow(title=item.question, subtitle=item.asked.replace("T", " "), use_markup=False,
+                                  expanded=index == 0)
+            row.add_suffix(_delete_button("Usuń z historii", lambda i=index: self._forget_answer(i)))
+            content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12,
+                              margin_start=12, margin_end=12)
+            content.append(Gtk.Label(label=item.answer, wrap=True, xalign=0, selectable=True))
+            if item.sessions and self.dialog.open_session is not None:
+                links = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
+                for name in item.sessions:
+                    link = Gtk.Button(label=name, css_classes=["flat"], tooltip_text="Przejdź do kroniki tej sesji")
+                    link.connect("clicked", lambda _b, n=name: self.dialog.open_session(n))
+                    links.append(link)
+                content.append(links)
+            row.add_row(content)
+            group.add(row)
+        return group
+
+    def _forget_answer(self, index: int) -> None:
+        ask.remove_from_history(self.key, index)
+        self.reload()
+
     # --- opisy haseł (dymek, strona z edycją i zdjęciem) ---
 
     def _descriptions_group(self, campaign: Campaign) -> Gtk.Widget:
@@ -482,7 +617,11 @@ class CampaignPage(Adw.NavigationPage):
             self.dialog.toast(f"Zapisano opis: {entry_name}")
 
         campaign = self.campaign
-        self.dialog.nav.push(EntryPage(self.key, name, category, campaign.description(name), save, self.dialog.toast))
+        entry = EntryPage(self.key, name, category, campaign.description(name), save, self.dialog.toast,
+                          generate=lambda n: self.dialog.start_image(self.key, n),
+                          register=self.dialog.register_task_button)
+        entry.connect("hidden", lambda _p: self.reload())   # miniatury i opisy na liście
+        self.dialog.nav.push(entry)
 
     def _entry_row(self, campaign: Campaign, name: str, category: str, delete: Gtk.Widget) -> Adw.ActionRow:
         """Wiersz nazwy: podgląd opisu, miniatura zdjęcia, dymek z pełnym opisem; kliknięcie - strona hasła."""

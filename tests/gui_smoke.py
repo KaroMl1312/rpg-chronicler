@@ -211,6 +211,61 @@ def steps(win):
         win._campaigns_dialog.force_close()
     yield "opisy haseł", entry_descriptions
 
+    def before_session():
+        from rpg_chronicler import ask, prep
+        with open(prep.recap_path("Warhammer"), "w", encoding="utf-8") as f:
+            f.write(f"<!-- po sesji: {FULL} -->\nPoprzednio… szukaliście Romulusa.\n")
+        answer = ask.Answer("Kim jest Romulus?", f"Kapłanem [{FULL}].", [FULL], "2026-11-16T20:00")
+        ask._save_history("Warhammer", [answer])
+        win.show_campaigns("Warhammer")
+        page = win._campaigns_dialog.nav.get_visible_page()
+        texts = labels(page)
+        assert "Przed sesją" in texts and "Zapytaj kronikarza" in texts and "Notatki MG" in texts, texts
+        assert "Poprzednio… szukaliście Romulusa." in texts and "Kapłanem [Warhammer_261105]." in texts, texts
+        recap = next(w for w in _walk(page)
+                     if isinstance(w, Adw.ExpanderRow) and w.get_title().startswith("Poprzednio"))
+        assert recap.get_subtitle() == f"po sesji {FULL}", recap.get_subtitle()
+        link = next(w for w in _walk(page) if isinstance(w, Gtk.Button) and w.get_label() == FULL)
+        win.open_session(AUDIO_ONLY, "transcript")
+        link.emit("clicked")                                     # odpowiedź → kronika sesji
+        assert win._campaigns_dialog is None and win.current.name == FULL
+        assert win.view_stack.get_visible_child_name() == "summary"
+    yield "przed sesją", before_session
+
+    def ai_image():
+        import struct
+        import zlib
+        from rpg_chronicler import images
+        from rpg_chronicler.campaigns import image_path
+        from rpg_chronicler.gui.entry_page import EntryPage
+
+        def png(width=4, height=4):   # najmniejszy poprawny PNG (szary kwadrat)
+            def chunk(kind, data):
+                return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+            rows = b"".join(b"\0" + b"\x80\x80\x80" * width for _ in range(height))
+            return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                    + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+        win.show_campaigns("Warhammer")
+        page = win._campaigns_dialog.nav.get_visible_page()
+        page.open_entry("Ojciec Romulus", "Postacie niezależne (NPC)")
+        entry = win._campaigns_dialog.nav.get_visible_page()
+        assert isinstance(entry, EntryPage) and "Wygeneruj obrazek (AI)" in labels(entry), labels(entry)
+        directory = images.candidates_dir("Warhammer")
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "ojciec_romulus__20261116-200000-000000.jpg").write_bytes(png())   # rozszerzenie jak z API
+        (directory / "ojciec_romulus__20261116-200000-000000.txt").write_text("An old priest.", encoding="utf-8")
+        win._campaigns_dialog.reload()                           # jak po zakończeniu zadania „image”
+        texts = labels(entry)
+        assert "Propozycja AI - jeszcze nie zapisana" in texts and "Zachowaj" in texts, texts
+        keep = next(w for w in _walk(entry) if isinstance(w, Gtk.Button) and w.get_label() == "Zachowaj")
+        keep.emit("clicked")
+        assert image_path("Warhammer", "Ojciec Romulus") is not None
+        assert images.candidate("Warhammer", "Ojciec Romulus") is None
+        assert "Zmień zdjęcie…" in labels(entry)
+        win._campaigns_dialog.force_close()
+    yield "obrazek AI", ai_image
+
 
 def main() -> int:
     app = Adw.Application(application_id="pl.rpgchronicler.TestDymny")
