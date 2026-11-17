@@ -136,7 +136,7 @@ def ensure_style(llm, campaign: Campaign) -> Campaign:
     style = " ".join(with_retry(lambda: generate(llm, prompt), f"styl obrazków {campaign.key}").split())
     campaign = replace(campaign, image_style=style.strip().strip('"„”'))
     update_campaign(campaign)
-    print(f"[INFO] Styl obrazków kampanii {campaign.key}: {campaign.image_style} (zmienisz go w oknie Kampanie)")
+    print(f"[INFO] Styl obrazków kampanii {campaign.key}: {campaign.image_style} (zmienisz go w zakładce Kampanie)")
     return campaign
 
 

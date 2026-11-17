@@ -12,7 +12,7 @@ from .. import backfill, chronicle, deletion, glossary, memory, settings
 from ..campaigns import campaign_key
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions
-from .campaigns_dialog import CampaignsDialog
+from .campaigns_view import CampaignsView
 from .chronicle_page import ChroniclePage
 from .discord_dialog import DiscordDialog
 from .notes_dialog import NotesDialog
@@ -33,7 +33,8 @@ TASK_ACTIONS = ("sync", "upload", "run", "run-offline")
 
 class MainWindow(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application):
-        super().__init__(application=app, title="RPG Chronicler", default_width=1180, default_height=760)
+        super().__init__(application=app, title="RPG Chronicler", default_width=1180, default_height=760,
+                         maximized=True)   # rozmiar domyślny - po wyjściu z maksymalizacji
         self.sessions: list[Session] = []
         self.current: Session | None = None
         self._list_signature = None
@@ -41,7 +42,6 @@ class MainWindow(Adw.ApplicationWindow):
         self._rows: dict[str, Adw.ActionRow] = {}
         self._row_campaigns: dict[str, str] = {}
         self._session_task_buttons: list[Gtk.Button] = []
-        self._campaigns_dialog: CampaignsDialog | None = None
         self._discord_dialog: DiscordDialog | None = None
         self._open_pdf_after: str | None = None
         self._proposals_before: dict = {}
@@ -84,6 +84,7 @@ class MainWindow(Adw.ApplicationWindow):
         add("show-log", self.show_log)
         add("preferences", self.show_settings)
         add("campaigns", lambda: self.show_campaigns(None))
+        add("sessions", self.show_sessions)
         add("search", self.show_search)
         add("add-notes", lambda: self.show_notes_dialog(None))
         for scope in deletion.SCOPES:
@@ -117,11 +118,18 @@ class MainWindow(Adw.ApplicationWindow):
     # ---------------------------------------------------------------- budowa UI
 
     def _build_ui(self) -> None:
+        self.main_menu = self._build_main_menu()
+        self.main_stack = Adw.ViewStack()
         self.split = Adw.NavigationSplitView(min_sidebar_width=280, max_sidebar_width=360)
         self.split.set_sidebar(self._build_sidebar())
         self.split.set_content(self._build_content())
+        self.campaigns_view = CampaignsView(self.start_task, lambda: self.provider, self._register_task_button,
+                                            self.toast, self._sidebar_header, self._open_session_from_campaign)
+        self.main_stack.add_titled_with_icon(self.split, "sesje", "Sesje", "audio-x-generic-symbolic")
+        self.main_stack.add_titled_with_icon(self.campaigns_view, "kampanie", "Kampanie", "system-users-symbolic")
+        self.main_stack.connect("notify::visible-child-name", self._on_main_tab_changed)
 
-        outer = Adw.ToolbarView(content=self.split)
+        outer = Adw.ToolbarView(content=self.main_stack)
         self.env_banner = EnvironmentBanner()
         outer.add_top_bar(self.env_banner)
         self.task_bar = TaskBar()
@@ -132,18 +140,13 @@ class MainWindow(Adw.ApplicationWindow):
 
         breakpoint_ = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 640sp"))
         breakpoint_.add_setter(self.split, "collapsed", True)
+        breakpoint_.add_setter(self.campaigns_view.split, "collapsed", True)
         self.add_breakpoint(breakpoint_)
 
-    def _build_sidebar(self) -> Adw.NavigationPage:
-        header = Adw.HeaderBar()
-        header.pack_start(icon_button("view-refresh-symbolic", "Odśwież listę (Ctrl+R)", "win.refresh"))
-        header.pack_start(icon_button("system-search-symbolic", "Szukaj w kronikach i transkrypcjach (Ctrl+F)",
-                                      "win.search"))
-        header.pack_start(icon_button("list-add-symbolic", "Dodaj sesję bez nagrania - kronika z notatek MG (Ctrl+N)",
-                                      "win.add-notes"))
-
+    def _build_main_menu(self) -> Gio.Menu:
         menu = Gio.Menu()
         section = Gio.Menu()
+        section.append("Odśwież listę", "win.refresh")
         section.append("Pobierz z Google Drive", "win.sync")
         section.append("Wyślij na Google Drive", "win.upload")
         menu.append_section(None, section)
@@ -157,14 +160,21 @@ class MainWindow(Adw.ApplicationWindow):
         other.append("Szukaj w sesjach", "win.search")
         other.append("Dodaj sesję z notatek…", "win.add-notes")
         other.append("Uzupełnij brakujące…", "win.backfill")
-        other.append("Kampanie", "win.campaigns")
         other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
         menu.append_section(None, other)
-        header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu,
-                                       tooltip_text="Menu główne", primary=True))
-        header.pack_end(icon_button("folder-download-symbolic", "Pobierz nowe nagrania z Google Drive", "win.sync"))
+        return menu
 
+    def _sidebar_header(self) -> Adw.HeaderBar:
+        """Nagłówek nad listą (sesji albo kampanii): przełącznik Sesje/Kampanie i menu główne."""
+        header = Adw.HeaderBar(title_widget=Adw.InlineViewSwitcher(stack=self.main_stack,
+                                                                   tooltip_text="Sesje (Ctrl+1) / Kampanie (Ctrl+K)"))
+        header.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=self.main_menu,
+                                       tooltip_text="Menu główne", primary=True))
+        return header
+
+    def _build_sidebar(self) -> Adw.NavigationPage:
+        header = self._sidebar_header()
         self.session_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
         self.session_list.add_css_class("navigation-sidebar")
         self.session_list.connect("row-selected", self._on_row_selected)
@@ -183,12 +193,21 @@ class MainWindow(Adw.ApplicationWindow):
         run_button.add_css_class("suggested-action")
 
         self.filter_dropdown = Gtk.DropDown(model=Gtk.StringList(), tooltip_text="Pokaż sesje jednej kampanii",
-                                            margin_start=12, margin_end=12, margin_bottom=6, visible=False)
+                                            hexpand=True, visible=False)
         self.filter_dropdown.connect("notify::selected", self._on_filter_changed)
+        tools = Gtk.Box(spacing=2, margin_start=12, margin_end=6, margin_bottom=6)
+        tools.append(self.filter_dropdown)
+        tools.append(Gtk.Box(hexpand=True))   # przyciski zostają po prawej, gdy filtra nie ma
+        for icon, tooltip, action in (
+                ("system-search-symbolic", "Szukaj w kronikach i transkrypcjach (Ctrl+F)", "win.search"),
+                ("list-add-symbolic", "Dodaj sesję bez nagrania - kronika z notatek MG (Ctrl+N)", "win.add-notes")):
+            button = icon_button(icon, tooltip, action)
+            button.add_css_class("flat")
+            tools.append(button)
 
         view = Adw.ToolbarView(content=scrolled)
         view.add_top_bar(header)
-        view.add_top_bar(self.filter_dropdown)
+        view.add_top_bar(tools)
         view.add_bottom_bar(run_button)
         return Adw.NavigationPage(title="Sesje", child=view)
 
@@ -519,8 +538,7 @@ class MainWindow(Adw.ApplicationWindow):
             toast.connect("button-clicked", lambda _t: self.show_log())
             self.toasts.add_toast(toast)
         self.refresh(force=True)
-        if self._campaigns_dialog is not None:
-            self._campaigns_dialog.reload()
+        self.campaigns_view.reload()
         if self._discord_dialog is not None:
             self._discord_dialog.reload()
         self._notify_new_proposals()
@@ -565,22 +583,25 @@ class MainWindow(Adw.ApplicationWindow):
         dialog.present(self)
 
     def show_campaigns(self, key: str | None) -> None:
-        if self._campaigns_dialog is not None:
-            self._campaigns_dialog.force_close()
-        def open_session(name: str) -> None:
-            dialog.force_close()
-            self.open_session(name, "summary")
+        """Zakładka „Kampanie”, z otwartą kampanią `key` (None - ostatnio otwarta albo kampania bieżącej sesji)."""
+        self.main_stack.set_visible_child_name("kampanie")
+        if key is None and self.campaigns_view.current_key is None and self.current is not None:
+            key = self.current.campaign.key or None
+        if key is not None:
+            self.campaigns_view.open_campaign(key)
 
-        dialog = CampaignsDialog(self.start_task, lambda: self.provider, self._register_task_button, key,
-                                 open_session)
+    def show_sessions(self) -> None:
+        self.main_stack.set_visible_child_name("sesje")
 
-        def closed(_d):
-            self._campaigns_dialog = None
-            self.refresh(force=True)  # zmiany w kampanii (system, imiona) widać w liście i transkrypcji
+    def _open_session_from_campaign(self, name: str) -> None:
+        self.show_sessions()
+        self.open_session(name, "summary")
 
-        dialog.connect("closed", closed)
-        self._campaigns_dialog = dialog
-        dialog.present(self)
+    def _on_main_tab_changed(self, stack, _param) -> None:
+        if stack.get_visible_child_name() == "sesje":
+            self.refresh(force=True)   # zmiany w kampanii (system, imiona) widać w liście i transkrypcji
+        else:
+            self.campaigns_view.reload()
 
     def show_backfill(self) -> None:
         """„Uzupełnij brakujące”: plan (skróty, cytaty, PDF-y, encyklopedie, dzienniki) i potwierdzenie."""
@@ -682,6 +703,7 @@ class MainWindow(Adw.ApplicationWindow):
             return
         if not self._row_visible(row):   # np. wynik wyszukiwania z innej kampanii niż filtr
             self.set_campaign_filter(ALL_CAMPAIGNS)
+        self.main_stack.set_visible_child_name("sesje")
         self.session_list.select_row(row)  # wywoła _on_row_selected → _show_session
         self.view_stack.set_visible_child_name(page)
         self.split.set_show_content(True)

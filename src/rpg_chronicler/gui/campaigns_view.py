@@ -1,14 +1,16 @@
-"""Okno „Kampanie”: system, opis świata, pamięć kampanii, encyklopedia, dzienniki postaci, postacie graczy,
-słownik nazw i propozycje AI.
+"""Zakładka „Kampanie” głównego okna: lista kampanii po lewej, strona kampanii z podzakładkami po prawej.
 
-Każda zmiana zapisuje się od razu do kampanie.toml (folder transkrypcji, na Drive trafia przy wysyłaniu).
+Podzakładki strony kampanii (`TABS`): Ogólne (system, opis świata, styl obrazków, pamięć kampanii, Discord),
+Słownik (propozycje AI, opisy haseł, postacie graczy, nazwy), Przed sesją (Poprzednio…, notatki MG, pytania do
+kronikarza), Dokumenty (encyklopedia, dzienniki postaci). Pięć zakładek nie mieściło się w oknie 1024 px. Hasło słownika otwiera się jako kolejna strona
+(`EntryPage`) w nawigacji kampanii. Każda zmiana zapisuje się od razu do kampanie.toml (folder transkrypcji, na
+Drive trafia przy wysyłaniu).
 """
+import os
 from dataclasses import replace as _replace
 from typing import Callable
 
 from gi.repository import Adw, Gio, GLib, Gtk
-
-import os
 
 from .. import ask, chronicle, diary, discord, encyclopedia, glossary, memory, prep
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
@@ -19,31 +21,75 @@ from .entry_page import EntryPage, attach_tooltip, image_widget, preview
 CATEGORY_LABELS = {glossary.PLAYER_CHARACTERS: "Postacie graczy", **GLOSSARY_CATEGORIES}
 
 StartTask = Callable[[str, list[str]], None]
-ASK_HISTORY_SHOWN = 5   # ostatnie pytania widoczne w oknie (historia ma ich więcej)
+ASK_HISTORY_SHOWN = 5   # ostatnie pytania widoczne na stronie (historia ma ich więcej)
+
+# (nazwa, tytuł, ikona) podzakładek strony kampanii
+TABS = (("ogolne", "Ogólne", "emblem-system-symbolic"),
+        ("slownik", "Słownik", "accessories-dictionary-symbolic"),
+        ("przed-sesja", "Przed sesją", "x-office-calendar-symbolic"),
+        ("dokumenty", "Dokumenty", "x-office-document-symbolic"))
 
 
-class CampaignsDialog(Adw.Dialog):
+class CampaignsView(Adw.Bin):
+    """`header()` - nagłówek listy (z przełącznikiem Sesje/Kampanie i menu głównym, jak nad listą sesji);
+    `open_session(nazwa)` - przejście do kroniki sesji (np. z odpowiedzi kronikarza)."""
+
     def __init__(self, start_task: StartTask, provider: Callable[[], str],
-                 register_task_button: Callable[[Gtk.Button], None], initial_key: str | None = None,
-                 open_session: Callable[[str], None] | None = None):
-        super().__init__(title="Kampanie", content_width=780, content_height=820)
-        self.open_session = open_session   # przejście do kroniki sesji (np. z odpowiedzi kronikarza)
+                 register_task_button: Callable[[Gtk.Button], None], toast: Callable[[str], None],
+                 header: Callable[[], Gtk.Widget], open_session: Callable[[str], None] | None = None):
+        super().__init__()
+        self.open_session = open_session
+        self.toast = toast
         self._start_task = start_task
         self._provider = provider
         self._register = register_task_button
-        self.toasts = Adw.ToastOverlay()
-        self.nav = Adw.NavigationView()
-        self.toasts.set_child(self.nav)
-        self.set_child(self.toasts)
+        self.current_key: str | None = None
+        self.tab = TABS[0][0]   # ostatnio wybrana podzakładka (ta sama przy zmianie kampanii)
+        self._rows: dict[str, Adw.ActionRow] = {}
+        self._updating = False
 
-        self._list_page = Adw.NavigationPage(title="Kampanie", tag="lista")
-        self.nav.add(self._list_page)
+        self.split = Adw.NavigationSplitView(min_sidebar_width=280, max_sidebar_width=360)
+        self.split.set_sidebar(self._build_sidebar(header()))
+        self.split.set_content(self._build_content())
+        self.set_child(self.split)
         self._rebuild_list()
-        if initial_key:
-            self.open_campaign(initial_key, animate=False)
 
-    def toast(self, text: str) -> None:
-        self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text)))
+    # ------------------------------------------------------------ budowa
+
+    def _build_sidebar(self, header: Gtk.Widget) -> Adw.NavigationPage:
+        self.campaign_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.SINGLE)
+        self.campaign_list.add_css_class("navigation-sidebar")
+        self.campaign_list.connect("row-selected", self._on_row_selected)
+        self.campaign_list.set_placeholder(Gtk.Label(
+            label="Brak kampanii.\nDodaj pierwszą poniżej.", justify=Gtk.Justification.CENTER,
+            margin_top=24, css_classes=["dim-label"]))
+        scrolled = Gtk.ScrolledWindow(child=self.campaign_list, vexpand=True,
+                                      hscrollbar_policy=Gtk.PolicyType.NEVER)
+
+        self.add_popover = Gtk.Popover()
+        self.add_button = Gtk.MenuButton(
+            label="Dodaj kampanię", popover=self.add_popover, direction=Gtk.ArrowType.UP,
+            tooltip_text="Kampania to prefiks nazwy nagrania przed pierwszym „_”, np. Warhammer_261015 → Warhammer",
+            margin_top=6, margin_bottom=12, margin_start=12, margin_end=12)
+
+        view = Adw.ToolbarView(content=scrolled)
+        view.add_top_bar(header)
+        view.add_bottom_bar(self.add_button)
+        return Adw.NavigationPage(title="Kampanie", child=view)
+
+    def _build_content(self) -> Adw.NavigationPage:
+        empty = Adw.ToolbarView(content=Adw.StatusPage(
+            icon_name="system-users-symbolic", title="Wybierz kampanię",
+            description="Po lewej są kampanie (prefiksy nazw nagrań). Kampania to opis świata, postacie graczy, "
+                        "słownik nazw z opisami i zdjęciami, pamięć kampanii, materiały przed sesją, "
+                        "encyklopedia i dzienniki postaci."))
+        empty.add_top_bar(Adw.HeaderBar(show_title=False))
+        self.nav = Adw.NavigationView()
+        self.content_stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE)
+        self.content_stack.add_named(empty, "empty")
+        self.content_stack.add_named(self.nav, "campaign")
+        self.content_page = Adw.NavigationPage(title="Kampania", child=self.content_stack)
+        return self.content_page
 
     def reload(self) -> None:
         """Odświeża widoki po zmianie danych z zewnątrz (np. po zadaniu „Uzupełnij z kronik”)."""
@@ -58,62 +104,74 @@ class CampaignsDialog(Adw.Dialog):
 
     def _rebuild_list(self) -> None:
         campaigns = load_campaigns()
-        prefixes = sorted({k for s in list_sessions() if (k := campaign_key(s.name))} - set(campaigns),
-                          key=str.casefold)
-
-        content = Adw.PreferencesPage()
-        group = Adw.PreferencesGroup(
-            title="Kampanie",
-            description="Opis świata, postacie graczy i słownik nazw trafiają do transkrypcji (poprawna pisownia) "
-                        "i do kronik. Plik: " + campaigns_file())
+        self._updating = True
+        while (row := self.campaign_list.get_row_at_index(0)) is not None:
+            self.campaign_list.remove(row)
+        self._rows = {}
         for key in sorted(campaigns, key=str.casefold):
             campaign = campaigns[key]
             pending = glossary.count_proposals(glossary.pending_for(campaign))
-            details = [campaign.system, f"{len(campaign.all_names())} nazw"]
+            details = [campaign.system]
             if pending:
-                details.append(f"{pending} propozycji AI do przejrzenia")
+                details.append(f"{pending} propozycji AI")
             if memory.load_proposal(key) is not None:
-                details.append("nowy stan kampanii do przejrzenia")
-            row = Adw.ActionRow(title=key, subtitle=" · ".join(details), use_markup=False, activatable=True)
-            row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
-            row.connect("activated", lambda _r, k=key: self.open_campaign(k))
-            group.add(row)
-        if not campaigns:
-            group.add(Adw.ActionRow(title="Brak kampanii - dodaj pierwszą poniżej"))
-        content.add(group)
+                details.append("nowy stan do przejrzenia")
+            row = Adw.ActionRow(title=key, subtitle=" · ".join(details), use_markup=False)
+            self.campaign_list.append(row)
+            self._rows[key] = row
+        if self.current_key in self._rows:
+            self.campaign_list.select_row(self._rows[self.current_key])
+        self._updating = False
+        self._rebuild_add_popover(campaigns)
 
-        add_group = Adw.PreferencesGroup(
-            title="Dodaj kampanię",
-            description="Kampania to prefiks nazwy nagrania przed pierwszym „_”, np. Warhammer_261015 → Warhammer.")
-        for prefix in prefixes:
-            row = Adw.ActionRow(title=prefix, subtitle="prefiks nagrań bez kampanii", use_markup=False)
-            button = Gtk.Button(icon_name="list-add-symbolic", valign=Gtk.Align.CENTER, tooltip_text="Dodaj kampanię")
-            button.add_css_class("flat")
-            button.connect("clicked", lambda _b, p=prefix: self._create(p))
-            row.add_suffix(button)
-            add_group.add(row)
-        entry = Adw.EntryRow(title="Inny prefiks", show_apply_button=True)
-        entry.connect("apply", lambda e: self._create(e.get_text().strip()))
-        add_group.add(entry)
-        content.add(add_group)
+    def _rebuild_add_popover(self, campaigns) -> None:
+        prefixes = sorted({k for s in list_sessions() if (k := campaign_key(s.name))} - set(campaigns),
+                          key=str.casefold)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6, margin_top=6, margin_bottom=6,
+                      margin_start=6, margin_end=6, width_request=260)
+        if prefixes:
+            box.append(Gtk.Label(label="Prefiksy nagrań bez kampanii", xalign=0, css_classes=["dim-label"]))
+            for prefix in prefixes:
+                button = Gtk.Button(label=prefix, css_classes=["flat"])
+                button.connect("clicked", lambda _b, p=prefix: self._create(p))
+                box.append(button)
+        entry = Gtk.Entry(placeholder_text="Prefiks, np. Warhammer", secondary_icon_name="list-add-symbolic",
+                          secondary_icon_tooltip_text="Dodaj kampanię")
+        entry.connect("activate", lambda e: self._create(e.get_text().strip()))
+        entry.connect("icon-press", lambda e, _pos: self._create(e.get_text().strip()))
+        box.append(entry)
+        self.add_popover.set_child(box)
 
-        view = Adw.ToolbarView(content=content)
-        view.add_top_bar(Adw.HeaderBar())
-        self._list_page.set_child(view)
+    def _on_row_selected(self, _list, row) -> None:
+        if self._updating or row is None:
+            return
+        key = next((k for k, r in self._rows.items() if r is row), None)
+        if key is not None and key != self.current_key:
+            self.open_campaign(key)
+        elif key is not None:
+            self.split.set_show_content(True)
 
     def _create(self, key: str) -> None:
         if not key or "_" in key or "." in key or "[" in key:
             self.toast("Podaj prefiks bez „_”, np. Warhammer")
             return
+        self.add_popover.popdown()
         if key not in load_campaigns():
             self.save(default_campaign(key))
         self.open_campaign(key)
 
-    def open_campaign(self, key: str, animate: bool = True) -> None:
+    def open_campaign(self, key: str) -> None:
+        self.current_key = key
         page = CampaignPage(self, key)
-        self.nav.set_animate_transitions(animate)
-        self.nav.push(page)
-        self.nav.set_animate_transitions(True)
+        self.nav.replace([page])
+        self.content_page.set_title(key)
+        self.content_stack.set_visible_child_name("campaign")
+        row = self._rows.get(key)
+        if row is not None and self.campaign_list.get_selected_row() is not row:
+            self._updating = True
+            self.campaign_list.select_row(row)
+            self._updating = False
+        self.split.set_show_content(True)
 
     # ------------------------------------------------------------ zapis i zadania
 
@@ -166,15 +224,25 @@ class CampaignsDialog(Adw.Dialog):
 
 
 class CampaignPage(Adw.NavigationPage):
-    def __init__(self, dialog: CampaignsDialog, key: str):
+    def __init__(self, view: CampaignsView, key: str):
         super().__init__(title=key, tag=f"kampania-{key}")
-        self.dialog = dialog
+        self.view = view
         self.key = key
         self._expanded: set[str] = set()
-        self._scrolled = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
-        view = Adw.ToolbarView(content=self._scrolled)
-        view.add_top_bar(Adw.HeaderBar())
-        self.set_child(view)
+        self.stack = Adw.ViewStack(vexpand=True)
+        self._scrolled: dict[str, Gtk.ScrolledWindow] = {}
+        self._pages: dict[str, Adw.ViewStackPage] = {}
+        for name, title, icon in TABS:
+            scrolled = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+            self._scrolled[name] = scrolled
+            self._pages[name] = self.stack.add_titled_with_icon(scrolled, name, title, icon)
+        self.stack.set_visible_child_name(view.tab)
+        self.stack.connect("notify::visible-child-name",
+                           lambda s, _p: setattr(self.view, "tab", s.get_visible_child_name()))
+        header = Adw.HeaderBar(title_widget=Adw.ViewSwitcher(stack=self.stack, policy=Adw.ViewSwitcherPolicy.WIDE))
+        root = Adw.ToolbarView(content=self.stack)
+        root.add_top_bar(header)
+        self.set_child(root)
         self.reload()
 
     @property
@@ -182,34 +250,41 @@ class CampaignPage(Adw.NavigationPage):
         return load_campaigns().get(self.key) or default_campaign(self.key)
 
     def save(self, campaign: Campaign) -> None:
-        if self.dialog.save(campaign):
+        if self.view.save(campaign):
             self.reload()
 
     def reload(self) -> None:
-        """Buduje stronę od nowa, zachowując przewinięcie i rozwinięte listy."""
-        position = self._scrolled.get_vadjustment().get_value()
+        """Buduje podzakładki od nowa, zachowując przewinięcie i rozwinięte listy."""
         campaign = self.campaign
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
-                      margin_top=24, margin_bottom=24, margin_start=12, margin_end=12)
-        box.append(self._general_group(campaign))
-        box.append(self._prep_group())
-        box.append(self._ask_group())
-        box.append(self._memory_group())
-        box.append(self._encyclopedia_group())
-        box.append(self._diary_group(campaign))
-        box.append(self._proposals_group(campaign))
-        box.append(self._descriptions_group(campaign))
-        box.append(self._characters_group(campaign))
-        box.append(self._discord_group())
-        for category, label in GLOSSARY_CATEGORIES.items():
-            box.append(self._names_group(campaign, category, label))
-        self._scrolled.set_child(Adw.Clamp(child=box, maximum_size=720))
-        GLib.idle_add(lambda: self._scrolled.get_vadjustment().set_value(position) or GLib.SOURCE_REMOVE)
+        tabs = {
+            "ogolne": [self._general_group(campaign), self._memory_group(), self._discord_group()],
+            "slownik": [self._proposals_group(campaign), self._descriptions_group(campaign),
+                        self._characters_group(campaign),
+                        *(self._names_group(campaign, c, label) for c, label in GLOSSARY_CATEGORIES.items())],
+            "przed-sesja": [self._prep_group(), self._ask_group()],
+            "dokumenty": [self._encyclopedia_group(), self._diary_group(campaign)],
+        }
+        for name, groups in tabs.items():
+            scrolled = self._scrolled[name]
+            position = scrolled.get_vadjustment().get_value()
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24,
+                          margin_top=24, margin_bottom=24, margin_start=12, margin_end=12)
+            for group in groups:
+                box.append(group)
+            scrolled.set_child(Adw.Clamp(child=box, maximum_size=720))
+            GLib.idle_add(lambda s=scrolled, p=position: s.get_vadjustment().set_value(p) or GLib.SOURCE_REMOVE)
+
+        pending = glossary.count_proposals(glossary.pending_for(campaign))
+        self._pages["slownik"].set_badge_number(pending)
+        self._pages["slownik"].set_needs_attention(bool(pending))
+        self._pages["ogolne"].set_needs_attention(memory.load_proposal(self.key) is not None)
 
     # --- ogólne ---
 
     def _general_group(self, campaign: Campaign) -> Gtk.Widget:
-        group = Adw.PreferencesGroup(title="Ogólne")
+        group = Adw.PreferencesGroup(
+            title="Ogólne", description="Opis świata, postacie graczy i słownik nazw trafiają do transkrypcji "
+                                        "(poprawna pisownia) i do kronik. Plik: " + campaigns_file())
         system = Adw.EntryRow(title="System RPG (styl i słownictwo kroniki)", text=campaign.system,
                               show_apply_button=True)
         system.connect("apply", lambda e: e.get_text().strip()
@@ -250,8 +325,8 @@ class CampaignPage(Adw.NavigationPage):
         build = Gtk.Button(label="Zbuduj z kronik", valign=Gtk.Align.CENTER,
                            tooltip_text="AI przeczyta wszystkie kroniki tej kampanii i opisze jej obecny stan")
         build.add_css_class("flat" if state or proposal else "suggested-action")
-        build.connect("clicked", lambda _b: self.dialog.start_memory(self.key))
-        self.dialog.register_task_button(build)
+        build.connect("clicked", lambda _b: self.view.start_memory(self.key))
+        self.view.register_task_button(build)
         group.set_header_suffix(build)
 
         shown = proposal or state
@@ -300,23 +375,23 @@ class CampaignPage(Adw.NavigationPage):
         try:
             memory.accept_proposal(self.key, text)
         except OSError as e:
-            self.dialog.toast(f"Nie można zapisać stanu kampanii: {e}")
+            self.view.toast(f"Nie można zapisać stanu kampanii: {e}")
             return
-        self.dialog.toast("Przyjęto stan kampanii")
-        self.dialog.reload()
+        self.view.toast("Przyjęto stan kampanii")
+        self.view.reload()
 
     def _reject_state(self) -> None:
         memory.discard_proposal(self.key)
-        self.dialog.toast("Odrzucono propozycję stanu kampanii")
-        self.dialog.reload()
+        self.view.toast("Odrzucono propozycję stanu kampanii")
+        self.view.reload()
 
     def _save_state(self, text: str, previous: memory.State | None) -> None:
         try:
             memory.save_state(self.key, text, previous.session if previous else None)
         except OSError as e:
-            self.dialog.toast(f"Nie można zapisać stanu kampanii: {e}")
+            self.view.toast(f"Nie można zapisać stanu kampanii: {e}")
             return
-        self.dialog.toast("Zapisano stan kampanii")
+        self.view.toast("Zapisano stan kampanii")
         self.reload()
 
     # --- encyklopedia ---
@@ -331,8 +406,8 @@ class CampaignPage(Adw.NavigationPage):
         build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
                            tooltip_text="AI przeczyta kroniki tej kampanii i opisze hasła (kilka minut)")
         build.add_css_class("flat" if exists else "suggested-action")
-        build.connect("clicked", lambda _b: self.dialog.start_encyclopedia(self.key))
-        self.dialog.register_task_button(build)
+        build.connect("clicked", lambda _b: self.view.start_encyclopedia(self.key))
+        self.view.register_task_button(build)
         group.set_header_suffix(build)
         if exists:
             modified = GLib.DateTime.new_from_unix_local(int(os.path.getmtime(pdf))).format("%d.%m.%Y %H:%M")
@@ -351,7 +426,7 @@ class CampaignPage(Adw.NavigationPage):
             description="PDF dla gracza: wydarzenia kampanii opowiedziane przez jego postać, wpis po każdej sesji "
                         "(AI, z kronik). Odświeżenie po nowej sesji dopisuje tylko nowe wpisy.")
         if not campaign.player_characters:
-            group.add(Adw.ActionRow(title="Najpierw dodaj postacie graczy (niżej)", sensitive=False))
+            group.add(Adw.ActionRow(title="Najpierw dodaj postacie graczy (zakładka Słownik)", sensitive=False))
         for name in campaign.player_characters:
             pdf = diary.pdf_path(self.key, name)
             exists = os.path.exists(pdf)
@@ -367,8 +442,8 @@ class CampaignPage(Adw.NavigationPage):
             build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
                                tooltip_text=f"AI opisze kolejne sesje z perspektywy postaci {name}")
             build.add_css_class("flat")
-            build.connect("clicked", lambda _b, n=name: self.dialog.start_diary(self.key, n))
-            self.dialog.register_task_button(build)
+            build.connect("clicked", lambda _b, n=name: self.view.start_diary(self.key, n))
+            self.view.register_task_button(build)
             row.add_suffix(build)
             group.add(row)
         return group
@@ -382,8 +457,8 @@ class CampaignPage(Adw.NavigationPage):
         ask = Gtk.Button(label="Uzupełnij z kronik", valign=Gtk.Align.CENTER,
                          tooltip_text="AI przejrzy wszystkie kroniki tej kampanii i zaproponuje nowe nazwy")
         ask.add_css_class("flat" if count else "suggested-action")
-        ask.connect("clicked", lambda _b: self.dialog.start_glossary(self.key))
-        self.dialog.register_task_button(ask)
+        ask.connect("clicked", lambda _b: self.view.start_glossary(self.key))
+        self.view.register_task_button(ask)
         group.set_header_suffix(ask)
 
         if not count:
@@ -438,12 +513,12 @@ class CampaignPage(Adw.NavigationPage):
             handled.setdefault(category, []).append(value)
             if accept_checked and check.get_active():
                 accepted.setdefault(category, []).append(value)
-        if accepted and not self.dialog.save(glossary.accept(self.campaign, accepted)):
+        if accepted and not self.view.save(glossary.accept(self.campaign, accepted)):
             return
         glossary.remove_from_pending(self.key, handled)
         added = sum(len(v) if isinstance(v, list) else 1 for v in accepted.values())
-        self.dialog.toast(f"Dodano do słownika: {added}" if added else "Odrzucono propozycje")
-        self.dialog.reload()
+        self.view.toast(f"Dodano do słownika: {added}" if added else "Odrzucono propozycje")
+        self.view.reload()
 
     # --- Discord ---
 
@@ -461,9 +536,9 @@ class CampaignPage(Adw.NavigationPage):
             test = Gtk.Button(label="Wyślij test", valign=Gtk.Align.CENTER,
                               tooltip_text="Wyślij na kanał krótką wiadomość testową")
             test.add_css_class("flat")
-            test.connect("clicked", lambda _b: self.dialog.start_task(f"Test Discorda {self.key}",
+            test.connect("clicked", lambda _b: self.view.start_task(f"Test Discorda {self.key}",
                                                                       ["discord-test", self.key]))
-            self.dialog.register_task_button(test)
+            self.view.register_task_button(test)
             remove = _delete_button("Usuń webhook", lambda: self._remove_webhook())
             buttons = Gtk.Box(spacing=6)
             buttons.append(test)
@@ -475,10 +550,10 @@ class CampaignPage(Adw.NavigationPage):
         url = entry.get_text().strip()
         if not discord.is_valid_webhook(url):
             entry.add_css_class("error")
-            self.dialog.toast("To nie jest adres webhooka Discorda (https://discord.com/api/webhooks/…)")
+            self.view.toast("To nie jest adres webhooka Discorda (https://discord.com/api/webhooks/…)")
             return
         chronicle.set_webhook(self.key, url)
-        self.dialog.toast("Zapisano webhook")
+        self.view.toast("Zapisano webhook")
         self.reload()
 
     def _remove_webhook(self) -> None:
@@ -513,15 +588,15 @@ class CampaignPage(Adw.NavigationPage):
         write = Gtk.Button(label="Odśwież" if recap else "Napisz", valign=Gtk.Align.CENTER, sensitive=has_chronicles,
                            tooltip_text="AI napisze tekst z ostatniej kroniki i otwartych wątków (1–2 min czytania)")
         write.add_css_class("flat" if recap else "suggested-action")
-        write.connect("clicked", lambda _b: self.dialog.start_recap(self.key))
+        write.connect("clicked", lambda _b: self.view.start_recap(self.key))
         if has_chronicles:   # bez kronik zostaje nieaktywny (rejestracja włączałaby go po każdym zadaniu)
-            self.dialog.register_task_button(write)
+            self.view.register_task_button(write)
         recap_row.add_suffix(write)
         if recap and chronicle.webhook_for(self.key):
             send = Gtk.Button(icon_name="mail-send-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
                               tooltip_text="Wyślij na kanał Discord kampanii (przed sesją)")
             send.connect("clicked", lambda _b: self._confirm_recap_discord())
-            self.dialog.register_task_button(send)
+            self.view.register_task_button(send)
             recap_row.add_suffix(send)
         if recap:
             recap_row.add_row(Gtk.Label(label=recap, wrap=True, xalign=0, selectable=True, margin_top=12,
@@ -540,9 +615,9 @@ class CampaignPage(Adw.NavigationPage):
         build = Gtk.Button(label="Odśwież" if exists else "Utwórz", valign=Gtk.Align.CENTER,
                            sensitive=has_chronicles, tooltip_text="AI przejrzy wszystkie kroniki i stan kampanii")
         build.add_css_class("flat" if exists else "suggested-action")
-        build.connect("clicked", lambda _b: self.dialog.start_gm_notes(self.key))
+        build.connect("clicked", lambda _b: self.view.start_gm_notes(self.key))
         if has_chronicles:
-            self.dialog.register_task_button(build)
+            self.view.register_task_button(build)
         notes_row.add_suffix(build)
         group.add(notes_row)
         return group
@@ -553,7 +628,7 @@ class CampaignPage(Adw.NavigationPage):
         dialog.add_response("cancel", "Anuluj")
         dialog.add_response("send", "Wyślij")
         dialog.set_response_appearance("send", Adw.ResponseAppearance.SUGGESTED)
-        dialog.connect("response", lambda _d, r: r == "send" and self.dialog.start_recap(self.key, discord_too=True))
+        dialog.connect("response", lambda _d, r: r == "send" and self.view.start_recap(self.key, discord_too=True))
         dialog.present(self.get_root())
 
     # --- zapytaj kronikarza ---
@@ -566,9 +641,9 @@ class CampaignPage(Adw.NavigationPage):
         has_chronicles = prep.latest_session(self.key, list_sessions()) is not None
         entry = Adw.EntryRow(title="Twoje pytanie" if has_chronicles else "Twoje pytanie (najpierw potrzebna kronika)",
                              show_apply_button=True, sensitive=has_chronicles)
-        entry.connect("apply", lambda e: e.get_text().strip() and self.dialog.start_ask(self.key, e.get_text().strip()))
+        entry.connect("apply", lambda e: e.get_text().strip() and self.view.start_ask(self.key, e.get_text().strip()))
         if has_chronicles:
-            self.dialog.register_task_button(entry)
+            self.view.register_task_button(entry)
         group.add(entry)
         for index, item in enumerate(ask.load_history(self.key)[:ASK_HISTORY_SHOWN]):
             row = Adw.ExpanderRow(title=item.question, subtitle=item.asked.replace("T", " "), use_markup=False,
@@ -577,11 +652,11 @@ class CampaignPage(Adw.NavigationPage):
             content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, margin_top=12, margin_bottom=12,
                               margin_start=12, margin_end=12)
             content.append(Gtk.Label(label=item.answer, wrap=True, xalign=0, selectable=True))
-            if item.sessions and self.dialog.open_session is not None:
+            if item.sessions and self.view.open_session is not None:
                 links = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, max_children_per_line=4)
                 for name in item.sessions:
                     link = Gtk.Button(label=name, css_classes=["flat"], tooltip_text="Przejdź do kroniki tej sesji")
-                    link.connect("clicked", lambda _b, n=name: self.dialog.open_session(n))
+                    link.connect("clicked", lambda _b, n=name: self.view.open_session(n))
                     links.append(link)
                 content.append(links)
             row.add_row(content)
@@ -607,22 +682,22 @@ class CampaignPage(Adw.NavigationPage):
                               tooltip_text="AI opisze nazwy bez opisu na podstawie kronik (te same opisy co "
                                            "w encyklopedii); opisów wpisanych ręcznie nie zmienia")
             fill.add_css_class("flat")
-            fill.connect("clicked", lambda _b: self.dialog.start_descriptions(self.key))
-            self.dialog.register_task_button(fill)
+            fill.connect("clicked", lambda _b: self.view.start_descriptions(self.key))
+            self.view.register_task_button(fill)
             group.set_header_suffix(fill)
         return group
 
     def open_entry(self, name: str, category: str) -> None:
         def save(entry_name: str, text: str) -> None:
             self.save(self.campaign.with_description(entry_name, text))
-            self.dialog.toast(f"Zapisano opis: {entry_name}")
+            self.view.toast(f"Zapisano opis: {entry_name}")
 
         campaign = self.campaign
-        entry = EntryPage(self.key, name, category, campaign.description(name), save, self.dialog.toast,
-                          generate=lambda n, hints: self.dialog.start_image(self.key, n, hints),
-                          register=self.dialog.register_task_button)
+        entry = EntryPage(self.key, name, category, campaign.description(name), save, self.view.toast,
+                          generate=lambda n, hints: self.view.start_image(self.key, n, hints),
+                          register=self.view.register_task_button)
         entry.connect("hidden", lambda _p: self.reload())   # miniatury i opisy na liście
-        self.dialog.nav.push(entry)
+        self.view.nav.push(entry)
 
     def _entry_row(self, campaign: Campaign, name: str, category: str, delete: Gtk.Widget) -> Adw.ActionRow:
         """Wiersz nazwy: podgląd opisu, miniatura zdjęcia, dymek z pełnym opisem; kliknięcie - strona hasła."""
@@ -645,7 +720,7 @@ class CampaignPage(Adw.NavigationPage):
         for name, player in campaign.player_characters.items():
             row = Adw.EntryRow(title=f"{name} – gracz", text=player, show_apply_button=True)
             row.connect("apply", lambda e, n=name: self._set_player(n, e.get_text().strip()))
-            info = Gtk.Button(icon_name="document-edit-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
+            info = Gtk.Button(icon_name="user-info-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"])
             attach_tooltip(info, self.key, name, campaign.description(name))
             info.connect("clicked", lambda _b, n=name: self.open_entry(n, "Postać gracza"))
             row.add_suffix(info)

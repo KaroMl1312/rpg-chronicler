@@ -74,6 +74,6 @@ def test_campaign_filter_options(workspace):
     for name in ("Warhammer_261015", "Warhammer_261105", "fallout_261014", "nagranie"):
         workspace.add_transcript(name, "[0.00s -> 1.00s] Witajcie.\n")
     assert campaign_filter_options(list_sessions()) == [
-        (None, "Wszystkie kampanie (4)"), ("fallout", "fallout (1)"), ("Warhammer", "Warhammer (2)"),
+        (None, "Wszystkie (4)"), ("fallout", "fallout (1)"), ("Warhammer", "Warhammer (2)"),
         ("", "Bez kampanii (1)")]
-    assert campaign_filter_options([]) == [(None, "Wszystkie kampanie (0)")]
+    assert campaign_filter_options([]) == [(None, "Wszystkie (0)")]

@@ -169,7 +169,7 @@ def cmd_image(args):
         raise SessionNotFound(f"Nie udało się wygenerować obrazka: {e}")
     print(f"[SUKCES] {'Zdjęcie' if args.keep else 'Propozycja obrazka'} „{name}”: {path}")
     if not args.keep:
-        print(f"[INFO] Zachowasz ją w oknie Kampanie (strona hasła) albo: rpg-chronicler image {campaign.key} "
+        print(f"[INFO] Zachowasz ją w zakładce Kampanie (strona hasła) albo: rpg-chronicler image {campaign.key} "
               f"\"{name}\" --zachowaj (wygeneruje nowy).")
 
 
@@ -240,7 +240,7 @@ def fill_descriptions(campaign, llm):
     missing = [n for n in updated.all_names() if not updated.description(n)]
     if missing:
         print(f"[INFO] Bez opisu ({len(missing)}): {', '.join(missing[:10])}{'…' if len(missing) > 10 else ''} "
-              f"- AI nie znalazło ich w kronikach; opis można wpisać w oknie Kampanie.")
+              f"- AI nie znalazło ich w kronikach; opis można wpisać w zakładce Kampanie.")
     return updated
 
 

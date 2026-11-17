@@ -117,11 +117,18 @@ def steps(win):
 
     def campaigns():
         win.show_campaigns("Warhammer")
-        page = win._campaigns_dialog.nav.get_visible_page()
+        assert win.main_stack.get_visible_child_name() == "kampanie"
+        page = win.campaigns_view.nav.get_visible_page()
+        assert [p.get_name() for p in page.stack.get_pages()] == ["ogolne", "slownik", "przed-sesja", "dokumenty"]
         texts = labels(page)
         assert "Pamięć kampanii" in texts and "Encyklopedia kampanii" in texts and "Dzienniki postaci" in texts, texts
         assert "Sir Amos" in texts and "Utwórz" in texts, texts
-        win._campaigns_dialog.force_close()
+        assert "Fallout" in labels(win.campaigns_view.add_popover)           # prefiks nagrań bez kampanii
+        page.stack.set_visible_child_name("dokumenty")
+        win.campaigns_view._create("Fallout")                                 # nowa kampania - ta sama podzakładka
+        assert win.campaigns_view.nav.get_visible_page().stack.get_visible_child_name() == "dokumenty"
+        assert win.campaigns_view.campaign_list.get_selected_row().get_title() == "Fallout"
+        win.show_sessions()
     yield "kampanie", campaigns
 
     def discord():
@@ -196,19 +203,19 @@ def steps(win):
         from rpg_chronicler.campaigns import load_campaigns
         from rpg_chronicler.gui.entry_page import EntryPage
         win.show_campaigns("Warhammer")
-        page = win._campaigns_dialog.nav.get_visible_page()
+        page = win.campaigns_view.nav.get_visible_page()
         rows = [w for w in _walk(page) if isinstance(w, Adw.ActionRow) and w.get_title() == "Ojciec Romulus"]
         assert rows and rows[0].get_subtitle() == "Kapłan Morra." and rows[0].get_has_tooltip(), rows
         assert any("Opisane: 1 z 3" in (w.get_description() or "") for w in _walk(page)
                    if isinstance(w, Adw.PreferencesGroup))
         page.open_entry("Sir Amos", "Postać gracza")
-        entry = win._campaigns_dialog.nav.get_visible_page()
+        entry = win.campaigns_view.nav.get_visible_page()
         assert isinstance(entry, EntryPage) and entry.text() == ""
         assert "Dodaj zdjęcie…" in labels(entry)
         entry.buffer.set_text("Rycerz z Bretonii.")
-        win._campaigns_dialog.nav.pop()                          # zapis przy wyjściu ze strony
+        win.campaigns_view.nav.pop()                          # zapis przy wyjściu ze strony
         assert load_campaigns()["Warhammer"].description("Sir Amos") == "Rycerz z Bretonii."
-        win._campaigns_dialog.force_close()
+        win.show_sessions()
     yield "opisy haseł", entry_descriptions
 
     def before_session():
@@ -218,7 +225,7 @@ def steps(win):
         answer = ask.Answer("Kim jest Romulus?", f"Kapłanem [{FULL}].", [FULL], "2026-11-16T20:00")
         ask._save_history("Warhammer", [answer])
         win.show_campaigns("Warhammer")
-        page = win._campaigns_dialog.nav.get_visible_page()
+        page = win.campaigns_view.nav.get_visible_page()
         texts = labels(page)
         assert "Przed sesją" in texts and "Zapytaj kronikarza" in texts and "Notatki MG" in texts, texts
         assert "Poprzednio… szukaliście Romulusa." in texts and "Kapłanem [Warhammer_261105]." in texts, texts
@@ -228,7 +235,7 @@ def steps(win):
         link = next(w for w in _walk(page) if isinstance(w, Gtk.Button) and w.get_label() == FULL)
         win.open_session(AUDIO_ONLY, "transcript")
         link.emit("clicked")                                     # odpowiedź → kronika sesji
-        assert win._campaigns_dialog is None and win.current.name == FULL
+        assert win.main_stack.get_visible_child_name() == "sesje" and win.current.name == FULL
         assert win.view_stack.get_visible_child_name() == "summary"
     yield "przed sesją", before_session
 
@@ -247,12 +254,12 @@ def steps(win):
                     + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
 
         win.show_campaigns("Warhammer")
-        page = win._campaigns_dialog.nav.get_visible_page()
+        page = win.campaigns_view.nav.get_visible_page()
         page.open_entry("Ojciec Romulus", "Postacie niezależne (NPC)")
-        entry = win._campaigns_dialog.nav.get_visible_page()
+        entry = win.campaigns_view.nav.get_visible_page()
         assert isinstance(entry, EntryPage) and "Wygeneruj obrazek (AI)" in labels(entry), labels(entry)
         started = []
-        win._campaigns_dialog._start_task = lambda title, args: started.append(args)   # bez sieci
+        win.campaigns_view._start_task = lambda title, args: started.append(args)   # bez sieci
         generate = next(w for w in _walk(entry) if isinstance(w, Gtk.Button)
                         and w.get_label() == "Wygeneruj obrazek (AI)")
         generate.emit("clicked")
@@ -267,7 +274,7 @@ def steps(win):
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "ojciec_romulus__20261116-200000-000000.jpg").write_bytes(png())   # rozszerzenie jak z API
         (directory / "ojciec_romulus__20261116-200000-000000.txt").write_text("An old priest.", encoding="utf-8")
-        win._campaigns_dialog.reload()                           # jak po zakończeniu zadania „image”
+        win.campaigns_view.reload()                           # jak po zakończeniu zadania „image”
         texts = labels(entry)
         assert "Propozycja AI - jeszcze nie zapisana" in texts and "Zachowaj" in texts, texts
         keep = next(w for w in _walk(entry) if isinstance(w, Gtk.Button) and w.get_label() == "Zachowaj")
@@ -275,7 +282,7 @@ def steps(win):
         assert image_path("Warhammer", "Ojciec Romulus") is not None
         assert images.candidate("Warhammer", "Ojciec Romulus") is None
         assert "Zmień zdjęcie…" in labels(entry)
-        win._campaigns_dialog.force_close()
+        win.show_sessions()
     yield "obrazek AI", ai_image
 
 

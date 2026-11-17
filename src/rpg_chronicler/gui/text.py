@@ -60,14 +60,14 @@ def session_campaign(session: Session) -> str:
 
 
 def campaign_filter_options(sessions: list[Session]) -> list[tuple[str | None, str]]:
-    """[(klucz, etykieta)] do filtra: „Wszystkie kampanie”, potem kampanie alfabetycznie, na końcu bez kampanii."""
+    """[(klucz, etykieta)] do filtra: „Wszystkie”, potem kampanie alfabetycznie, na końcu bez kampanii."""
     counts: dict[str, int] = {}
     for s in sessions:
         counts[session_campaign(s)] = counts.get(session_campaign(s), 0) + 1
     keys = sorted((k for k in counts if k != NO_CAMPAIGN), key=str.casefold)
     if NO_CAMPAIGN in counts:
         keys.append(NO_CAMPAIGN)
-    return [(ALL_CAMPAIGNS, f"Wszystkie kampanie ({len(sessions)})")] + [
+    return [(ALL_CAMPAIGNS, f"Wszystkie ({len(sessions)})")] + [
         (k, f"{k or 'Bez kampanii'} ({counts[k]})") for k in keys]
 
 

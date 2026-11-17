@@ -1,4 +1,4 @@
-"""„Zapytaj kronikarza” (`ask KAMPANIA "PYTANIE"`, okno Kampanie): odpowiedź AI z kronik i stanu kampanii.
+"""„Zapytaj kronikarza” (`ask KAMPANIA "PYTANIE"`, zakładka Kampanie): odpowiedź AI z kronik i stanu kampanii.
 
 Odpowiedź wskazuje sesje w nawiasach kwadratowych ([Warhammer_261015]); kod wyłuskuje z niej tylko nazwy
 istniejących sesji tej kampanii (GUI robi z nich przyciski „przejdź do kroniki”). Historia pytań kampanii

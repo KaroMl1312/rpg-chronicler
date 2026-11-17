@@ -93,7 +93,7 @@ class SettingsDialog(Adw.PreferencesDialog):
         memory = Adw.SwitchRow(
             title="Pamięć kampanii",
             subtitle="Po każdej nowej kronice AI aktualizuje stan kampanii (drużyna, zasoby, wątki, BN-i) - do "
-                     "zatwierdzenia w oknie Kampanie; kolejne kroniki z niego korzystają",
+                     "zatwierdzenia w zakładce Kampanie; kolejne kroniki z niego korzystają",
             active=self._value("ai.pamiec_kampanii", config.CAMPAIGN_MEMORY))
         memory.connect("notify::active", lambda row, _p: self._save("ai.pamiec_kampanii", row.get_active()))
         group.add(memory)

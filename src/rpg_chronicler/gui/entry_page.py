@@ -2,7 +2,7 @@
 
 Opis zapisuje się w kampanie.toml (`Campaign.with_description`), zdjęcie w TXT_DIR/obrazy/<kampania>/
 (`campaigns.set_image`) - oba trafiają na Drive przy wysyłaniu. Strona zapisuje opis przy wyjściu (jak reszta
-okna Kampanie: bez osobnego „Zapisz”), zdjęcie od razu po wybraniu.
+zakładki Kampanie: bez osobnego „Zapisz”), zdjęcie od razu po wybraniu.
 """
 import os
 from typing import Callable
