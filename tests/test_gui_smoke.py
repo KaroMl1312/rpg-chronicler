@@ -91,8 +91,8 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     report = f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     assert proc.returncode == 0, report
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
-    assert done == ["okno", "filtr kampanii", "kronika", "skrót i cytaty", "transkrypcja", "mówcy",
-                    "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
+    assert done == ["okno", "filtr kampanii", "kronika", "znacznik Discorda", "skrót i cytaty", "transkrypcja",
+                    "mówcy", "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
                     "uzupełnianie", "notatki", "usuwanie", "opisy haseł",
                     "przed sesją", "obrazek AI"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku

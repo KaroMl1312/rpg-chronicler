@@ -109,3 +109,28 @@ def test_cli_discord_full_flow(chronicle_session, workspace, sent_requests, monk
     assert cli.main(["discord", "Warhammer_261015"]) == 1  # już wysłano
     assert "--force" in capsys.readouterr().err
     assert cli.main(["discord", "Warhammer_261015", "--force"]) == 0 and len(sent_requests) == 2
+
+
+def test_discord_state_mark_and_older_version(chronicle_session, capsys):
+    import os
+    import time
+
+    assert chronicle.discord_state(chronicle_session) == chronicle.NOT_SENT
+    assert chronicle.discord_label(chronicle_session) == ""
+    assert cli.main(["discord", "Warhammer_261015", "--oznacz"]) == 0          # bez webhooka i bez wysyłania
+    assert chronicle.discord_state(chronicle_session) == chronicle.SENT
+    assert chronicle.load_sent(chronicle_session)["recznie"] is True
+    assert "(oznaczone ręcznie)" in chronicle.discord_label(chronicle_session)
+    assert cli.main(["status"]) == 0
+    assert "DISCORD" in capsys.readouterr().out
+
+    later = time.time() + 120                                                  # poprawka kroniki po wysłaniu
+    os.utime(chronicle_session.summary_path, (later, later))
+    assert chronicle.discord_state(chronicle_session) == chronicle.SENT_OLDER
+    assert chronicle.discord_label(chronicle_session).startswith("na Discordzie starsza wersja")
+    cli.main(["status"])
+    assert "starsza" in capsys.readouterr().out
+
+    assert cli.main(["discord", "Warhammer_261015", "--odznacz"]) == 0
+    assert chronicle.discord_state(chronicle_session) == chronicle.NOT_SENT
+    assert cli.main(["discord", "Warhammer_261015", "--odznacz"]) == 0          # drugi raz - bez błędu

@@ -3,6 +3,7 @@ import os
 import re
 
 from ..campaigns import campaign_key
+from ..chronicle import sent_path
 from ..notes import chronicle_is_stale
 from ..session import Session
 from ..transcript import Transcript
@@ -74,7 +75,7 @@ def campaign_filter_options(sessions: list[Session]) -> list[tuple[str | None, s
 def session_signature(session: Session) -> tuple:
     """Zmienia się, gdy zmieni się którykolwiek plik sesji - wtedy trzeba odświeżyć widok."""
     paths = (session.audio_path, session.json_path, session.txt_path, session.speakers_path,
-             session.speaker_suggestion_path, session.summary_path, session.notes_path)
+             session.speaker_suggestion_path, session.summary_path, session.notes_path, sent_path(session))
     signature = []
     for path in paths:
         try:

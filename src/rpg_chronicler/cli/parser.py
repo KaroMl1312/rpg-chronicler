@@ -233,6 +233,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--nowa-zapowiedz", dest="new_teaser", action="store_true", help="napisz zapowiedź od nowa (AI)")
     p.add_argument("--force", action="store_true", help="wyślij ponownie, nawet jeśli już wysłano")
     p.add_argument("--no-quotes", action="store_true", help="bez cytatów z sesji pod zapowiedzią")
+    mark = p.add_mutually_exclusive_group()
+    mark.add_argument("--oznacz", dest="mark", action="store_const", const=True,
+                      help="tylko oznacz kronikę jako wysłaną (np. wysłaną ręcznie), bez wysyłania")
+    mark.add_argument("--odznacz", dest="mark", action="store_const", const=False,
+                      help="usuń znacznik wysyłki (wiadomość na Discordzie zostaje)")
     p.set_defaults(func=cmd_discord)
 
     p = sub.add_parser("discord-test", help="wyślij wiadomość testową na kanał Discord kampanii")

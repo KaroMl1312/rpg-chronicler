@@ -68,6 +68,26 @@ def steps(win):
         assert "Generuj ponownie" in labels(menu.get_popover()), labels(menu.get_popover())
     yield "kronika", full_session
 
+    def discord_mark():
+        def row_icons():
+            return [w for w in _walk(win._rows[FULL]) if isinstance(w, Gtk.Image)
+                    and w.get_icon_name() == "mail-send-symbolic"]
+        assert not row_icons()
+        menu = next(w for w in _walk(win.chronicle_page) if isinstance(w, Gtk.MenuButton)
+                    and w.get_icon_name() == "view-more-symbolic")
+        mark = next(w for w in _walk(menu.get_popover()) if isinstance(w, Gtk.Button)
+                    and w.get_label() == "Oznacz jako wysłaną na Discord")
+        mark.emit("clicked")
+        assert row_icons() and "(oznaczone ręcznie)" in row_icons()[0].get_tooltip_text()
+        assert any("wysłano na Discord" in t for t in labels(win.chronicle_page)), labels(win.chronicle_page)
+        menu = next(w for w in _walk(win.chronicle_page) if isinstance(w, Gtk.MenuButton)
+                    and w.get_icon_name() == "view-more-symbolic")
+        unmark = next(w for w in _walk(menu.get_popover()) if isinstance(w, Gtk.Button)
+                      and w.get_label() == "Oznacz jako niewysłaną")
+        unmark.emit("clicked")
+        assert not row_icons()
+    yield "znacznik Discorda", discord_mark
+
     def chronicle_modes():
         for mode, expected in (("skrot", "Dotarliście do Doliny."), ("cytaty", "„Tak?”"), ("kronika", "Popraw…")):
             win.chronicle_page._mode = mode

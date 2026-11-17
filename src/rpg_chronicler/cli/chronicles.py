@@ -47,6 +47,11 @@ def cmd_discord(args):
     from ..prompts import render
 
     session = chronicle_session(args.session)
+    if args.mark is not None:
+        (chronicle.mark_sent if args.mark else chronicle.unmark_sent)(session)
+        print(f"[SUKCES] {session.name}: " + ("oznaczono jako wysłaną na Discord" if args.mark
+                                              else "usunięto znacznik wysyłki na Discord"))
+        return
     text = chronicle.read_chronicle(session)
     teaser = chronicle.read_teaser(session)
     if not teaser or args.new_teaser:

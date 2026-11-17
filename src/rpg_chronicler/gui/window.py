@@ -28,7 +28,7 @@ from .tasks import TaskRunner
 from .text import (ALL_CAMPAIGNS, campaign_filter_options, new_proposals, proposals_snapshot, session_campaign,
                    session_signature, session_stage)
 from .transcript_page import TranscriptPage
-from .widgets import icon_button
+from .widgets import discord_icon, icon_button
 
 TASK_ACTIONS = ("sync", "upload", "run", "run-offline")
 
@@ -222,7 +222,8 @@ class MainWindow(Adw.ApplicationWindow):
             summarize=self.summarize, write_brief=self.write_brief, revise=self.revise,
             undo_revision=self.undo_revision, write_quotes=self.write_quotes, open_pdf=self.open_pdf,
             show_discord=self.show_discord, provider_label=self._provider_label,
-            register_task_button=self._register_task_button, player=self.player)
+            register_task_button=self._register_task_button, player=self.player,
+            files_changed=lambda: self.refresh(force=True))
         self.view_stack.add_titled_with_icon(self.transcript_page, "transcript", "Transkrypcja",
                                              "text-x-generic-symbolic")
         self.view_stack.add_titled_with_icon(self.speakers_page, "speakers", "Mówcy", "system-users-symbolic")
@@ -289,6 +290,8 @@ class MainWindow(Adw.ApplicationWindow):
             else:
                 icon = Gtk.Image(icon_name="content-loading-symbolic", tooltip_text=stage)
                 icon.add_css_class("dim-label")
+            if session.has_summary:
+                row.add_suffix(discord_icon(session))
             row.add_suffix(icon)
             self._rows[session.name] = row
             self.session_list.append(row)

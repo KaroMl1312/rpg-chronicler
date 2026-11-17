@@ -20,8 +20,9 @@ class ChroniclePage(Adw.Bin):
                  write_quotes: Callable[[Session, bool], None],
                  open_pdf: Callable[[Session], None], show_discord: Callable[[Session], None],
                  provider_label: Callable[[], str], register_task_button: RegisterTaskButton,
-                 player: SnippetPlayer):
+                 player: SnippetPlayer, files_changed: Callable[[], None] = lambda: None):
         super().__init__()
+        self._files_changed = files_changed   # np. oznaczenie wysyłki - lista sesji pokazuje nowy stan
         self._player = player
         self._play_buttons: dict[tuple, Gtk.Button] = {}
         player.connect("changed", lambda _p: self._update_play_icons())
@@ -98,7 +99,12 @@ class ChroniclePage(Adw.Bin):
                                                                  "np. „to nie Hans, tylko Hanna”")
         revise_button.connect("clicked", lambda _b: self._ask_revision(session))
         task_buttons = [revise_button, pdf_button, discord_button, regenerate]
-        more_items = [open_button, regenerate]
+        sent = chronicle.discord_state(session) != chronicle.NOT_SENT
+        mark = Gtk.Button(label="Oznacz jako niewysłaną" if sent else "Oznacz jako wysłaną na Discord",
+                          tooltip_text="Usuń znacznik wysyłki (na Discordzie nic się nie zmieni)" if sent else
+                          "Kronika jest już na kanale (np. wysłana ręcznie) - tylko znacznik, bez wysyłania")
+        mark.connect("clicked", lambda _b: self._toggle_sent(session, sent))
+        more_items = [open_button, mark, regenerate]
         if chronicle.previous_versions(session):
             undo = Gtk.Button(label="Cofnij poprawkę", tooltip_text="Przywróć wersję sprzed ostatniej poprawki")
             undo.connect("clicked", lambda _b: self._undo_revision(session))
@@ -106,15 +112,23 @@ class ChroniclePage(Adw.Bin):
             task_buttons.append(undo)
         for button in task_buttons:
             self._register(button)
-        sent = chronicle.sent_text(session)
-        info = f"{session.system_name} · " + (f"wysłano na Discord {sent}" if sent
+        sent = chronicle.discord_label(session)
+        info = f"{session.system_name} · " + (sent if sent
                                                else f"{self._provider_label()} przy ponownym generowaniu")
         if session.has_notes:
             info = f"{session.system_name} · z notatek MG" + (
                 " · notatki zmieniono po kronice - wygeneruj ponownie" if notes.chronicle_is_stale(session)
-                else f" · wysłano na Discord {sent}" if sent else "")
+                else f" · {sent}" if sent else "")
         more = _menu_button(more_items, tooltip=f"Więcej (ponowne generowanie: {self._provider_label()})")
         return text_page(stack, info, [revise_button, pdf_button, discord_button, more], leading=toggles)
+
+    def _toggle_sent(self, session: Session, sent: bool) -> None:
+        try:
+            (chronicle.unmark_sent if sent else chronicle.mark_sent)(session)
+        except OSError:
+            return
+        self.show_session(session)
+        self._files_changed()
 
     def _quotes_view(self, session: Session) -> Gtk.Widget:
         """Najlepsze cytaty z sesji albo zachęta do ich wybrania."""

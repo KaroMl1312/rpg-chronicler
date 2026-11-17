@@ -5,6 +5,7 @@ from ..session import list_sessions
 
 
 def cmd_status(args):
+    from .. import chronicle
     from ..quality import check_sessions
 
     sessions = list_sessions(args.sessions)
@@ -17,16 +18,23 @@ def cmd_status(args):
     mark = lambda ok: "✓" if ok else "-"
     transcript_mark = lambda s: "✓" if s.has_json else ("txt" if s.has_transcript else
                                                         ("notatki" if s.has_notes else "-"))
-    print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE  UWAGI")
+    discord_mark = {chronicle.NOT_SENT: "-", chronicle.SENT: "✓", chronicle.SENT_OLDER: "starsza"}
+    print(f"{'SESJA'.ljust(width)}  {'SYSTEM'.ljust(system_width)}  AUDIO  TRANSKRYPCJA  MÓWCY  PODSUMOWANIE  "
+          "DISCORD  UWAGI")
     for s in sessions:
         count = len(issues.get(s.name, []))
         print(f"{s.name.ljust(width)}  {s.system_name.ljust(system_width)}  {mark(s.audio_path):^5}  "
               f"{transcript_mark(s):^12}  {mark(s.has_speakers):^5}  {mark(s.has_summary):^12}  "
+              f"{discord_mark[chronicle.discord_state(s)] if s.has_summary else '':^7}  "
               f"{'!' * min(count, 3) if count else ''}")
     if any(issues.values()):
         print("\n! = podejrzane miejsca w transkrypcji; szczegóły: rpg-chronicler check")
     if any(s.has_transcript and not s.has_json for s in sessions):
         print("\ntxt = starszy format transkrypcji; zamień na JSON komendą: rpg-chronicler migrate")
+    if any(s.has_summary and chronicle.discord_state(s) == chronicle.SENT_OLDER for s in sessions):
+        print("\nstarsza = na Discordzie jest wersja sprzed poprawki kroniki")
+    if any(s.has_summary and chronicle.discord_state(s) == chronicle.NOT_SENT for s in sessions):
+        print("\nKronikę wysłano ręcznie? Oznacz ją: rpg-chronicler discord SESJA --oznacz")
     if any(s.has_notes for s in sessions):
         print("\nnotatki = sesja bez nagrania, kronika z notatek MG (rpg-chronicler add-session)")
 

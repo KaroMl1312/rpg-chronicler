@@ -3,7 +3,7 @@ from typing import Callable
 
 from gi.repository import Gtk, Pango
 
-from .. import quality, stats as session_stats
+from .. import chronicle, quality, stats as session_stats
 from .text import markdown_spans
 
 RegisterTaskButton = Callable[[Gtk.Button], None]
@@ -131,3 +131,14 @@ def text_page(content: Gtk.TextBuffer | Gtk.Widget, info: str, buttons: list[Gtk
     box.append(Gtk.Separator())
     box.append(scrolled)
     return box
+
+
+def discord_icon(session) -> Gtk.Widget:
+    """Znaczek przy sesji na liście: kronika jest na Discordzie (samolot), na Discordzie starsza wersja (samolot
+    ostrzegawczy) albo jej tam nie ma (puste miejsce tej samej szerokości - ikony w wierszach się nie przesuwają)."""
+    state = chronicle.discord_state(session)
+    if state == chronicle.NOT_SENT:
+        return Gtk.Box(width_request=16, tooltip_text="Kroniki nie wysłano na Discord")
+    icon = Gtk.Image(icon_name="mail-send-symbolic", tooltip_text=chronicle.discord_label(session))
+    icon.add_css_class("warning" if state == chronicle.SENT_OLDER else "accent")
+    return icon

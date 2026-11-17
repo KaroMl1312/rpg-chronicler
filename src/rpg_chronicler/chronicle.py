@@ -249,6 +249,47 @@ def save_sent(session: Session, message_id: str | None) -> None:
         json.dump(data, f, ensure_ascii=False, indent=1)
 
 
+NOT_SENT, SENT, SENT_OLDER = "", "wyslano", "zmieniona-po-wyslaniu"
+
+
+def mark_sent(session: Session) -> None:
+    """Ręczne oznaczenie „jest na Discordzie” (np. kronika wysłana, zanim aplikacja zapisywała wysyłki)."""
+    data = {"wyslano": datetime.datetime.now().isoformat(timespec="seconds"), "wiadomosc": None, "recznie": True}
+    with open(sent_path(session), "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+def unmark_sent(session: Session) -> None:
+    try:
+        os.remove(sent_path(session))
+    except FileNotFoundError:
+        pass
+
+
+def discord_state(session: Session) -> str:
+    """NOT_SENT, SENT albo SENT_OLDER (kronikę poprawiono albo napisano od nowa po wysłaniu)."""
+    try:
+        when = datetime.datetime.fromisoformat(load_sent(session).get("wyslano"))
+    except (TypeError, ValueError):
+        return NOT_SENT
+    try:
+        changed = os.path.getmtime(session.summary_path) > when.timestamp() + 1
+    except OSError:
+        changed = False
+    return SENT_OLDER if changed else SENT
+
+
+def discord_label(session: Session) -> str:
+    """Krótki opis stanu wysyłki do listy sesji i zakładki Kronika (pusty, gdy nie wysłano)."""
+    state = discord_state(session)
+    if state == NOT_SENT:
+        return ""
+    manual = " (oznaczone ręcznie)" if load_sent(session).get("recznie") else ""
+    if state == SENT_OLDER:
+        return f"na Discordzie starsza wersja ({sent_text(session)}){manual}"
+    return f"wysłano na Discord {sent_text(session)}{manual}"
+
+
 def sent_text(session: Session) -> str:
     """„12.11.2026 o 10:05” albo pusty tekst, gdy kroniki nie wysłano."""
     sent = load_sent(session).get("wyslano")
