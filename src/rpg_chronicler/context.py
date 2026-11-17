@@ -1,5 +1,5 @@
 """Kontekst kampanii dla AI: imiona mówców, opis kampanii ze słownikiem, stan kampanii i poprzednia kronika."""
-from . import memory
+from .campaign_tools import memory
 from .campaigns import campaign_key, session_date
 from .session import Session, list_sessions
 

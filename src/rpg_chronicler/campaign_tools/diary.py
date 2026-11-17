@@ -14,12 +14,12 @@ import os
 import re
 from pathlib import Path
 
-from . import session as _session
-from .campaigns import Campaign, campaign_key, session_date
-from .chronicle import chronicle_title, read_quotes
-from .prompts import chronicle_blocks, render
-from .textmatch import contains_name
-from .transcript import load_speaker_mapping
+from .. import session as _session
+from ..campaigns import Campaign, campaign_key, session_date
+from ..chronicle import chronicle_title, read_quotes
+from ..prompts import chronicle_blocks, render
+from ..textmatch import contains_name
+from ..transcript import load_speaker_mapping
 
 EVENTS_LIMIT = 40_000   # znaków listy wydarzeń w zapytaniu (dłuższa jest ucinana)
 # Słowa, które w imieniu postaci nie są jej skrótem („Sir Amos” → „Amos”, ale nie „Sir”)
@@ -82,10 +82,10 @@ def was_present(session, campaign: Campaign, character: str, chronicle: str) -> 
     if any(contains_name(chronicle, name) for name in aliases(character)):
         return True
     if not session.has_transcript:   # sesja z notatek: obecni wpisani w notatkach
-        from .notes import read_notes
+        from ..notes import read_notes
         session_notes = read_notes(session)
         return session_notes is not None and any(_is_alias(n, character) for n in session_notes.present)
-    from .voices import NameResolver
+    from ..voices import NameResolver
     resolver = NameResolver(campaign)
     return any(_is_alias(resolver.resolve(n), character)
                for n in load_speaker_mapping(session.txt_path).values() if n.strip())
@@ -145,7 +145,7 @@ def write_entry(get_client, session, campaign: Campaign, character: str, chronic
 
     `get_client()` daje klienta LLM - wołane dopiero, gdy wpisu nie ma w cache.
     """
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
 
     prefix, prompt = entry_prompt(session, campaign, character, chronicle, previous)
     cache = _cache_path(campaign.key, prefix + prompt)

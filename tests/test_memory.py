@@ -1,6 +1,7 @@
 import os
 
-from rpg_chronicler import after_chronicle, chronicle_events, cli, llm, memory, summary
+from rpg_chronicler import after_chronicle, chronicle_events, cli, llm, summary
+from rpg_chronicler.campaign_tools import memory
 from rpg_chronicler.campaigns import Campaign
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript

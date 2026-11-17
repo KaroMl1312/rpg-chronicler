@@ -9,7 +9,8 @@ from typing import Callable
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-from .. import config, images
+from .. import config
+from ..campaign_tools import images
 from ..campaigns import IMAGE_EXTENSIONS, image_path, remove_image, set_image
 
 TOOLTIP_IMAGE_SIZE = 160

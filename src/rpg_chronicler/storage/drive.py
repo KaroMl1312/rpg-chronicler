@@ -63,7 +63,7 @@ def archive_on_gdrive(name: str, dry_run: bool = False) -> int:
     """
     import tempfile
 
-    from ..archive import ARCHIVE_DIR_NAME, remote_files
+    from ..maintenance.archive import ARCHIVE_DIR_NAME, remote_files
 
     total = 0
     for remote, in_summary in ((RCLONE_AUDIO_REMOTE, False), (RCLONE_TXT_REMOTE, False),
@@ -93,7 +93,7 @@ def delete_on_gdrive(name: str, plan, dry_run: bool = False) -> int:
     """
     import tempfile
 
-    from ..archive import remote_files
+    from ..maintenance.archive import remote_files
 
     remotes = {"audio": (RCLONE_AUDIO_REMOTE, False), "txt": (RCLONE_TXT_REMOTE, False),
                "summary": (RCLONE_SUMMARY_REMOTE, True)}

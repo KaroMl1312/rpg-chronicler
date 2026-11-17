@@ -54,7 +54,7 @@ def test_estimate_remaining():
 
 
 def test_new_proposals_after_task(workspace):
-    from rpg_chronicler import glossary, memory
+    from rpg_chronicler.campaign_tools import glossary, memory
     from rpg_chronicler.gui.text import new_proposals, proposals_snapshot
     from rpg_chronicler.campaigns import Campaign
 

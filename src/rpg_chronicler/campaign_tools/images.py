@@ -16,8 +16,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from . import config
-from .campaigns import Campaign, image_path, image_stem, set_image, update_campaign
+from .. import config
+from ..campaigns import Campaign, image_path, image_stem, set_image, update_campaign
 
 CATEGORY_LABELS = {"postacie_graczy": "postać gracza", "npc": "postać niezależna", "miejsca": "miejsce",
                    "przedmioty": "przedmiot", "inne": "frakcja, bóstwo albo pojęcie"}
@@ -128,8 +128,8 @@ def ensure_style(llm, campaign: Campaign) -> Campaign:
         return campaign
     from dataclasses import replace
 
-    from .llm import generate, with_retry
-    from .prompts import render
+    from ..llm import generate, with_retry
+    from ..prompts import render
     info = f"\n\nO kampanii:\n{campaign.context}" if campaign.context else ""
     prompt = render("image_style", system_name=campaign.system, campaign_info=info)
     print(f"[{llm.name}] Styl obrazków kampanii {campaign.key}...")
@@ -163,8 +163,8 @@ def _save_hints(key: str, name: str, hints: str) -> None:
 
 def image_prompt(llm, campaign: Campaign, name: str, hints: str = "") -> str:
     """Prompt po angielsku z opisu hasła, stylu kampanii i wskazówek użytkownika (po polsku - LLM tłumaczy)."""
-    from .llm import generate, with_retry
-    from .prompts import render
+    from ..llm import generate, with_retry
+    from ..prompts import render
     category = CATEGORY_LABELS.get(campaign.category_of(name) or "", "hasło z kampanii")
     info = f"Świat: {campaign.context}\n" if campaign.context else ""
     prompt = render("image_prompt", system_name=campaign.system, entry=name, category=category,

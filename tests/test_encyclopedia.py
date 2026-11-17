@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from rpg_chronicler import campaigns, encyclopedia, memory
+from rpg_chronicler import campaigns
+from rpg_chronicler.campaign_tools import encyclopedia, memory
 from rpg_chronicler.campaigns import Campaign
 from rpg_chronicler.session import list_sessions
 

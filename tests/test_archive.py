@@ -1,4 +1,5 @@
-from rpg_chronicler import archive, cli
+from rpg_chronicler.maintenance import archive
+from rpg_chronicler import cli
 from rpg_chronicler.session import list_sessions
 
 

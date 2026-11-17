@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from rpg_chronicler import campaigns, cli, glossary
+from rpg_chronicler import campaigns, cli
+from rpg_chronicler.campaign_tools import glossary
 from rpg_chronicler.campaigns import Campaign
 
 CAMPAIGN = Campaign("Warhammer", "WFRP", player_characters={"Fen": ""}, glossary={"miejsca": ("Altdorf",)})

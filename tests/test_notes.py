@@ -5,7 +5,9 @@ import time
 
 import pytest
 
-from rpg_chronicler import after_chronicle, backfill, campaigns, cli, diary, notes, revision, search, summary
+from rpg_chronicler import after_chronicle, campaigns, cli, notes, revision, search, summary
+from rpg_chronicler.maintenance import backfill
+from rpg_chronicler.campaign_tools import diary
 from rpg_chronicler.campaigns import Campaign
 from rpg_chronicler.gui.text import session_stage
 from rpg_chronicler.session import list_sessions

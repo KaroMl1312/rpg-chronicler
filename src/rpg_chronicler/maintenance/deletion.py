@@ -20,11 +20,11 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import encyclopedia, memory
-from . import session as _session
+from ..campaign_tools import encyclopedia, memory
+from .. import session as _session
 from .archive import belongs_to
 from .backfill import existing_diaries
-from .campaigns import campaign_key
+from ..campaigns import campaign_key
 
 CHRONICLE, RESTART, SESSION = "kronika", "od-nowa", "sesja"
 SCOPES = (CHRONICLE, RESTART, SESSION)

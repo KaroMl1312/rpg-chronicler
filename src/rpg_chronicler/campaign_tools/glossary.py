@@ -11,8 +11,8 @@ import re
 from dataclasses import replace
 from pathlib import Path
 
-from .campaigns import GLOSSARY_CATEGORIES, Campaign, campaign_key, session_date
-from .prompts import chronicle_blocks, render
+from ..campaigns import GLOSSARY_CATEGORIES, Campaign, campaign_key, session_date
+from ..prompts import chronicle_blocks, render
 
 PLAYER_CHARACTERS = "postacie_graczy"
 DESCRIPTION = "opis"
@@ -99,7 +99,7 @@ def new_only(proposals: dict, campaign: Campaign) -> dict:
 
 def extract_proposals(llm, campaign: Campaign, chronicles: list[tuple[str, str]]) -> dict:
     """Pyta AI o nowe nazwy z kronik. Rzuca LLMError (połączenie) albo GlossaryError (zła odpowiedź)."""
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
     if not chronicles:
         return {}
     prefix, prompt = build_prompt(campaign, chronicles)

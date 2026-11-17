@@ -14,10 +14,10 @@ import os
 import re
 from dataclasses import dataclass
 
-from . import diary, encyclopedia, memory
-from . import session as _session
-from .campaigns import campaign_key
-from .chronicle import brief_is_current, brief_path, pdf_is_current, quotes_path
+from ..campaign_tools import diary, encyclopedia, memory
+from .. import session as _session
+from ..campaigns import campaign_key
+from ..chronicle import brief_is_current, brief_path, pdf_is_current, quotes_path
 
 BRIEF, QUOTES, PDF, ENCYCLOPEDIA, DIARY = "skrót", "cytaty", "PDF", "encyklopedia", "dziennik"
 KINDS = (BRIEF, QUOTES, PDF, ENCYCLOPEDIA, DIARY)   # kolejność wykonania (PDF po skrócie i cytatach)

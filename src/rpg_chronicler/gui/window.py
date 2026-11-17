@@ -8,7 +8,9 @@ import sys
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import backfill, chronicle, deletion, glossary, memory, settings
+from ..maintenance import backfill, deletion
+from .. import chronicle, settings
+from ..campaign_tools import glossary, memory
 from ..campaigns import campaign_key
 from ..config import LLM_PROVIDER
 from ..session import Session, list_sessions

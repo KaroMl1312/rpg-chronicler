@@ -160,7 +160,7 @@ def cmd_migrate(args):
 
 
 def cmd_archive(args):
-    from ..archive import ArchiveError, archive_local
+    from ..maintenance.archive import ArchiveError, archive_local
 
     failed = False
     for s in list_sessions(args.sessions):
@@ -189,7 +189,7 @@ def cmd_archive(args):
 
 def cmd_delete(args):
     """Usuwa kronikę / wszystko poza nagraniem / całą sesję - najpierw z Drive (do kosza), potem lokalnie."""
-    from .. import deletion
+    from ..maintenance import deletion
     from ..session import SessionNotFound
 
     if args.undo:

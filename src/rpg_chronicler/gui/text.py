@@ -141,7 +141,7 @@ def estimate_remaining(elapsed: float, fraction: float) -> float | None:
 
 def proposals_snapshot() -> dict[str, dict]:
     """Stan oczekujących propozycji: liczba nazw do słownika i czas zmiany propozycji stanu, per kampania."""
-    from .. import glossary, memory
+    from ..campaign_tools import glossary, memory
     glossary_counts = {path.stem: glossary.count_proposals(glossary.load_proposals(path.stem))
                        for path in glossary.proposals_dir().glob("*.json")}
     try:

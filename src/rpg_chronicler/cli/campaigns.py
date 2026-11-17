@@ -4,7 +4,7 @@ from ..session import SessionNotFound, list_sessions
 
 
 def cmd_glossary(args):
-    from .. import glossary
+    from ..campaign_tools import glossary
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -28,7 +28,7 @@ def cmd_glossary(args):
 
 
 def cmd_memory(args):
-    from .. import glossary, memory
+    from ..campaign_tools import glossary, memory
     from ..campaigns import campaign_for
 
     campaign = campaign_for(f"{args.campaign}_")

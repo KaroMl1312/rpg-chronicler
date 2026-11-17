@@ -3,7 +3,9 @@ import json
 import os
 import time
 
-from rpg_chronicler import backfill, chronicle_pdf, cli, memory, quality, summary
+from rpg_chronicler.maintenance import backfill
+from rpg_chronicler import chronicle_pdf, cli, quality, summary
+from rpg_chronicler.campaign_tools import memory
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript, save_transcript
 

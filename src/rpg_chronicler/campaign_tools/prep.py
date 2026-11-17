@@ -12,9 +12,9 @@ import os
 import re
 
 from . import memory
-from . import session as _session
-from .campaigns import Campaign, campaign_key, session_date
-from .prompts import chronicle_blocks, render
+from .. import session as _session
+from ..campaigns import Campaign, campaign_key, session_date
+from ..prompts import chronicle_blocks, render
 
 HEADER_RE = re.compile(r"\A<!-- po sesji: (?P<session>.*?) -->\n?")
 CHRONICLES_LIMIT = 200_000   # jak encyklopedia (ten sam początek zapytania - cache)
@@ -108,7 +108,7 @@ def recap_prompt(campaign: Campaign, session_name: str, chronicle: str) -> tuple
 
 def write_recap(llm, campaign: Campaign, sessions) -> str:
     """Pisze i zapisuje „Poprzednio w kampanii…”; zwraca tekst. Rzuca LLMError albo PrepError."""
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
 
     latest = latest_session(campaign.key, sessions)
     if latest is None:
@@ -132,7 +132,7 @@ def gm_notes_prompt(campaign: Campaign, chronicles: list[tuple[str, str]]) -> tu
 
 
 def render_gm_notes(campaign: Campaign, session_name: str, notes: str) -> str:
-    from .chronicle import session_date_text
+    from ..chronicle import session_date_text
 
     when = session_date_text(_session.Session(session_name)) or session_name
     return (f"# Notatki MG: {campaign.key}\n\n*{campaign.system} · przed sesją po {when} · tylko dla Mistrza Gry*\n\n"
@@ -141,7 +141,7 @@ def render_gm_notes(campaign: Campaign, session_name: str, notes: str) -> str:
 
 def write_gm_notes(llm, campaign: Campaign, sessions) -> str:
     """Pisze i zapisuje notatki MG (.md); zwraca Markdown. PDF robi komenda. Rzuca LLMError albo PrepError."""
-    from .llm import generate, with_retry
+    from ..llm import generate, with_retry
 
     chronicles = campaign_chronicles(campaign.key, sessions)
     latest = latest_session(campaign.key, sessions)

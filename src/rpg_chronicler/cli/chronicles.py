@@ -85,7 +85,8 @@ def cmd_discord(args):
 
 def cmd_recap(args):
     """„Poprzednio w kampanii…”: pisze tekst (gdy go nie ma, jest nieaktualny albo --force) i opcjonalnie wysyła."""
-    from .. import chronicle, discord, prep
+    from .. import chronicle, discord
+    from ..campaign_tools import prep
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -119,7 +120,7 @@ def cmd_recap(args):
 
 
 def cmd_gm_notes(args):
-    from .. import prep
+    from ..campaign_tools import prep
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -136,7 +137,7 @@ def cmd_gm_notes(args):
 
 
 def cmd_ask(args):
-    from .. import ask
+    from ..campaign_tools import ask
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -153,7 +154,7 @@ def cmd_ask(args):
 
 def cmd_image(args):
     """Propozycja obrazka hasła kampanii (Cloudflare FLUX); z --zachowaj od razu jako zdjęcie hasła."""
-    from .. import images
+    from ..campaign_tools import images
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -223,9 +224,9 @@ def fill_descriptions(campaign, llm):
     """Uzupełnia puste opisy haseł kampanii opisami z encyklopedii AI (z cache, gdy kroniki się nie zmieniły).
 
     Zwraca kampanię po zmianach. Rzuca LLMError / EncyclopediaError."""
-    from .. import encyclopedia
+    from ..campaign_tools import encyclopedia
     from ..campaigns import update_campaign
-    from ..glossary import chronicles_for
+    from ..campaign_tools.glossary import chronicles_for
     chronicles = chronicles_for(campaign.key, list_sessions())
     if not chronicles:
         raise encyclopedia.EncyclopediaError(f"Kampania {campaign.key} nie ma jeszcze żadnych kronik.")
@@ -248,7 +249,7 @@ def write_encyclopedia(campaign, llm) -> None:
     """Encyklopedia kampanii (.md + PDF). `llm` None = bez opisów AI. Rzuca LLMError / EncyclopediaError.
 
     Z AI najpierw uzupełnia puste opisy haseł w kampanii (ta sama odpowiedź AI, z cache)."""
-    from .. import encyclopedia
+    from ..campaign_tools import encyclopedia
     if llm is not None:
         campaign = fill_descriptions(campaign, llm)
     progress.report("encyklopedia", campaign.key)
@@ -262,7 +263,7 @@ def write_encyclopedia(campaign, llm) -> None:
 
 def write_diary(campaign, character: str, get_client, force: bool = False) -> None:
     """Dziennik postaci (.md + PDF). Rzuca LLMError / DiaryError."""
-    from .. import diary
+    from ..campaign_tools import diary
     text = diary.build(get_client, campaign, character, list_sessions(), force=force,
                        progress=lambda done, total: progress.report("dziennik postaci", character, done, total))
     progress.report("PDF", character)
@@ -273,7 +274,7 @@ def write_diary(campaign, character: str, get_client, force: bool = False) -> No
 
 
 def cmd_encyclopedia(args):
-    from .. import encyclopedia
+    from ..campaign_tools import encyclopedia
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -285,7 +286,7 @@ def cmd_encyclopedia(args):
 
 
 def cmd_describe(args):
-    from .. import encyclopedia
+    from ..campaign_tools import encyclopedia
     from ..campaigns import campaign_for
     from ..llm import LLMError, get_client
 
@@ -296,7 +297,7 @@ def cmd_describe(args):
 
 
 def cmd_diary(args):
-    from .. import diary
+    from ..campaign_tools import diary
     from ..campaigns import campaign_for
     from ..llm import LazyClient, LLMError
 
@@ -310,7 +311,8 @@ def cmd_diary(args):
 
 
 def cmd_backfill(args):
-    from .. import backfill, diary, encyclopedia
+    from ..maintenance import backfill
+    from ..campaign_tools import diary, encyclopedia
     from ..after_chronicle import QuotesError, write_brief, write_quotes
     from ..campaigns import campaign_for
     from ..chronicle import read_chronicle

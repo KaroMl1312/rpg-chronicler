@@ -5,7 +5,9 @@ import subprocess
 
 import pytest
 
-from rpg_chronicler import cli, deletion, memory, notes
+from rpg_chronicler import cli, notes
+from rpg_chronicler.maintenance import deletion
+from rpg_chronicler.campaign_tools import memory
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.storage import drive
 

@@ -1,7 +1,8 @@
 """Cache promptów w API Anthropic: stały początek zapytań (prefix) musi być identyczny, żeby był czytany z cache."""
 from types import SimpleNamespace
 
-from rpg_chronicler import after_chronicle, chronicle_events, llm, memory, summary
+from rpg_chronicler import after_chronicle, chronicle_events, llm, summary
+from rpg_chronicler.campaign_tools import memory
 from rpg_chronicler.llm.anthropic_api import AnthropicClient
 from rpg_chronicler.prompts import chronicle_blocks, render, render_split
 from rpg_chronicler.session import list_sessions

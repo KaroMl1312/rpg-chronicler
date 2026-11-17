@@ -219,7 +219,7 @@ def steps(win):
     yield "opisy haseł", entry_descriptions
 
     def before_session():
-        from rpg_chronicler import ask, prep
+        from rpg_chronicler.campaign_tools import ask, prep
         with open(prep.recap_path("Warhammer"), "w", encoding="utf-8") as f:
             f.write(f"<!-- po sesji: {FULL} -->\nPoprzednio… szukaliście Romulusa.\n")
         answer = ask.Answer("Kim jest Romulus?", f"Kapłanem [{FULL}].", [FULL], "2026-11-16T20:00")
@@ -242,7 +242,7 @@ def steps(win):
     def ai_image():
         import struct
         import zlib
-        from rpg_chronicler import images
+        from rpg_chronicler.campaign_tools import images
         from rpg_chronicler.campaigns import image_path
         from rpg_chronicler.gui.entry_page import EntryPage
 

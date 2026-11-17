@@ -2,7 +2,8 @@ import os
 
 import pytest
 
-from rpg_chronicler import campaigns, cli, diary
+from rpg_chronicler import campaigns, cli
+from rpg_chronicler.campaign_tools import diary
 from rpg_chronicler.campaigns import Campaign
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript, save_speaker_mapping

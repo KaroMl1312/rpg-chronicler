@@ -7,7 +7,8 @@ import urllib.error
 
 import pytest
 
-from rpg_chronicler import campaigns, cli, config, images
+from rpg_chronicler import campaigns, cli, config
+from rpg_chronicler.campaign_tools import images
 from rpg_chronicler.campaigns import Campaign, load_campaigns
 
 CAMPAIGN = Campaign("Warhammer", "Warhammer Fantasy", context="Reikland, rok 2512.",

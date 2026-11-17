@@ -4,9 +4,10 @@ import time
 
 import pytest
 
-from rpg_chronicler import ask, campaigns, chronicle, cli, discord, encyclopedia, memory, prep
+from rpg_chronicler.campaign_tools import ask, encyclopedia, memory, prep
+from rpg_chronicler import campaigns, chronicle, cli, discord
 from rpg_chronicler.campaigns import Campaign
-from rpg_chronicler.glossary import chronicles_for
+from rpg_chronicler.campaign_tools.glossary import chronicles_for
 from rpg_chronicler.prompts import chronicle_blocks
 from rpg_chronicler.session import list_sessions
 

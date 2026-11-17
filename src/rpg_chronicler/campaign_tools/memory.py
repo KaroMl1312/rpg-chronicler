@@ -16,9 +16,9 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import session as _session
-from .campaigns import Campaign, session_date
-from .prompts import chronicle_blocks, render
+from .. import session as _session
+from ..campaigns import Campaign, session_date
+from ..prompts import chronicle_blocks, render
 
 STATE_PREFIX = "stan-kampanii-"
 HEADER_RE = re.compile(r"^<!-- po sesji: (?P<session>.*?) -->\n?")
@@ -205,7 +205,7 @@ def propose_update(llm, campaign: Campaign, session_name: str, chronicle: str) -
 
     Zwraca propozycję albo None, gdy sesja nie jest nowsza od stanu. Rzuca LLMError.
     """
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
     base = load_proposal(campaign.key) or load_state(campaign.key)
     if not is_newer(session_name, base):
         return None
@@ -219,7 +219,7 @@ def propose_update(llm, campaign: Campaign, session_name: str, chronicle: str) -
 
 def propose_from_chronicles(llm, campaign: Campaign, chronicles: list[tuple[str, str]]) -> State | None:
     """Stan od zera ze wszystkich kronik kampanii (od najstarszej). Rzuca LLMError."""
-    from .llm import generate, with_retry
+    from ..llm import generate, with_retry
     if not chronicles:
         return None
     prefix, prompt = build_prompt(campaign, chronicles)

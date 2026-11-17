@@ -12,7 +12,8 @@ from typing import Callable
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import ask, chronicle, diary, discord, encyclopedia, glossary, memory, prep
+from ..campaign_tools import ask, diary, encyclopedia, glossary, memory, prep
+from .. import chronicle, discord
 from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_file, default_campaign,
                          image_path, load_campaigns, update_campaign)
 from ..session import list_sessions

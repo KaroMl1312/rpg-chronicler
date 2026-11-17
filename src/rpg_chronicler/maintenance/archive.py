@@ -7,7 +7,7 @@ import os
 import shutil
 from dataclasses import dataclass
 
-from . import session as _session
+from .. import session as _session
 
 ARCHIVE_DIR_NAME = "archiwum"
 

@@ -5,7 +5,8 @@ dodatki po kronice (skrót, cytaty, słownik, stan kampanii) - after_chronicle.p
 """
 import os
 
-from . import after_chronicle, memory, notes, progress
+from . import after_chronicle, notes, progress
+from .campaign_tools import memory
 from . import session as _session
 from .chronicle_events import chronicle_source
 from .campaigns import campaign_key

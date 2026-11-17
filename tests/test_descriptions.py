@@ -3,7 +3,8 @@ import json
 
 import pytest
 
-from rpg_chronicler import campaigns, cli, config, encyclopedia
+from rpg_chronicler import campaigns, cli, config
+from rpg_chronicler.campaign_tools import encyclopedia
 from rpg_chronicler.campaigns import Campaign, load_campaigns
 
 CAMPAIGN = Campaign("Warhammer", "Warhammer Fantasy", player_characters={"Fen Wanderer": "Ania"},

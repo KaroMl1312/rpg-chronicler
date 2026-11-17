@@ -13,9 +13,9 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from .campaigns import Campaign
+from ..campaigns import Campaign
 from .prep import CHRONICLES_LIMIT, campaign_chronicles, prompt_context
-from .prompts import chronicle_blocks, render
+from ..prompts import chronicle_blocks, render
 
 HISTORY_LIMIT = 30
 REFERENCE_RE = re.compile(r"\[([^\[\]\n]+?)\]")
@@ -85,7 +85,7 @@ def ask_prompt(campaign: Campaign, chronicles: list[tuple[str, str]], question: 
 
 def ask(llm, campaign: Campaign, sessions, question: str) -> Answer:
     """Pyta AI i dopisuje odpowiedź na początek historii. Rzuca LLMError albo AskError."""
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
 
     if not question.strip():
         raise AskError("Pytanie jest puste.")

@@ -97,7 +97,7 @@ def test_previous_chronicle_of_same_campaign_goes_into_prompt(workspace):
 
 
 def test_glossary_proposals_after_new_chronicle(workspace, monkeypatch):
-    from rpg_chronicler import glossary
+    from rpg_chronicler.campaign_tools import glossary
     monkeypatch.setattr(after_chronicle, "GLOSSARY_PROPOSALS", True)
     responses = iter(["KRONIKA o Altdorfie", '{"npc": ["Eustachy"], "miejsca": ["Altdorf"], "opis": "Imperium."}'])
     workspace.llm.generate = lambda prompt: workspace.llm.prompts.append(prompt) or next(responses)

@@ -7,7 +7,8 @@ import json
 import os
 import re
 
-from . import glossary, memory, progress
+from .campaign_tools import glossary, memory
+from . import progress
 from .chronicle import brief_path
 from .chronicle_events import events_path
 from .config import CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_QUOTES, GLOSSARY_PROPOSALS, LLM_PROVIDER

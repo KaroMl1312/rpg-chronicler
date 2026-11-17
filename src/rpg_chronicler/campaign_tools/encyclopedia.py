@@ -14,11 +14,11 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import session as _session
-from .campaigns import GLOSSARY_CATEGORIES, Campaign, campaign_key, session_date
-from .chronicle import brief_is_current, chronicle_title, read_brief
-from .prompts import chronicle_blocks, render
-from .textmatch import contains_name
+from .. import session as _session
+from ..campaigns import GLOSSARY_CATEGORIES, Campaign, campaign_key, session_date
+from ..chronicle import brief_is_current, chronicle_title, read_brief
+from ..prompts import chronicle_blocks, render
+from ..textmatch import contains_name
 
 PLAYER_CHARACTERS = "postacie_graczy"
 CATEGORY_TITLES = {PLAYER_CHARACTERS: "Postacie graczy", **GLOSSARY_CATEGORIES}
@@ -118,7 +118,7 @@ def _cache_path(key: str, prompt: str) -> Path:
 def ai_entries(llm, campaign: Campaign, chronicles: list[tuple[str, str]]) -> list[Entry]:
     """Hasła z opisami od AI (zapamiętane w cache dla tych samych kronik i słownika). Rzuca LLMError."""
     from .glossary import current_glossary_text
-    from .llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
+    from ..llm import generate, with_retry  # import tutaj: GUI importuje ten moduł bez SDK LLM
 
     prefix = chronicle_blocks(chronicles, CHRONICLES_LIMIT)
     prompt = render("encyclopedia", system_name=campaign.system, current_glossary=current_glossary_text(campaign))
