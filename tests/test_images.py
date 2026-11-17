@@ -103,3 +103,22 @@ def test_image_command(campaign_store, workspace, monkeypatch, capsys):
     monkeypatch.setattr(images, "get_image_client", lambda: (_ for _ in ()).throw(images.ImageError("brak kluczy")))
     assert cli.main(["image", "Warhammer", "Ubersreik"]) == 1
     assert "brak kluczy" in capsys.readouterr().err
+
+
+def test_user_hints_translated_in_prompt(campaign_store, workspace, monkeypatch, capsys):
+    fake = FakeImages()
+    images.generate_candidate(workspace.llm, fake, CAMPAIGN, "Sir Amos", "  rude włosy,\n blizna na policzku ")
+    image_prompt = workspace.llm.prompts[-1]
+    assert "Wskazówki użytkownika (najważniejsze): rude włosy, blizna na policzku" in image_prompt
+    assert "przetłumacz je na angielski" in image_prompt
+    assert images.last_hints("Warhammer", "Sir Amos") == "rude włosy,\n blizna na policzku"
+    images.discard_candidates("Warhammer", "Sir Amos")
+    assert images.last_hints("Warhammer", "Sir Amos")                     # odrzucenie obrazka zostawia wskazówki
+    images.generate_candidate(workspace.llm, fake, campaign_store["Warhammer"], "Sir Amos")
+    assert "Wskazówki użytkownika (najważniejsze)" not in workspace.llm.prompts[-1]
+    assert images.last_hints("Warhammer", "Sir Amos") == ""
+
+    monkeypatch.setattr(images, "get_image_client", FakeImages)
+    assert cli.main(["image", "Warhammer", "Sir Amos", "--wskazowki", "w deszczu"]) == 0
+    assert "Wskazówki użytkownika (najważniejsze): w deszczu" in workspace.llm.prompts[-1]
+    assert "(wskazówki: w deszczu)" in capsys.readouterr().out

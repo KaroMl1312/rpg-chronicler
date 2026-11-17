@@ -140,24 +140,52 @@ def ensure_style(llm, campaign: Campaign) -> Campaign:
     return campaign
 
 
-def image_prompt(llm, campaign: Campaign, name: str) -> str:
+def hints_path(key: str, name: str) -> Path:
+    return candidates_dir(key) / f"{image_stem(name)}.wskazowki.txt"
+
+
+def last_hints(key: str, name: str) -> str:
+    """Ostatnie wskazówki użytkownika do obrazka hasła (GUI wpisuje je w okienko przy kolejnej próbie)."""
+    try:
+        return hints_path(key, name).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _save_hints(key: str, name: str, hints: str) -> None:
+    path = hints_path(key, name)
+    if hints.strip():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(hints.strip() + "\n", encoding="utf-8")
+    else:
+        path.unlink(missing_ok=True)
+
+
+def image_prompt(llm, campaign: Campaign, name: str, hints: str = "") -> str:
+    """Prompt po angielsku z opisu hasła, stylu kampanii i wskazówek użytkownika (po polsku - LLM tłumaczy)."""
     from .llm import generate, with_retry
     from .prompts import render
     category = CATEGORY_LABELS.get(campaign.category_of(name) or "", "hasło z kampanii")
     info = f"Świat: {campaign.context}\n" if campaign.context else ""
     prompt = render("image_prompt", system_name=campaign.system, entry=name, category=category,
                     description=campaign.description(name) or "(brak - wywnioskuj z nazwy i świata)",
-                    campaign_info=info, style=campaign.image_style)
-    print(f"[{llm.name}] Opis obrazka: {name}...")
+                    campaign_info=info, style=campaign.image_style,
+                    user_hints=f"Wskazówki użytkownika (najważniejsze): {' '.join(hints.split())}\n"
+                    if hints.strip() else "")
+    print(f"[{llm.name}] Opis obrazka: {name}" + (f" (wskazówki: {' '.join(hints.split())})" if hints.strip() else "")
+          + "...")
     return " ".join(with_retry(lambda: generate(llm, prompt), f"prompt obrazka {name}").split())
 
 
-def generate_candidate(llm, images, campaign: Campaign, name: str) -> str:
-    """Propozycja obrazka hasła (JPEG w cache + prompt w .txt); zwraca ścieżkę. Rzuca LLMError/ImageError."""
+def generate_candidate(llm, images, campaign: Campaign, name: str, hints: str = "") -> str:
+    """Propozycja obrazka hasła (JPEG w cache + prompt w .txt); zwraca ścieżkę. Rzuca LLMError/ImageError.
+
+    `hints` - dodatkowe wskazówki użytkownika po polsku (zapamiętane do następnej próby)."""
     if campaign.category_of(name) is None:
         raise ImageError(f"„{name}” nie ma w słowniku ani postaciach graczy kampanii {campaign.key}.")
     campaign = ensure_style(llm, campaign)
-    prompt = image_prompt(llm, campaign, name)
+    _save_hints(campaign.key, name, hints)
+    prompt = image_prompt(llm, campaign, name, hints)
     print(f"[{images.name}] Rysowanie: {name}...")
     data = images.generate(prompt)
     directory = candidates_dir(campaign.key)

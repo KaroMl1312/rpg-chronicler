@@ -251,6 +251,18 @@ def steps(win):
         page.open_entry("Ojciec Romulus", "Postacie niezależne (NPC)")
         entry = win._campaigns_dialog.nav.get_visible_page()
         assert isinstance(entry, EntryPage) and "Wygeneruj obrazek (AI)" in labels(entry), labels(entry)
+        started = []
+        win._campaigns_dialog._start_task = lambda title, args: started.append(args)   # bez sieci
+        generate = next(w for w in _walk(entry) if isinstance(w, Gtk.Button)
+                        and w.get_label() == "Wygeneruj obrazek (AI)")
+        generate.emit("clicked")
+        hints = entry.hints_dialog
+        view = next(w for w in _walk(hints.get_extra_child()) if isinstance(w, Gtk.TextView))
+        view.get_buffer().set_text("rude włosy, nocą")
+        hints.emit("response", "generate")
+        assert started and started[-1][:3] == ["image", "Warhammer", "Ojciec Romulus"], started
+        assert started[-1][-2:] == ["--wskazowki", "rude włosy, nocą"], started
+        hints.force_close()
         directory = images.candidates_dir("Warhammer")
         directory.mkdir(parents=True, exist_ok=True)
         (directory / "ojciec_romulus__20261116-200000-000000.jpg").write_bytes(png())   # rozszerzenie jak z API

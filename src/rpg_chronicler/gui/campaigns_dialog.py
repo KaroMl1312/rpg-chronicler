@@ -154,8 +154,9 @@ class CampaignsDialog(Adw.Dialog):
     def start_ask(self, key: str, question: str) -> None:
         self._start_task(f"Pytanie do kronikarza ({key})", ["ask", key, question, "--provider", self._provider()])
 
-    def start_image(self, key: str, name: str) -> None:
-        self._start_task(f"Obrazek: {name}", ["image", key, name, "--provider", self._provider()])
+    def start_image(self, key: str, name: str, hints: str = "") -> None:
+        args = ["image", key, name, "--provider", self._provider()]
+        self._start_task(f"Obrazek: {name}", args + (["--wskazowki", hints] if hints.strip() else []))
 
     def start_glossary(self, key: str) -> None:
         self._start_task(f"Słownik kampanii {key}", ["glossary", key, "--provider", self._provider()])
@@ -618,7 +619,7 @@ class CampaignPage(Adw.NavigationPage):
 
         campaign = self.campaign
         entry = EntryPage(self.key, name, category, campaign.description(name), save, self.dialog.toast,
-                          generate=lambda n: self.dialog.start_image(self.key, n),
+                          generate=lambda n, hints: self.dialog.start_image(self.key, n, hints),
                           register=self.dialog.register_task_button)
         entry.connect("hidden", lambda _p: self.reload())   # miniatury i opisy na liście
         self.dialog.nav.push(entry)

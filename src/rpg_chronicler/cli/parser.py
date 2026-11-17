@@ -200,6 +200,8 @@ def build_parser() -> argparse.ArgumentParser:
     provider_arg(p)
     p.add_argument("--zachowaj", dest="keep", action="store_true",
                    help="od razu ustaw jako zdjęcie hasła (bez tego: propozycja do przejrzenia w GUI)")
+    p.add_argument("--wskazowki", dest="hints", metavar="TEKST",
+                   help="dodatkowy opis po polsku, np. \"rude włosy, blizna, scena nocą\" (AI przetłumaczy)")
     p.set_defaults(func=cmd_image)
 
     p = sub.add_parser("describe", help="uzupełnij krótkie opisy postaci, BN-ów, miejsc… ze słownika (AI z kronik)")

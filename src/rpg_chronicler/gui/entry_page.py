@@ -65,11 +65,11 @@ def attach_tooltip(widget: Gtk.Widget, key: str, name: str, description: str) ->
 
 class EntryPage(Adw.NavigationPage):
     """`save(nazwa, opis)` - zapis opisu w kampanii (przy wyjściu ze strony, jeśli zmieniony);
-    `generate(nazwa)` - zadanie „obrazek od AI” (None = bez tej opcji); `register` - przycisk zadania."""
+    `generate(nazwa, wskazówki)` - zadanie „obrazek od AI” (None = bez tej opcji); `register` - przycisk zadania."""
 
     def __init__(self, key: str, name: str, category: str, description: str,
                  save: Callable[[str, str], None], toast: Callable[[str], None],
-                 generate: Callable[[str], None] | None = None,
+                 generate: Callable[[str, str], None] | None = None,
                  register: Callable[[Gtk.Widget], None] | None = None):
         super().__init__(title=name, tag=f"haslo-{key}-{name}")
         self.key, self.name = key, name
@@ -121,8 +121,34 @@ class EntryPage(Adw.NavigationPage):
         return button
 
     def _start_generation(self) -> None:
-        self.save_if_changed()   # zadanie czyta opis z kampanie.toml
-        self._generate(self.name)
+        """Okienko z dodatkowymi wskazówkami (po polsku, opcjonalne), potem zadanie „image”."""
+        buffer = Gtk.TextBuffer(text=images.last_hints(self.key, self.name))
+        view = Gtk.TextView(buffer=buffer, wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=8, bottom_margin=8,
+                            left_margin=10, right_margin=10, accepts_tab=False)
+        view.add_css_class("card")
+        dialog = Adw.AlertDialog(
+            heading=f"Obrazek: {self.name}",
+            body="AI narysuje go z opisu hasła i stylu kampanii. Możesz dopisać, co ma być na obrazku - np. "
+                 "„rude włosy, blizna na policzku, w deszczu, nocą”. Pisz po polsku, AI przetłumaczy; wskazówki "
+                 "mają pierwszeństwo przed opisem. Puste pole = tylko opis hasła.",
+            extra_child=Gtk.ScrolledWindow(child=view, min_content_height=90,
+                                           hscrollbar_policy=Gtk.PolicyType.NEVER))
+        dialog.add_response("cancel", "Anuluj")
+        dialog.add_response("generate", "Wygeneruj")
+        dialog.set_response_appearance("generate", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("generate")
+        dialog.set_close_response("cancel")
+
+        def on_response(_d, response):
+            if response == "generate":
+                self.save_if_changed()   # zadanie czyta opis z kampanie.toml
+                text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+                self._generate(self.name, " ".join(text.split()))
+
+        dialog.connect("response", on_response)
+        self.hints_dialog = dialog   # dla testu dymnego
+        dialog.present(self.get_root())
+        view.grab_focus()
 
     def _show_image(self) -> None:
         while (child := self._image_box.get_first_child()) is not None:

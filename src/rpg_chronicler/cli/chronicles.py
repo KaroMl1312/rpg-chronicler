@@ -161,7 +161,8 @@ def cmd_image(args):
     name = next((n for n in campaign.all_names() if n.casefold() == args.name.strip().casefold()), args.name.strip())
     progress.report("obrazek", name)
     try:
-        path = images.generate_candidate(get_client(args.provider), images.get_image_client(), campaign, name)
+        path = images.generate_candidate(get_client(args.provider), images.get_image_client(), campaign, name,
+                                         args.hints or "")
         if args.keep:
             path = images.keep_candidate(campaign.key, name)
     except (LLMError, images.ImageError) as e:
