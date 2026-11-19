@@ -124,6 +124,21 @@ def cmd_recap(args):
     print(f"[SUKCES] Wysłano „{prep.RECAP_TITLE}…” na Discord kampanii {campaign.key}.")
 
 
+def cmd_ideas(args):
+    """Pomysły na wydarzenia najbliższej sesji - zawsze nowe (poprzednie AI dostaje, żeby się nie powtarzało)."""
+    from ..campaign_tools import prep
+    from ..campaigns import campaign_for
+    from ..llm import LLMError, get_client
+
+    campaign = campaign_for(f"{args.campaign}_")
+    progress.report("pomysły na sesję", campaign.key)
+    try:
+        text = prep.write_ideas(get_client(args.provider), campaign, list_sessions())
+    except (LLMError, prep.PrepError) as e:
+        raise SessionNotFound(f"Nie udało się wymyślić pomysłów: {e}")
+    print(f"[SUKCES] Zapisano w: {prep.ideas_path(campaign.key)}\n\n{text}\n")
+
+
 def cmd_gm_notes(args):
     from ..campaign_tools import prep
     from ..campaigns import campaign_for

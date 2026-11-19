@@ -18,6 +18,7 @@ from ..campaigns import (GLOSSARY_CATEGORIES, Campaign, campaign_key, campaigns_
                          image_path, load_campaigns, update_campaign)
 from ..session import list_sessions
 from .entry_page import EntryPage, attach_tooltip, image_widget, preview
+from .widgets import markdown_buffer
 
 CATEGORY_LABELS = {glossary.PLAYER_CHARACTERS: "Postacie graczy", **GLOSSARY_CATEGORIES}
 
@@ -206,6 +207,9 @@ class CampaignsView(Adw.Bin):
                              ["recap", key, "--discord", "--provider", self._provider()])
         else:
             self._start_task(f"Poprzednio w kampanii {key}", ["recap", key, "--force", "--provider", self._provider()])
+
+    def start_ideas(self, key: str) -> None:
+        self._start_task(f"Pomysły na sesję {key}", ["ideas", key, "--provider", self._provider()])
 
     def start_gm_notes(self, key: str) -> None:
         self._start_task(f"Notatki MG {key}", ["gm-notes", key, "--provider", self._provider()])
@@ -579,8 +583,9 @@ class CampaignPage(Adw.NavigationPage):
         has_chronicles = prep.latest_session(self.key, sessions) is not None
         group = Adw.PreferencesGroup(
             title="Przed sesją",
-            description="Na początek kolejnej sesji: tekst do przeczytania graczom na głos i ściągawka dla MG "
-                        "(otwarte wątki, obietnice, niewykorzystane tropy, BN-i). Pisze je AI z kronik.")
+            description="Na początek kolejnej sesji: tekst do przeczytania graczom na głos, pomysły na wydarzenia "
+                        "i ściągawka dla MG (otwarte wątki, obietnice, niewykorzystane tropy, BN-i). Pisze je AI "
+                        "z kronik.")
 
         recap_file = prep.recap_path(self.key)
         _after, recap = prep.read(recap_file)
@@ -603,6 +608,7 @@ class CampaignPage(Adw.NavigationPage):
             recap_row.add_row(Gtk.Label(label=recap, wrap=True, xalign=0, selectable=True, margin_top=12,
                                         margin_bottom=12, margin_start=12, margin_end=12))
         group.add(recap_row)
+        group.add(self._ideas_row(sessions, has_chronicles))
 
         notes_md, notes_pdf = prep.gm_notes_path(self.key), prep.gm_notes_pdf_path(self.key)
         exists = os.path.exists(notes_pdf)
@@ -622,6 +628,29 @@ class CampaignPage(Adw.NavigationPage):
         notes_row.add_suffix(build)
         group.add(notes_row)
         return group
+
+    def _ideas_row(self, sessions, has_chronicles: bool) -> Gtk.Widget:
+        """Pomysły na wydarzenia najbliższej sesji (tylko dla MG): rozwijana lista i „Nowe pomysły”."""
+        path = prep.ideas_path(self.key)
+        _after, ideas = prep.read(path)
+        row = Adw.ExpanderRow(title=prep.IDEAS_TITLE, subtitle=self._prep_status(path, sessions),
+                              enable_expansion=bool(ideas), use_markup=False)
+        row.set_tooltip_text(f"{prep.IDEAS_COUNT} pomysłów AI na wydarzenia: z ostatniej kroniki i stanu kampanii "
+                             "(tylko dla MG)")
+        button = Gtk.Button(label="Nowe pomysły" if ideas else "Wymyśl", valign=Gtk.Align.CENTER,
+                            sensitive=has_chronicles,
+                            tooltip_text="AI zaproponuje nowe pomysły (inne niż obecne)" if ideas else
+                            f"AI zaproponuje {prep.IDEAS_COUNT} pomysłów na wydarzenia najbliższej sesji")
+        button.add_css_class("flat" if ideas else "suggested-action")
+        button.connect("clicked", lambda _b: self.view.start_ideas(self.key))
+        if has_chronicles:
+            self.view.register_task_button(button)
+        row.add_suffix(button)
+        if ideas:
+            row.add_row(Gtk.TextView(buffer=markdown_buffer(ideas), editable=False, cursor_visible=False,
+                                     wrap_mode=Gtk.WrapMode.WORD_CHAR, top_margin=12, bottom_margin=12,
+                                     left_margin=12, right_margin=12, pixels_below_lines=4))
+        return row
 
     def _confirm_recap_discord(self) -> None:
         dialog = Adw.AlertDialog(heading=f"Wysłać „{prep.RECAP_TITLE}…” na Discord?",

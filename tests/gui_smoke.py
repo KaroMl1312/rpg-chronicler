@@ -248,6 +248,17 @@ def steps(win):
         page = win.campaigns_view.nav.get_visible_page()
         texts = labels(page)
         assert "Przed sesją" in texts and "Zapytaj kronikarza" in texts and "Notatki MG" in texts, texts
+        ideas = next(w for w in _walk(page) if isinstance(w, Adw.ExpanderRow) and w.get_title() == prep.IDEAS_TITLE)
+        assert not ideas.get_enable_expansion() and "Wymyśl" in labels(ideas)
+        with open(prep.ideas_path("Warhammer"), "w", encoding="utf-8") as f:
+            f.write(f"<!-- po sesji: {FULL} -->\n1. **Zasadzka** - Kultyści wracają.\n")
+        win.campaigns_view.reload()
+        page = win.campaigns_view.nav.get_visible_page()
+        ideas = next(w for w in _walk(page) if isinstance(w, Adw.ExpanderRow) and w.get_title() == prep.IDEAS_TITLE)
+        assert ideas.get_enable_expansion() and "Nowe pomysły" in labels(ideas)
+        view = next(w for w in _walk(ideas) if isinstance(w, Gtk.TextView))
+        assert "1. Zasadzka - Kultyści" in view.get_buffer().get_text(*view.get_buffer().get_bounds(), False)
+        texts = labels(page)
         assert "Poprzednio… szukaliście Romulusa." in texts and "Kapłanem [Warhammer_261105]." in texts, texts
         recap = next(w for w in _walk(page)
                      if isinstance(w, Adw.ExpanderRow) and w.get_title().startswith("Poprzednio"))

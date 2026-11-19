@@ -5,8 +5,8 @@ from ..config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_TH
 from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
 from .chronicles import (cmd_ask, cmd_backfill, cmd_brief, cmd_describe, cmd_diary, cmd_discord, cmd_discord_test,
-                         cmd_encyclopedia, cmd_gm_notes, cmd_image, cmd_pdf, cmd_quotes, cmd_recap, cmd_revise,
-                         cmd_search)
+                         cmd_encyclopedia, cmd_gm_notes, cmd_ideas, cmd_image, cmd_pdf, cmd_quotes, cmd_recap,
+                         cmd_revise, cmd_search)
 from .sessions import (cmd_add_session, cmd_archive, cmd_check, cmd_delete, cmd_fix_loops, cmd_migrate, cmd_run,
                        cmd_speakers, cmd_stats, cmd_status, cmd_summarize, cmd_sync, cmd_transcribe, cmd_upload)
 
@@ -182,6 +182,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--discord", action="store_true", help="wyślij tekst na kanał Discord kampanii")
     p.add_argument("--force", action="store_true", help="napisz od nowa, nawet jeśli tekst jest aktualny")
     p.set_defaults(func=cmd_recap)
+
+    p = sub.add_parser("ideas", help="5 pomysłów na wydarzenia najbliższej sesji (z ostatniej kroniki i stanu kampanii)")
+    p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")
+    provider_arg(p)
+    p.set_defaults(func=cmd_ideas)
 
     p = sub.add_parser("gm-notes", help="notatki MG przed sesją: otwarte wątki, obietnice, tropy, BN-i (MD + PDF)")
     p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")

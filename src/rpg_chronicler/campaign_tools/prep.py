@@ -2,6 +2,9 @@
 
 - Poprzednio (`recap KAMPANIA`): ostatnia kronika kampanii + krótko otwarte wątki ze stanu kampanii;
   SUMMARY_DIR/poprzednio-<kampania>.md, opcjonalnie na Discord (`--discord`, webhook kampanii).
+- Pomysły na sesję (`ideas KAMPANIA`): IDEAS_COUNT pomysłów na wydarzenia najbliższej sesji z ostatniej kroniki
+  i stanu kampanii; SUMMARY_DIR/pomysly-<kampania>.md (tylko dla MG). Ponowne pisanie po tej samej sesji pokazuje
+  AI poprzednie pomysły, żeby dało nowe.
 - Notatki MG (`gm-notes KAMPANIA`): otwarte wątki, obietnice, niewykorzystane tropy, BN-i, pytania - ze
   wszystkich kronik i stanu kampanii; SUMMARY_DIR/notatki-mg-<kampania>.md + PDF (na Drive, nie na Discord).
 Oba pliki mają w 1. linii `<!-- po sesji: NAZWA -->` - są nieaktualne, gdy pojawi się nowsza kronika.
@@ -19,6 +22,8 @@ from ..prompts import chronicle_blocks, render
 HEADER_RE = re.compile(r"\A<!-- po sesji: (?P<session>.*?) -->\n?")
 CHRONICLES_LIMIT = 200_000   # jak encyklopedia (ten sam początek zapytania - cache)
 RECAP_TITLE = "Poprzednio w kampanii"
+IDEAS_TITLE = "Pomysły na następną sesję"
+IDEAS_COUNT = 5
 
 
 class PrepError(Exception):
@@ -27,6 +32,10 @@ class PrepError(Exception):
 
 def recap_path(key: str) -> str:
     return os.path.join(_session.SUMMARY_DIR, f"poprzednio-{key}.md")
+
+
+def ideas_path(key: str) -> str:
+    return os.path.join(_session.SUMMARY_DIR, f"pomysly-{key}.md")
 
 
 def gm_notes_path(key: str) -> str:
@@ -119,6 +128,35 @@ def write_recap(llm, campaign: Campaign, sessions) -> str:
     print(f"[{llm.name}] „{RECAP_TITLE}…” kampanii {campaign.key} (po sesji {latest.name})...")
     text = _clean(with_retry(lambda: generate(llm, prompt, prefix), f"poprzednio {campaign.key}"))
     _write(recap_path(campaign.key), latest.name, text)
+    return text
+
+
+# --- pomysły na następną sesję ---
+
+def ideas_prompt(campaign: Campaign, session_name: str, chronicle: str, previous: str = "") -> tuple[str, str]:
+    """(prefiks, prompt): jak „Poprzednio” - ostatnia kronika na początku (wspólny cache ze skrótem)."""
+    info, state = prompt_context(campaign)
+    previous_block = (f"\nPoprzednie pomysły do tej sesji (MG chce innych - nie powtarzaj ich):\n<poprzednie>\n"
+                      f"{previous.strip()}\n</poprzednie>\n" if previous.strip() else "")
+    return chronicle_blocks([(session_name, chronicle)]), render(
+        "session_ideas", system_name=campaign.system, session_name=session_name, count=IDEAS_COUNT,
+        campaign_info=info, state=state, previous=previous_block)
+
+
+def write_ideas(llm, campaign: Campaign, sessions) -> str:
+    """Pisze i zapisuje pomysły na następną sesję; zwraca tekst. Rzuca LLMError albo PrepError."""
+    from ..llm import generate, with_retry
+
+    latest = latest_session(campaign.key, sessions)
+    if latest is None:
+        raise PrepError(f"Kampania {campaign.key} nie ma jeszcze żadnej kroniki.")
+    with open(latest.summary_path, encoding="utf-8") as f:
+        chronicle = f.read()
+    after, previous = read(ideas_path(campaign.key))
+    prefix, prompt = ideas_prompt(campaign, latest.name, chronicle, previous if after == latest.name else "")
+    print(f"[{llm.name}] {IDEAS_TITLE} kampanii {campaign.key} (po sesji {latest.name})...")
+    text = _clean(with_retry(lambda: generate(llm, prompt, prefix), f"pomysły {campaign.key}"))
+    _write(ideas_path(campaign.key), latest.name, text)
     return text
 
 

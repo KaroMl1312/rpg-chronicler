@@ -1,4 +1,4 @@
-"""Przed sesją („Poprzednio w kampanii…”, notatki MG) i „Zapytaj kronikarza” (prep.py, ask.py)."""
+"""Przed sesją („Poprzednio w kampanii…”, pomysły na sesję, notatki MG) i „Zapytaj kronikarza” (prep.py, ask.py)."""
 import os
 import time
 
@@ -53,6 +53,31 @@ def test_recap_to_discord(chronicles, monkeypatch):
     assert "po Warhammer_261105" in embed["footer"]["text"] and "attachments" not in sent[0]
 
 
+def test_ideas_from_last_chronicle_and_state_without_repeats(chronicles, capsys):
+    chronicles.llm.response = "1. **Zasadzka w krypcie** - Kultyści wracają. (wątek: kult; Warhammer_261105)"
+    assert cli.main(["ideas", "Warhammer"]) == 0
+    assert "Zasadzka w krypcie" in capsys.readouterr().out
+    path = prep.ideas_path("Warhammer")
+    assert prep.read(path) == ("Warhammer_261105", chronicles.llm.response)
+    prompt = chronicles.llm.prompts[0]
+    recap_prefix, _ = prep.recap_prompt(CAMPAIGN, "Warhammer_261105", "Drużyna zeszła do krypty.")
+    assert prompt.startswith(recap_prefix) and "Fen kupił" not in prompt     # ostatnia kronika, prefiks jak skrót
+    assert "Kult w Ubersreiku" in prompt and f"{prep.IDEAS_COUNT} pomysłów" in prompt and "{" not in prompt
+    assert "<poprzednie>" not in prompt
+
+    chronicles.llm.response = "1. **Kupiec z Altdorfu** - Ktoś szuka Fena."
+    assert cli.main(["ideas", "Warhammer"]) == 0                       # zawsze nowe - z poprzednimi w prompcie
+    assert "<poprzednie>\n1. **Zasadzka w krypcie**" in chronicles.llm.prompts[1]
+    assert prep.read(path)[1].startswith("1. **Kupiec z Altdorfu**")
+
+    time.sleep(0.01)                                                    # nowa sesja - stare pomysły nie pasują
+    (chronicles.dirs["summary"] / "Warhammer_261112_podsumowanie.txt").write_text("Ucieczka.", encoding="utf-8")
+    chronicles.add_transcript("Warhammer_261112", "[0.00s -> 1.00s] x\n")
+    assert not prep.is_current(path, "Warhammer", list_sessions())
+    assert cli.main(["ideas", "Warhammer"]) == 0
+    assert "<poprzednie>" not in chronicles.llm.prompts[2]
+
+
 def test_gm_notes_share_prefix_with_encyclopedia(chronicles, monkeypatch):
     from rpg_chronicler import chronicle_pdf
     pdfs = []
@@ -85,5 +110,6 @@ def test_ask_with_session_references_and_history(chronicles, capsys):
 
 def test_without_chronicles(workspace, capsys):
     assert cli.main(["recap", "Zakon"]) == 1 and cli.main(["ask", "Zakon", "Co?"]) == 1
+    assert cli.main(["ideas", "Zakon"]) == 1
     assert "nie ma jeszcze żadnej kroniki" in capsys.readouterr().err
-    assert not os.path.exists(prep.recap_path("Zakon"))
+    assert not os.path.exists(prep.recap_path("Zakon")) and not os.path.exists(prep.ideas_path("Zakon"))
