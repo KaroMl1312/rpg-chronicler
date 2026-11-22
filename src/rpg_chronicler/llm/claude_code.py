@@ -31,8 +31,9 @@ class ClaudeCodeClient:
 
         try:
             # Neutralny katalog roboczy, żeby nie wczytywać CLAUDE.md z projektu
-            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True,
-                                  timeout=self.timeout, cwd=tempfile.gettempdir())
+            # UTF-8 jawnie: na Windowsie domyślne kodowanie (cp1250) nie zmieści części znaków promptu i kroniki
+            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, encoding="utf-8",
+                                  errors="replace", timeout=self.timeout, cwd=tempfile.gettempdir())
         except FileNotFoundError:
             raise LLMError("Nie znaleziono komendy 'claude' - zainstaluj Claude Code i zaloguj się.",
                            retryable=False)

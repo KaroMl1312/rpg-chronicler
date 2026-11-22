@@ -57,7 +57,8 @@ class Report:
 
 
 def _run(cmd: list[str], timeout: int = 120, env: dict | None = None) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env)
+    return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout,
+                          env=env)
 
 
 def _clean_env() -> dict:

@@ -11,7 +11,16 @@ from .parser import PROVIDERS, build_parser  # noqa: F401
 from .sessions import cmd_run  # noqa: F401 - domyślna komenda
 
 
+def _utf8_output() -> None:
+    """Windows: wyjście do potoku (GUI, plik) ma kodowanie cp1250, które nie zmieści „…”, emoji z kronik itp."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
+    if sys.platform == "win32":
+        _utf8_output()
     args = build_parser().parse_args(argv)
     if args.interactive is None:
         args.interactive = sys.stdin.isatty()

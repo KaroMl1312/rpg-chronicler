@@ -6,6 +6,7 @@ os.environ["RPG_CHRONICLER_SETTINGS"] = os.devnull + ".nie-istnieje"
 os.environ["RPG_CHRONICLER_ENV"] = os.devnull + ".env-nie-istnieje"  # bez kluczy użytkownika
 # ...ani od jego folderów: config.py liczy ścieżki danych (~/Documents/...) przy imporcie
 os.environ["HOME"] = tempfile.mkdtemp(prefix="rpg-chronicler-testy-")
+os.environ["USERPROFILE"] = os.environ["HOME"]  # Windows: expanduser("~") czyta USERPROFILE, nie HOME
 
 import pytest  # noqa: E402
 
@@ -29,6 +30,7 @@ def _isolated_home(tmp_path_factory, monkeypatch):
     """Żaden test nie może czytać ani zmieniać plików użytkownika (pulpit, menu, cache, ustawienia)."""
     home = tmp_path_factory.mktemp("home")
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
     for var, sub in (("XDG_DATA_HOME", ".local/share"), ("XDG_CONFIG_HOME", ".config"),
                      ("XDG_CACHE_HOME", ".cache"), ("XDG_STATE_HOME", ".local/state")):
         monkeypatch.setenv(var, str(home / sub))

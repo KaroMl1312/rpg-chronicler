@@ -1,6 +1,12 @@
 import configparser
+import sys
+
+import pytest
 
 from rpg_chronicler.gui import desktop
+
+# Wpis w menu i skrót na pulpicie to pliki .desktop (freedesktop) - na Windowsie ich nie ma
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="pliki .desktop są tylko na Linuksie")
 
 
 def test_exec_quoting_for_path_with_spaces():

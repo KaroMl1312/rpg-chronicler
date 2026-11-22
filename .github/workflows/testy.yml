@@ -1,6 +1,7 @@
-# Testy przy każdym pushu i pull requeście.
+# Testy przy każdym pushu i pull requeście, na Linuksie i Windowsie.
 # Bez modeli (torch, faster-whisper, pyannote) - testy ich nie potrzebują (patrz CLAUDE.md, „Zasady przy zmianach”).
 # Python 3.11 jak .venv, najnowszy 3.x jak systemowy Python, na którym działa GUI.
+# Test dymny GUI pomija się na obu systemach (brak gtk4-broadwayd i PyGObject).
 name: Testy
 
 on:
@@ -9,10 +10,12 @@ on:
 
 jobs:
   testy:
-    runs-on: ubuntu-latest
+    name: testy (${{ matrix.os == 'windows-latest' && 'Windows' || 'Linux' }}, ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.x"]
     steps:
       - uses: actions/checkout@v4
@@ -24,9 +27,18 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Biblioteki systemowe (PDF - WeasyPrint, przycinanie ciszy - ffmpeg)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ffmpeg libpango-1.0-0 libpangoft2-1.0-0 fonts-dejavu-core
+
+      - name: Biblioteki systemowe na Windowsie (Pango z MSYS2 dla WeasyPrint, ffmpeg)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-pango
+          "WEASYPRINT_DLL_DIRECTORIES=C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          choco install ffmpeg --no-progress -y
 
       - name: Zależności testów
         run: |

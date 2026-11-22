@@ -109,7 +109,7 @@ def test_backfill_plan(workspace):
 def test_backfill_command(workspace, monkeypatch, capsys):
     _chronicle(workspace, "Fallout_261014")
     pdfs = []
-    monkeypatch.setattr(chronicle_pdf, "write_pdf", lambda session, path: pdfs.append(path) or open(path, "w").close())
+    monkeypatch.setattr(chronicle_pdf, "write_pdf", lambda session, path: pdfs.append(path) or open(path, "wb").close())
     monkeypatch.setattr(chronicle_pdf, "write_markdown_pdf", lambda text, path, line: pdfs.append(path))
     responses = iter(["Skrót sesji.", json.dumps({"cytaty": [{"kto": "MG", "cytat": "Witajcie."}]}),
                       json.dumps({"hasla": []})])

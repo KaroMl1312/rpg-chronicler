@@ -1,7 +1,13 @@
 import os
 import subprocess
+import sys
+
+import pytest
 
 from rpg_chronicler import doctor
+
+# ./sprawdz-srodowisko naprawia .venv linuksowe (bin/python, python3.11 z systemu)
+pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="sprawdz-srodowisko działa tylko na Linuksie")
 
 
 def fake_venv(tmp_path, monkeypatch, python_target="/usr/bin/python3.9-nie-ma"):
@@ -24,7 +30,7 @@ def test_broken_venv_after_system_upgrade_is_reported(tmp_path, monkeypatch, cap
 
 def test_failed_repair_restores_previous_venv(tmp_path, monkeypatch):
     venv = fake_venv(tmp_path, monkeypatch)
-    (venv / "znacznik").write_text("stare")
+    (venv / "znacznik").write_text("stare", encoding="utf-8")
     monkeypatch.setattr(doctor.shutil, "which", lambda _name: "/usr/bin/python3.11")
 
     def run(cmd, **kwargs):
@@ -35,7 +41,7 @@ def test_failed_repair_restores_previous_venv(tmp_path, monkeypatch):
 
     monkeypatch.setattr(doctor.subprocess, "run", run)
     assert doctor.repair_venv() == 1
-    assert (venv / "znacznik").read_text() == "stare"
+    assert (venv / "znacznik").read_text(encoding="utf-8") == "stare"
     assert not venv.with_name(".venv.stare").exists()
 
 

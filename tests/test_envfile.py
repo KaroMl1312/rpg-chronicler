@@ -1,5 +1,6 @@
 import os
 import stat
+import sys
 
 from rpg_chronicler import envfile
 
@@ -10,7 +11,8 @@ def test_update_creates_private_file_and_updates_environ(tmp_path, monkeypatch):
     envfile.update({"GEMINI_API_KEY": ' "abc" \n'}, path)
     assert envfile.read(path) == {"GEMINI_API_KEY": "abc"}
     assert path.read_text(encoding="utf-8").startswith("# Klucze API")
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if sys.platform != "win32":  # Windows nie ma praw w stylu Uniksa
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert os.environ["GEMINI_API_KEY"] == "abc"
 
     envfile.update({"GEMINI_API_KEY": ""}, path)

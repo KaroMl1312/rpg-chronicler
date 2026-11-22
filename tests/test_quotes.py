@@ -106,7 +106,7 @@ def test_quotes_in_pdf_and_pdf_freshness(session):
     page = chronicle_html("# Kronika\n\nStodoła.", session)
     assert '<h2>Cytaty sesji</h2><blockquote><p>„Tak? &lt;b&gt;”</p><div class="who">— Fen</div>' in page
 
-    with open(chronicle.pdf_path(session), "w") as f:
+    with open(chronicle.pdf_path(session), "w", encoding="utf-8") as f:
         f.write("pdf")
     assert chronicle.pdf_is_current(session)
     later = time.time() + 5

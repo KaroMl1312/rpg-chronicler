@@ -2,8 +2,8 @@
 
 Przycinanie zachowuje jakość:
 - AAC/MP3: kopiowanie strumienia bez kodowania (demuxer concat z inpoint/outpoint),
-- formaty bezstratne (FLAC, PCM, ALAC): filtr aselect i kodowanie tym samym kodekiem (bezstratnie),
-- inne (Vorbis, Opus): filtr aselect i ponowne kodowanie z wysoką jakością.
+- formaty bezstratne (FLAC, PCM, ALAC): ten sam demuxer i kodowanie tym samym kodekiem (bezstratnie),
+- inne (Vorbis, Opus): ten sam demuxer i ponowne kodowanie z wysoką jakością.
 Oryginał trafia do podfolderu `oryginaly/` obok nagrania (list_sessions go nie widzi).
 """
 import json
@@ -94,7 +94,7 @@ def probe(path: str) -> tuple[float, str]:
     proc = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries",
          "format=duration:stream=codec_name", "-of", "json", path],
-        capture_output=True, text=True)
+        capture_output=True, text=True, encoding="utf-8", errors="replace")
     try:
         data = json.loads(proc.stdout)
         codec = data["streams"][0]["codec_name"]
@@ -112,7 +112,7 @@ def decoded_duration(path: str) -> float:
     """Długość nagrania zmierzona przez zdekodowanie całości (kilka sekund nawet dla wielu godzin)."""
     proc = subprocess.run(
         ["ffmpeg", "-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:1", "-i", path,
-         "-map", "0:a", "-f", "null", "-"], capture_output=True, text=True, errors="replace")
+         "-map", "0:a", "-f", "null", "-"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     times = [int(m[1]) for line in proc.stdout.splitlines() if (m := OUT_TIME_RE.match(line))]
     if proc.returncode != 0 or not times or times[-1] <= 0:
         details = proc.stderr.strip().splitlines()[-1:] or ["nieznany błąd"]
@@ -139,7 +139,7 @@ def has_duration_header(path: str) -> bool:
     if shutil.which("ffprobe") is None:
         return True
     proc = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, encoding="utf-8", errors="replace")
     try:
         result = float(proc.stdout.strip()) > 0
     except ValueError:
@@ -154,7 +154,7 @@ def _run_ffmpeg(args: list[str], stage: str, session_name: str | None, total: fl
     cmd = ["ffmpeg", "-hide_banner", "-nostdin", "-nostats", "-progress", "pipe:2", *args]
     tail: list[str] = []
     with subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                          text=True, errors="replace") as proc:
+                          text=True, encoding="utf-8", errors="replace") as proc:
         try:
             for line in proc.stderr:
                 line = line.rstrip()
@@ -300,16 +300,18 @@ def trim_audio(path: str, segments: list[tuple[float, float]], session_name: str
     list_path = os.path.join(folder, f".{stem}.przycinanie.txt")
 
     try:
+        # Demuxer concat z inpoint/outpoint dla każdego formatu: nie buforuje (jak wiele gałęzi atrim), a filtr
+        # aselect w ffmpeg 8.0 nie wycinał niczego (wynik = całe nagranie). AAC/MP3 bez kodowania, reszta
+        # kodowana od nowa z nowymi znacznikami czasu (bez nich muxer FLAC ostrzega o cofających się dts).
+        escaped = path.replace("'", "'\\''")
+        with open(list_path, "w", encoding="utf-8") as f:
+            for start, end in segments:
+                f.write(f"file '{escaped}'\ninpoint {start}\noutpoint {end}\n")
+        args = ["-y", "-f", "concat", "-safe", "0", "-i", list_path, "-map", "0:a"]
         if codec in COPY_CODECS:
-            escaped = path.replace("'", "'\\''")
-            with open(list_path, "w", encoding="utf-8") as f:
-                for start, end in segments:
-                    f.write(f"file '{escaped}'\ninpoint {start}\noutpoint {end}\n")
-            args = ["-y", "-f", "concat", "-safe", "0", "-i", list_path, "-map", "0:a", "-c", "copy", tmp_path]
+            args += ["-c", "copy", tmp_path]
         else:
-            condition = "+".join(f"between(t,{s},{e})" for s, e in segments)
-            args = ["-y", "-i", path, "-map", "0:a", "-af", f"aselect='{condition}',asetpts=N/SR/TB",
-                    *_encode_args(codec), tmp_path]
+            args += ["-af", "asetpts=N/SR/TB", *_encode_args(codec), tmp_path]
         _run_ffmpeg(args, "przycinanie", session_name, expected)
 
         new_duration, _ = probe(tmp_path)

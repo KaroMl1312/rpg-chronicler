@@ -1,5 +1,10 @@
 # Nowości
 
+## 1.002 – 2026-11-22
+
+- **Przycinanie nagrań FLAC i WAV działa z każdą wersją ffmpeg:** w ffmpeg 8.0 (np. Ubuntu 26.04) przycinanie tych plików kończyło się błędem „Przycięte nagranie ma … zamiast …” i nagranie zostawało bez zmian. Teraz wszystkie formaty są cięte tym samym sposobem.
+- **Pierwsze kroki w stronę Windowsa:** automatyczne testy sprawdzają program także na Windowsie. Polskie znaki, cudzysłowy i emoji nie psują już komunikacji z Claude Code, ffmpeg i rclone ani komunikatów programu na Windowsie. Samo okno programu (GUI) działa na razie tylko na Linuksie.
+
 ## 1.001 – 2026-11-22
 
 - **Klucze API w ustawieniach:** nowa strona „Klucze API” w oknie ustawień. Przy każdej usłudze (Hugging Face, Claude API, Gemini, Cloudflare) są linki do stron, na których zakłada się klucz, i krótka instrukcja. Klucz zapisuje się w pliku .env i działa od razu, bez ponownego uruchamiania programu.

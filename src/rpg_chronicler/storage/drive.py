@@ -69,7 +69,7 @@ def archive_on_gdrive(name: str, dry_run: bool = False) -> int:
     for remote, in_summary in ((RCLONE_AUDIO_REMOTE, False), (RCLONE_TXT_REMOTE, False),
                                (RCLONE_SUMMARY_REMOTE, True)):
         listing = subprocess.run(["rclone", "lsf", remote, "--files-only"], check=True,
-                                 capture_output=True, text=True).stdout.splitlines()
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.splitlines()
         files = remote_files(listing, name, in_summary)
         for f in files:
             print(f"  {'[PODGLĄD] ' if dry_run else ''}{remote}/{f} -> {ARCHIVE_DIR_NAME}/")
@@ -101,7 +101,7 @@ def delete_on_gdrive(name: str, plan, dry_run: bool = False) -> int:
     for kind in plan.remote_kinds:
         remote, in_summary = remotes[kind]
         listing = subprocess.run(["rclone", "lsf", remote, "--files-only"], check=True,
-                                 capture_output=True, text=True).stdout.splitlines()
+                                 capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.splitlines()
         files = remote_files(listing, name, in_summary)
         for f in files:
             print(f"  {'[PODGLĄD] ' if dry_run else ''}{remote}/{f} -> kosz Google Drive")

@@ -44,9 +44,9 @@ def test_save_load_roundtrip_and_other_model_ignored(tmp_path):
     voices.save_voiceprints(path, {"SPEAKER_00": vp(3, 4, seconds=90)})
     loaded = voices.load_voiceprints(path)
     assert loaded["SPEAKER_00"].seconds == 90 and abs(loaded["SPEAKER_00"].vector[0] - 0.6) < 1e-6
-    data = json.loads(open(path).read())
+    data = json.loads(open(path, encoding="utf-8").read())
     data["model"] = "inny/model"
-    open(path, "w").write(json.dumps(data))
+    open(path, "w", encoding="utf-8").write(json.dumps(data))
     assert voices.load_voiceprints(path) == {}
 
 
