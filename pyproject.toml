@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rpg-chronicler"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Transkrypcja i podsumowania nagrań sesji RPG z Google Drive"
 requires-python = ">=3.11"
 license = "PolyForm-Noncommercial-1.0.0"
@@ -26,11 +26,14 @@ dev = ["pytest"]
 [project.scripts]
 rpg-chronicler = "rpg_chronicler.cli:main"
 
+[tool.setuptools.dynamic]
+version = {attr = "rpg_chronicler.version.VERSION"}
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
-rpg_chronicler = ["prompts/*.md", "gui/*.svg"]
+rpg_chronicler = ["prompts/*.md", "gui/*.svg", "nowosci.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

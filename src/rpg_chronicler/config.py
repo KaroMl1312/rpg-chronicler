@@ -1,24 +1,12 @@
 import os
 from pathlib import Path
 
+from . import envfile as _envfile
 from . import settings as _settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-
-def _load_dotenv(path: Path) -> None:
-    """Wczytuje zmienne KLUCZ=WARTOŚĆ z pliku .env (nie nadpisuje już ustawionych)."""
-    if not path.exists():
-        return
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
-
-
-_load_dotenv(PROJECT_ROOT / ".env")
+_envfile.load_into_environ()  # klucze API z .env (edycja: okno ustawień → Klucze API)
 
 # Ustawienia użytkownika z ~/.config/rpg-chronicler/ustawienia.toml (GUI) nadpisują poniższe wartości domyślne
 SETTINGS = _settings.load()

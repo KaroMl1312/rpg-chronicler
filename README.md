@@ -40,7 +40,7 @@ Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucja
 git clone https://github.com/KaroMl1312/rpg-chronicler.git
 cd rpg-chronicler
 ./sprawdz-srodowisko --napraw   # tworzy .venv (Python 3.11, torch w wersji CPU) i instaluje program
-cp .env.example .env            # uzupełnij tokeny i klucze
+./rpg-chronicler-gui            # Ustawienia → Klucze API: wklej token Hugging Face (i klucz AI, jeśli potrzebny)
 ./sprawdz-srodowisko            # sprawdza, czy wszystko jest na miejscu
 ```
 
@@ -50,7 +50,7 @@ Przy pierwszej transkrypcji modele Whisper i pyannote pobierają się same (ok. 
 
 ## Konfiguracja
 
-- **`.env`:** sekrety, czyli `HUGGINGFACE_TOKEN`, `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, `LLM_PROVIDER` i `CLOUDFLARE_*` (opis w `.env.example`). Plik jest w `.gitignore`, nie wrzucaj go nigdzie.
+- **Klucze API:** najprościej w GUI, w oknie ustawień na stronie „Klucze API”. Przy każdej usłudze są linki do stron, na których zakłada się klucz, i krótka instrukcja. Klucze zapisują się w pliku `.env` w folderze programu (prawa tylko dla Ciebie). Można go też edytować ręcznie (`cp .env.example .env`): `HUGGINGFACE_TOKEN`, `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, `LLM_PROVIDER` i `CLOUDFLARE_*`. Plik jest w `.gitignore`, nie wrzucaj go nigdzie.
 - **Ustawienia:** okno ustawień w GUI albo `~/.config/rpg-chronicler/ustawienia.toml`. Ustawia się tam między innymi:
   - foldery: domyślnie `~/Documents/Audio_sesje_rpg`, `~/Documents/Transkrypcje`, `~/Documents/Podsumowania`,
   - foldery na Google Drive,

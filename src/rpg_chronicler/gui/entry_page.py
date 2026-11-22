@@ -9,7 +9,7 @@ from typing import Callable
 
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
-from .. import config
+from .. import envfile
 from ..campaign_tools import images
 from ..campaigns import IMAGE_EXTENSIONS, image_path, remove_image, set_image
 
@@ -167,7 +167,7 @@ class EntryPage(Adw.NavigationPage):
                             tooltip_text="JPG, PNG albo WebP - kopia trafi do folderu kampanii (i na Drive)")
         choose.connect("clicked", lambda _b: self._choose_image())
         buttons.append(choose)
-        if self._generate is not None and config.CLOUDFLARE_ACCOUNT_ID and config.CLOUDFLARE_API_TOKEN:
+        if self._generate is not None and envfile.get("CLOUDFLARE_ACCOUNT_ID") and envfile.get("CLOUDFLARE_API_TOKEN"):
             buttons.append(self._task_button(
                 "Wygeneruj obrazek (AI)", "AI narysuje obrazek z opisu w stylu kampanii (Cloudflare FLUX, "
                 "darmowy limit dzienny). Najpierw zobaczysz propozycję.", self._start_generation))

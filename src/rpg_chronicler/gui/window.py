@@ -13,6 +13,7 @@ from .. import chronicle, settings
 from ..campaign_tools import glossary, memory
 from ..campaigns import campaign_key
 from ..config import LLM_PROVIDER
+from ..version import VERSION, changelog
 from ..session import Session, list_sessions
 from .campaigns_view import CampaignsView
 from .chronicle_page import ChroniclePage
@@ -28,7 +29,7 @@ from .tasks import TaskRunner
 from .text import (ALL_CAMPAIGNS, campaign_filter_options, new_proposals, proposals_snapshot, session_campaign,
                    session_signature, session_stage)
 from .transcript_page import TranscriptPage
-from .widgets import discord_icon, icon_button
+from .widgets import discord_icon, icon_button, markdown_buffer, text_view
 
 TASK_ACTIONS = ("sync", "upload", "run", "run-offline")
 
@@ -84,6 +85,7 @@ class MainWindow(Adw.ApplicationWindow):
         add("run-offline", lambda: self.start_task(
             "Przebieg bez Google Drive", ["run", "--offline", "--no-interactive", *self._provider_args()]))
         add("show-log", self.show_log)
+        add("changelog", self.show_changelog)
         add("preferences", self.show_settings)
         add("campaigns", lambda: self.show_campaigns(None))
         add("sessions", self.show_sessions)
@@ -164,6 +166,7 @@ class MainWindow(Adw.ApplicationWindow):
         other.append("Uzupełnij brakujące…", "win.backfill")
         other.append("Ustawienia", "win.preferences")
         other.append("Pokaż log", "win.show-log")
+        other.append(f"Nowości (wersja {VERSION})", "win.changelog")
         menu.append_section(None, other)
         return menu
 
@@ -570,6 +573,12 @@ class MainWindow(Adw.ApplicationWindow):
         body = Adw.ToolbarView(content=scrolled)
         body.add_top_bar(Adw.HeaderBar())
         Adw.Dialog(title="Log zadań", child=body, content_width=900, content_height=600).present(self)
+
+    def show_changelog(self) -> None:
+        body = Adw.ToolbarView(content=text_view(markdown_buffer(changelog() or "Brak listy nowości.")))
+        body.add_top_bar(Adw.HeaderBar())
+        Adw.Dialog(title=f"Nowości – wersja {VERSION}", child=body, content_width=760,
+                   content_height=640).present(self)
 
     # ------------------------------------------------------------ okna dialogowe
 

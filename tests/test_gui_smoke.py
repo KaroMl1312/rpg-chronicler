@@ -67,8 +67,10 @@ def _make_data(base: Path) -> dict[str, str]:
     settings.write_text("[foldery]\n" + "".join(f'{key} = "{dirs[name]}"\n' for key, name in
                                                 (("nagrania", "nagrania"), ("transkrypcje", "transkrypcje"),
                                                  ("podsumowania", "kroniki"))), encoding="utf-8")
+    env_file = base / ".env"
+    env_file.write_text("HUGGINGFACE_TOKEN=hf_test\n", encoding="utf-8")
     home = dirs["home"]
-    return {"RPG_CHRONICLER_SETTINGS": str(settings), "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
+    return {"RPG_CHRONICLER_SETTINGS": str(settings), "RPG_CHRONICLER_ENV": str(env_file), "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
             "XDG_CACHE_HOME": str(home / ".cache"), "XDG_DATA_HOME": str(home / ".local/share")}
 
 
@@ -93,7 +95,7 @@ def test_all_views_build_without_gtk_warnings(tmp_path):
     done = [line[3:] for line in proc.stdout.splitlines() if line.startswith("OK ")]
     assert done == ["okno", "filtr kampanii", "kronika", "znacznik Discorda", "skrót i cytaty", "transkrypcja",
                     "mówcy", "poprawka kroniki", "panel nagrania", "wyszukiwarka", "kampanie", "discord", "ustawienia",
-                    "uzupełnianie", "notatki", "usuwanie", "opisy haseł",
+                    "nowości", "uzupełnianie", "notatki", "usuwanie", "opisy haseł",
                     "przed sesją", "obrazek AI"], report
     # Adwaita-WARNING łapie m.in. okno szersze niż ekran (Broadway ma 1024 px) - zbyt wiele przycisków na pasku
     problems = [line for line in proc.stderr.splitlines()

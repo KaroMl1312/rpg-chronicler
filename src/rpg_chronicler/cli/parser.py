@@ -2,6 +2,7 @@
 import argparse
 
 from ..config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS
+from ..version import VERSION
 from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
 from .chronicles import (cmd_ask, cmd_backfill, cmd_brief, cmd_describe, cmd_diary, cmd_discord, cmd_discord_test,
@@ -19,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="rpg-chronicler",
         description="Transkrypcje i kroniki sesji RPG z Google Drive.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
     parser.set_defaults(func=cmd_run, provider=LLM_PROVIDER, interactive=None,
                         allow_unnamed=False, offline=False)
     sub = parser.add_subparsers(title="komendy", metavar="KOMENDA")

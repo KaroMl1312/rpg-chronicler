@@ -8,7 +8,7 @@ from typing import Callable
 
 from gi.repository import Adw, Gio, GLib, Gtk
 
-from .. import config, settings
+from .. import config, envfile, settings
 
 PROVIDERS = [("claude-code", "Claude Code (plan Pro/Max)"), ("anthropic", "Claude API (płatne)"),
              ("gemini", "Gemini")]
@@ -34,12 +34,14 @@ class SettingsDialog(Adw.PreferencesDialog):
         self._values = settings.load()
         self._on_provider_changed = on_provider_changed
         self._folders_changed = False
+        self.key_rows: dict[str, Adw.EntryRow] = {}  # nazwa zmiennej w .env → pole (test dymny)
         self.connect("closed", lambda _d: self._folders_changed and on_folders_changed())
 
         general = Adw.PreferencesPage(title="Ogólne", icon_name="preferences-system-symbolic")
         general.add(self._ai_group(provider))
         general.add(self._transcription_group())
         self.add(general)
+        self.add(self._keys_page())
 
         storage = Adw.PreferencesPage(title="Pliki", icon_name="folder-symbolic")
         storage.add(self._folders_group())
@@ -136,6 +138,44 @@ class SettingsDialog(Adw.PreferencesDialog):
         hints.connect("notify::active", lambda row, _p: self._save("transkrypcja.podpowiedz_nazw", row.get_active()))
         group.add(hints)
         return group
+
+    def _keys_page(self) -> Adw.PreferencesPage:
+        page = Adw.PreferencesPage(
+            title="Klucze API", icon_name="dialog-password-symbolic",
+            description=f"Klucze zapisują się tylko na tym komputerze, w pliku {envfile.path()}. "
+                        "Wklej klucz i zatwierdź przyciskiem ✓; działa od następnego zadania.")
+        values = envfile.read()
+        for service in envfile.SERVICES:
+            group = Adw.PreferencesGroup(title=service.title, description=service.description)
+            for key in service.keys:
+                row_type = Adw.PasswordEntryRow if key.secret else Adw.EntryRow
+                row = row_type(title=key.title, text=values.get(key.name, ""), show_apply_button=True)
+                row.connect("apply", lambda r, k=key: self._apply_key(k, r))
+                self.key_rows[key.name] = row
+                group.add(row)
+            for title, hint, url in service.links:
+                link = Adw.ActionRow(title=title, subtitle=hint, activatable=True, tooltip_text=url)
+                link.add_suffix(Gtk.Image(icon_name="adw-external-link-symbolic"))
+                link.connect("activated", lambda _r, u=url: Gtk.UriLauncher(uri=u).launch(self.get_root(), None,
+                                                                                         None))
+                group.add(link)
+            page.add(group)
+        return page
+
+    def _apply_key(self, key: envfile.Key, row: Adw.EntryRow) -> None:
+        value = envfile.clean(row.get_text())
+        try:
+            envfile.update({key.name: value})
+        except OSError as e:
+            self.add_toast(Adw.Toast(title=GLib.markup_escape_text(f"Nie można zapisać pliku .env: {e}")))
+            return
+        if value != row.get_text():
+            row.set_text(value)
+        if value and key.prefix and not value.startswith(key.prefix):
+            self.add_toast(Adw.Toast(title=f"Zapisano, ale {key.title} zwykle zaczyna się od „{key.prefix}” - "
+                                           "sprawdź, czy to właściwy klucz", timeout=6))
+        else:
+            self.add_toast(Adw.Toast(title=f"Zapisano: {key.title}" if value else f"Usunięto: {key.title}"))
 
     def _folders_group(self) -> Adw.PreferencesGroup:
         group = Adw.PreferencesGroup(title="Foldery na dysku",

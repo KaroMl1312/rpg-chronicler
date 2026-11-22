@@ -154,7 +154,7 @@ def check_tools(report: Report) -> None:
         report.add(OK if shutil.which("claude") else ERROR, "Claude Code (dostawca AI)",
                    "" if shutil.which("claude") else "brak komendy claude")
     report.add(OK if config.HUGGINGFACE_TOKEN else ERROR, "HUGGINGFACE_TOKEN",
-               "" if config.HUGGINGFACE_TOKEN else "brak w .env - potrzebny do rozpoznawania głosów")
+               "" if config.HUGGINGFACE_TOKEN else "brak - potrzebny do rozpoznawania mówców; wpisz go w GUI: Ustawienia → Klucze API")
 
     hub = Path(os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface")) / "hub"
     for model, label in ((config.DIARIZATION_MODEL, "model diaryzacji"),

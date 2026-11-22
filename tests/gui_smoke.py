@@ -12,6 +12,7 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, GLib, Gtk  # noqa: E402
 
+from rpg_chronicler import envfile  # noqa: E402
 from rpg_chronicler.gui import window as window_module  # noqa: E402
 from rpg_chronicler.gui.discord_dialog import DiscordDialog  # noqa: E402
 from rpg_chronicler.gui.search_dialog import SearchDialog  # noqa: E402
@@ -158,7 +159,24 @@ def steps(win):
         assert dialog._quotes_switch is not None
     yield "discord", discord
 
-    yield "ustawienia", lambda: SettingsDialog("claude-code", lambda _k: None, lambda: None)
+    def settings_dialog():
+        dialog = SettingsDialog("claude-code", lambda _k: None, lambda: None)
+        rows = dialog.key_rows
+        assert rows["HUGGINGFACE_TOKEN"].get_text() == "hf_test"
+        assert isinstance(rows["ANTHROPIC_API_KEY"], Adw.PasswordEntryRow)
+        assert not isinstance(rows["CLOUDFLARE_ACCOUNT_ID"], Adw.PasswordEntryRow)
+        rows["GEMINI_API_KEY"].set_text("  klucz-gemini \n")
+        rows["GEMINI_API_KEY"].emit("apply")
+        assert envfile.read()["GEMINI_API_KEY"] == "klucz-gemini"
+        assert envfile.read()["HUGGINGFACE_TOKEN"] == "hf_test"
+    yield "ustawienia", settings_dialog
+
+    def changelog():
+        win.show_changelog()
+        dialog = win.get_visible_dialog()
+        assert dialog.get_title().startswith("Nowości – wersja 1."), dialog.get_title()
+        dialog.force_close()
+    yield "nowości", changelog
 
     def backfill():
         win.show_backfill()

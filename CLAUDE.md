@@ -38,6 +38,8 @@ kampanie.przyklad.toml        # przykład formatu; właściwy plik kampanii jest
 src/rpg_chronicler/
   config.py                   # WSZYSTKIE stałe: ścieżki, remote'y rclone, modele, wątki, retry; własny loader .env
   settings.py                 # ustawienia użytkownika ~/.config/rpg-chronicler/ustawienia.toml (z GUI)
+  version.py, nowosci.md      # wersja programu (VERSION) i lista nowości (menu GUI „Nowości”, --version); stdlib
+  envfile.py                  # .env z kluczami API: odczyt, zapis z GUI (strona „Klucze API”), usługi z linkami; stdlib
   cli/                        # komendy: __init__ (main), parser (argparse), common (pomocniki), sessions (przebieg),
                               #   audio (nagrania), chronicles (kroniki, PDF, Discord, szukanie), campaigns; ciężkie importy leniwie w cmd_*
   session.py                  # Session (nazwa + ścieżki pochodne), list_sessions(), SessionNotFound
@@ -221,6 +223,8 @@ Klient LLM tworzony leniwie (`llm.LazyClient`; w testach podmienia się `llm.get
 
 `config.py` przy imporcie wczytuje `settings.load()`; klucze z pliku (np. `transkrypcja.watki`, `foldery.nagrania`, `ai.dostawca`) nadpisują wartości domyślne. Plik zawiera tylko zmienione klucze; lista dozwolonych kluczy i typów to `settings.FIELDS` (błędne wpisy są pomijane z ostrzeżeniem). `ai.dostawca` ma pierwszeństwo przed `LLM_PROVIDER` z `.env`, a `--provider` przed oboma. Ścieżkę pliku zmienia `RPG_CHRONICLER_SETTINGS` — `tests/conftest.py` ustawia ją na nieistniejący plik, żeby testy nie zależały od ustawień użytkownika.
 
+**Klucze API** (`envfile.py`, okno ustawień → „Klucze API”): `envfile.SERVICES` opisuje usługi (Hugging Face, Anthropic, Gemini, Cloudflare) z linkami do stron, gdzie zakłada się klucz. Zapis zmienia w `.env` tylko podane klucze (reszta linii i komentarze zostają, plik 600, atomowo) i **aktualizuje `os.environ` procesu GUI** - komendy CLI dziedziczą środowisko GUI, a `load_into_environ` nie nadpisuje ustawionych zmiennych, więc bez tego dostałyby stary klucz. Kod GUI czyta klucze przez `envfile.get`, nie stałe z `config` (te są z chwili startu). Ścieżkę `.env` zmienia `RPG_CHRONICLER_ENV` (testy: nieistniejący plik). Nowy klucz: `Key` w `SERVICES`, odczyt w `config.py`.
+
 Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py` przez `_setting()`, pole w `gui/settings_dialog.py`. Procesy CLI czytają ustawienia przy starcie, więc działają od następnego zadania; wartości używane przez samo GUI (foldery) wymagają restartu (`win.restart` → `os.execv`).
 
 ## GUI
@@ -235,6 +239,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 
 ## Zasady przy zmianach
 
+- **Wersja i nowości przy każdym commicie:** 1.000 = pierwsze wydanie publiczne (2026-11-22). Każdy commit podbija `VERSION` w `version.py` o 0.001 (1.001, 1.002…) i dopisuje na górze `src/rpg_chronicler/nowosci.md` sekcję `## WERSJA – RRRR-MM-DD` z punktami po polsku dla użytkownika (co dodano / poprawiono, bez szczegółów technicznych). `tests/test_version.py` pilnuje zgodności i kolejności. Pakiet pip normalizuje wersję (1.001 → 1.1) - to nic.
 - Licencja: PolyForm Noncommercial 1.0.0 (`LICENSE`, linia `Required Notice` musi zostać). `README.md` jest dla obcych użytkowników (instalacja, wymagania) - aktualizuj go przy nowych wymaganiach i większych funkcjach. Do repozytorium nie trafiają dane sesji ani prawdziwe imiona graczy.
 
 - Nowe ustawienia → stała w `config.py`; sekrety tylko z `.env` (nigdy w kodzie, `.env` jest w `.gitignore`).

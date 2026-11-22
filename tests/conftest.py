@@ -3,6 +3,7 @@ import tempfile
 
 # Testy nie mogą zależeć od ustawień użytkownika z ~/.config (wczytywanych przy imporcie config.py)
 os.environ["RPG_CHRONICLER_SETTINGS"] = os.devnull + ".nie-istnieje"
+os.environ["RPG_CHRONICLER_ENV"] = os.devnull + ".env-nie-istnieje"  # bez kluczy użytkownika
 # ...ani od jego folderów: config.py liczy ścieżki danych (~/Documents/...) przy imporcie
 os.environ["HOME"] = tempfile.mkdtemp(prefix="rpg-chronicler-testy-")
 
