@@ -235,6 +235,8 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 
 ## Zasady przy zmianach
 
+- Licencja: PolyForm Noncommercial 1.0.0 (`LICENSE`, linia `Required Notice` musi zostać). `README.md` jest dla obcych użytkowników (instalacja, wymagania) - aktualizuj go przy nowych wymaganiach i większych funkcjach. Do repozytorium nie trafiają dane sesji ani prawdziwe imiona graczy.
+
 - Nowe ustawienia → stała w `config.py`; sekrety tylko z `.env` (nigdy w kodzie, `.env` jest w `.gitignore`).
 - Nowy dostawca LLM: klasa z atrybutem `name` i metodą `generate(prompt) -> str`, rzucająca `LLMError(retryable=...)`; dopisać w `llm/__init__.get_client` i w `cli/parser.PROVIDERS`. Import SDK wewnątrz modułu/konstruktora (zależności opcjonalne).
 - Prompty edytuj w `prompts/*.md`; dosłowne `{`/`}` muszą być podwojone (`str.format`).
