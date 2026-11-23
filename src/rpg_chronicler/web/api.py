@@ -119,18 +119,21 @@ def transcript(name: str) -> dict:
     if not session.has_transcript:
         read = notes.read_notes(session) if session.has_notes else None
         return {"kind": "notatki" if read else "brak",
+                "stale": bool(read) and session.has_summary and notes.chronicle_is_stale(session),
                 "present": list(read.present) if read else [],
                 "html": markdown_html(read.text) if read else ""}
     from ..transcript import load_speaker_mapping
     mapping = load_speaker_mapping(session.txt_path)
     colors: dict[str, int] = {}
     blocks = []
-    for start, speaker, text in transcript_blocks(session.load_transcript(), mapping):
+    content = session.load_transcript()
+    for start, speaker, text in transcript_blocks(content, mapping):
         if speaker is not None and speaker not in colors:
             colors[speaker] = len(colors) % SPEAKER_COLORS
         blocks.append({"start": start, "time": format_timestamp(start), "speaker": speaker,
                        "color": colors.get(speaker), "text": text})
-    return {"kind": "transkrypcja", "blocks": blocks, "speakers": list(colors)}
+    from .recording_api import transcript_info   # import tutaj: recording_api korzysta z tego modułu
+    return {"kind": "transkrypcja", "blocks": blocks, "speakers": list(colors), **transcript_info(session, content)}
 
 
 # --- ustawienia ---

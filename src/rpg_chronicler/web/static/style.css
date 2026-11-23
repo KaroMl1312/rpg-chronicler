@@ -234,6 +234,21 @@ textarea { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; }
 .entry-picture { text-align: center; }
 .entry-image { max-width: 100%; width: 320px; border-radius: var(--radius); margin-top: 6px; }
 
+/* panel nagrania, statystyki */
+.warn-text { color: var(--warn); }
+.timeline { padding: 2px 0 4px; }
+.track { position: relative; height: 30px; background: var(--accent); border-radius: 4px; overflow: hidden; }
+.track .silence, .track .cut, .track .edge { position: absolute; top: 0; bottom: 0; min-width: 1px; }
+.track .silence { background: #9a9a9a; }
+.track .cut { background: rgba(0, 0, 0, 0.55); }
+.track .edge { width: 2px; margin-left: -1px; background: var(--danger); }
+.marks { position: relative; height: 18px; overflow: hidden; }
+.marks .mark { position: absolute; font-size: 11px; color: var(--dim); border-left: 1px solid var(--border); padding-left: 3px; }
+.stats { margin-top: 14px; display: grid; gap: 8px; }
+.stat { display: grid; grid-template-columns: 170px 1fr 120px; gap: 12px; align-items: center; }
+.stat .progress { margin: 0; }
+.stat .hint { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* --- menu --- */
 .popover { position: fixed; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
            box-shadow: var(--shadow); padding: 6px; min-width: 220px; z-index: 50; }

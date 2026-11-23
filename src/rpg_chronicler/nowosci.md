@@ -1,5 +1,12 @@
 # Nowości
 
+## 1.006 – 2026-11-23
+
+- **Nowe okno: panel nagrania przed transkrypcją.** Wykrywanie ciszy z osią czasu, odsłuch granic i fragmentów ciszy, przycinanie nagrania.
+- **Nowe okno: uwagi do transkrypcji** z odsłuchem podejrzanych miejsc, usuwaniem powtórzeń i cofaniem.
+- **Nowe okno: statystyki** sesji i całej kampanii (kto ile mówił, MG a gracze) oraz „Uzupełnij brakujące…” w menu.
+- **Poprawiony czas transkrypcji w opisie programu:** README podawał zbyt krótki, bo nie liczył rozpoznawania mówców.
+
 ## 1.005 – 2026-11-23
 
 - **Nowe okno: zakładka „Kampanie”.** Opis świata i styl obrazków, pamięć kampanii, kanał Discord, słownik z propozycjami AI, opisy i zdjęcia haseł (także obrazki od AI), „Poprzednio w kampanii…”, pomysły na sesję, notatki MG, „Zapytaj kronikarza”, encyklopedia i dzienniki postaci.

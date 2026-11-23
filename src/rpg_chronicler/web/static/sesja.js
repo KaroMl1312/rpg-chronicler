@@ -7,7 +7,7 @@ const SEARCH_MARGIN = 1.0;
 
 // --- odsłuch fragmentów nagrania ------------------------------------------------------------------
 
-const player = { key: null, end: 0, buttons: new Set() };
+const player = { key: null, end: 0, session: null };   // session - czyje nagranie jest wczytane
 
 function playButton(session, start, end, key, title = "Odsłuchaj") {
   const node = el("button", { class: "btn flat play", title, html: ICONS.play });
@@ -32,12 +32,24 @@ function stopPlayback() {
   updatePlayButtons();
 }
 
+function releasePlayer() {
+  stopPlayback();
+  const audio = $("#player");
+  player.session = null;
+  audio.removeAttribute("src");
+  audio.load();   // zrywa pobieranie, więc serwer zamyka plik
+}
+
 function togglePlay(session, start, end, key) {
   const audio = $("#player");
   if (player.key === key) return stopPlayback();
-  const src = `/api/audio?name=${encodeURIComponent(session)}&t=${encodeURIComponent(TOKEN)}`;
   player.key = key;
-  if (!audio.src.endsWith(src)) { audio.src = src; audio.load(); }   // bez load() metadane by nie przyszły
+  if (player.session !== session) {
+    player.session = session;
+    // v: przeglądarka trzyma wczytane nagranie w pamięci pod adresem (mimo no-store) - po przycięciu grałaby stare
+    audio.src = `/api/audio?name=${encodeURIComponent(session)}&t=${encodeURIComponent(TOKEN)}&v=${Date.now()}`;
+    audio.load();   // bez load() metadane by nie przyszły
+  }
   player.end = end;
   const begin = () => {
     if (player.key !== key) return;   // w międzyczasie kliknięto inny fragment albo stop

@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -85,7 +86,9 @@ def format_timestamp(seconds: float) -> str:
 def require_ffmpeg() -> None:
     missing = [tool for tool in ("ffmpeg", "ffprobe") if shutil.which(tool) is None]
     if missing:
-        raise TrimError(f"Brak programu {', '.join(missing)} - zainstaluj: sudo dnf install ffmpeg")
+        hint = ("uruchom ponownie instaluj-windows.bat" if sys.platform == "win32"
+                else "zainstaluj go menedżerem pakietów, np. sudo dnf install ffmpeg")
+        raise TrimError(f"Brak programu {', '.join(missing)} - {hint}")
 
 
 def probe(path: str) -> tuple[float, str]:

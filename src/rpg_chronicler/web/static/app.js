@@ -152,6 +152,9 @@ function popover(anchor, items) {
 function providerArgs() { return ["--provider", state.data.provider]; }
 
 async function startTask(title, args) {
+  // Zadania, które podmieniają albo usuwają nagranie: odtwarzacz musi je puścić (na Windowsie otwartego pliku nie da
+  // się zastąpić) i nie może potem grać starej wersji
+  if (["trim", "delete", "archive"].includes(args[0])) releasePlayer();
   try {
     const result = await api("/api/task", { title, args });
     if (result.error) return toast(result.error);
@@ -189,6 +192,7 @@ async function pollTask() {
     state.finishedSeq = task.finished.seq;
     if (!first) {
       const f = task.finished;
+      if (!player.key) releasePlayer();   // zadanie mogło podmienić nagranie (przycięcie, pobranie z Drive)
       toast(`${f.title}: ${f.description}`, f.success ? null : "Pokaż log", showLog);
       for (const p of f.proposals || []) toast(p.text, "Przejrzyj", () => showCampaign(p.campaign, p.text.includes("słownika") ? "slownik" : "ogolne"));
       await refresh();
@@ -199,6 +203,7 @@ async function pollTask() {
 }
 
 function updateTaskButtons() {
+  updateTrimButton();
   for (const node of document.querySelectorAll("[data-task]")) node.disabled = state.running;
 }
 
@@ -315,10 +320,9 @@ async function renderTranscript() {
   const toolbar = $("#toolbar");
   toolbar.hidden = true;
   if (!d.has_transcript && !d.has_notes) {
-    $("#view").replaceChildren(el("div", { class: "empty" },
-      el("h2", {}, d.audio ? "Nagranie czeka na transkrypcję" : "Brak nagrania"),
-      el("div", {}, d.audio ? "Transkrypcja trwa zwykle ok. 1/4 długości nagrania." : ""),
-      d.audio ? taskButton("Transkrybuj", `Transkrypcja ${d.name}`, ["transcribe", d.name], "btn suggested") : null));
+    if (d.audio) return renderRecording(d);
+    $("#view").replaceChildren(el("div", { class: "empty" }, el("h2", {}, "Brak transkrypcji"),
+      el("div", {}, "Brak lokalnego nagrania - pobierz je z Google Drive (menu).")));
     return;
   }
   const scroll = keepScroll;
@@ -329,10 +333,14 @@ async function renderTranscript() {
   if (t.kind === "notatki") {
     toolbar.hidden = false;
     toolbar.replaceChildren(el("span", { class: "info" },
-      t.present.length ? `Obecni: ${t.present.join(", ")}` : "Notatki Mistrza Gry"));
+      (t.present.length ? `Obecni: ${t.present.join(", ")}` : "Notatki Mistrza Gry")
+      + (t.stale ? " · notatki zmieniono po kronice - napisz ją ponownie (Kronika → ⋮)" : "")),
+      button("Edytuj notatki…", () => notesDialog(d.name)));
     $("#view").replaceChildren(el("div", { class: "page chronicle", html: t.html }));
     return;
   }
+  toolbar.hidden = false;
+  toolbar.replaceChildren(...transcriptToolbar(d, t));
   const page = el("div", { class: "page" });
   // Długie transkrypcje (tysiące wypowiedzi) dokładamy partiami, żeby okno nie zamarło
   let index = 0, scrolled = false;
@@ -502,6 +510,7 @@ function mainMenu(e) {
     { section: "Dostawca AI" },
     ...state.data.providers.map((x) => ({ label: x.label, checked: x.key === p, onclick: () => setProvider(x.key) })),
     "-",
+    { label: "Uzupełnij brakujące…", onclick: backfillDialog, disabled: state.running },
     { label: "Ustawienia", onclick: showSettings },
     { label: "Pokaż log", onclick: showLog },
     { label: `Nowości (wersja ${state.data.version})`, onclick: showChangelog },
@@ -631,7 +640,8 @@ function init() {
   if (HASH.get("tryb")) state.mode = HASH.get("tryb");
   // #okno=… otwiera okno dialogowe od razu (zrzuty ekranu i test okna bez klikania)
   const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
-                    discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika") };
+                    discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika"),
+                    statystyki: () => statsDialog(state.detail), uzupelnij: backfillDialog };
   if (HASH.get("kampania")) {
     camp.key = HASH.get("kampania");
     camp.tab = HASH.get("ktab") || camp.tab;

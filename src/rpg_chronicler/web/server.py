@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..session import SessionNotFound
-from . import api, campaign_api, session_api
+from . import api, campaign_api, recording_api, session_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -89,6 +89,12 @@ class App:
             ("POST", "/api/entry/upload"): lambda q, b: campaign_api.upload_image(
                 b["key"], b["name"], b["filename"], b["data"]),
             ("POST", "/api/entry/image"): lambda q, b: campaign_api.image_action(b["key"], b["name"], b["action"]),
+            # etap 4: nagranie, jakość, statystyki, uzupełnianie
+            ("GET", "/api/recording"): lambda q, b: recording_api.recording(q["name"]),
+            ("GET", "/api/recording/plan"): lambda q, b: recording_api.trim_plan(
+                q["name"], q.get("start", ""), q.get("end", ""), float(q.get("gaps") or 0)),
+            ("GET", "/api/stats"): lambda q, b: recording_api.session_stats(q["name"], q.get("campaign") == "1"),
+            ("GET", "/api/backfill"): lambda q, b: recording_api.backfill_plan(),
         }
 
     def _open(self, path: str) -> dict:
@@ -225,6 +231,7 @@ def make_handler(app: App, port_holder: list):
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(length))
             self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-store")  # po przycięciu pod tym samym adresem jest inne nagranie
             if status == HTTPStatus.PARTIAL_CONTENT:
                 self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
             self.end_headers()
