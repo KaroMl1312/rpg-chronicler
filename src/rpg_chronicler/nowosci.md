@@ -1,5 +1,16 @@
 # Nowości
 
+## 1.004 – 2026-11-23
+
+- **Nowe okno: praca z sesją.** Doszły:
+  - zakładka „Mówcy” z rozpoznawaniem graczy po głosie, sugestią AI i odsłuchem próbek głosu;
+  - odsłuch cytatów;
+  - „Popraw…” i cofanie poprawki kroniki;
+  - wysyłka na Discord z zapowiedzią i cytatami, oznaczanie kroniki jako wysłanej;
+  - sesje z notatek MG: dodawanie (Ctrl+N, przycisk „+”) i edycja notatek;
+  - usuwanie kroniki albo sesji (menu „⋯” przy nazwie sesji);
+  - wyszukiwarka w kronikach i transkrypcjach z odsłuchem fragmentu (Ctrl+F).
+
 ## 1.003 – 2026-11-23
 
 - **Instalator na Windowsa (wersja testowa):** po pobraniu programu wystarczy kliknąć instaluj-windows.bat. Instalator sam pobiera Pythona, ffmpeg i biblioteki, pyta o klucze i tworzy skróty do okna programu i do konsoli z komendami. 

@@ -11,6 +11,10 @@ const ICONS = {
   check: '<svg viewBox="0 0 16 16"><path d="M6.2 11.2 2.9 7.9 1.5 9.3l4.7 4.7 8.3-8.3-1.4-1.4z"/></svg>',
   send: '<svg viewBox="0 0 16 16"><path d="M1 14.5 15 8 1 1.5V6.5l9 1.5-9 1.5z"/></svg>',
   more: '<svg viewBox="0 0 16 16"><circle cx="8" cy="3" r="1.6"/><circle cx="8" cy="8" r="1.6"/><circle cx="8" cy="13" r="1.6"/></svg>',
+  play: '<svg viewBox="0 0 16 16"><path d="M4 2.5v11l9-5.5z"/></svg>',
+  stop: '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>',
+  search: '<svg viewBox="0 0 16 16"><path d="M6.5 1a5.5 5.5 0 0 1 4.4 8.8l3.7 3.7-1.4 1.4-3.7-3.7A5.5 5.5 0 1 1 6.5 1zm0 2a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>',
+  plus: '<svg viewBox="0 0 16 16"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg>',
   close: '<svg viewBox="0 0 16 16"><path d="M3.5 2.1 8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg>',
 };
 
@@ -251,7 +255,11 @@ function renderEmpty() {
 // --- sesja ----------------------------------------------------------------------------------------
 
 async function loadSession(name, resetMode = true) {
-  if (state.current !== name && resetMode) state.mode = "kronika";
+  if (state.current !== name) {
+    await autosaveSpeakers();
+    stopPlayback();
+    if (resetMode) state.mode = "kronika";
+  }
   state.current = name;
   renderList();
   try {
@@ -266,10 +274,14 @@ function renderSession() {
   $("#session-tabs").hidden = false;
   const transcriptTab = $('#session-tabs [data-tab="transkrypcja"]');
   transcriptTab.textContent = d.from_notes ? "Notatki" : "Transkrypcja";
+  $('#session-tabs [data-tab="mowcy"]').hidden = d.from_notes;
+  if (d.from_notes && state.tab === "mowcy") state.tab = "transkrypcja";
   for (const b of document.querySelectorAll("#session-tabs button")) b.classList.toggle("active", b.dataset.tab === state.tab);
-  $("#header-right").replaceChildren(d.campaign
-    ? button(`Kampania ${d.campaign}`, () => showMain("kampanie"), "btn flat", { title: "Otwórz kampanię" }) : "");
+  $("#header-right").replaceChildren(
+    d.campaign ? button(`Kampania ${d.campaign}`, () => showMain("kampanie"), "btn flat", { title: "Otwórz kampanię" }) : "",
+    iconButton("more", "Notatki i usuwanie sesji", sessionMenu));
   if (state.tab === "transkrypcja") renderTranscript();
+  else if (state.tab === "mowcy") renderSpeakers();
   else renderChronicle();
 }
 
@@ -335,20 +347,25 @@ function renderChronicle() {
     ? button("PDF", () => api("/api/open-session-file", { name: d.name, kind: "pdf" }).catch((e) => toast(e.message)),
              "btn", { title: "Otwórz PDF kroniki" })
     : taskButton("PDF", `PDF ${d.name}`, ["pdf", d.name], "btn", d.pdf ? "PDF jest nieaktualny - utwórz go od nowa" : "Utwórz PDF kroniki");
+  const revise = button("Popraw…", reviseDialog, "btn", { "data-task": true, disabled: state.running,
+                                                          title: "Popraw kronikę poleceniem dla AI" });
+  const discordButton = button("Wyślij na Discord", discordDialog, "btn", { title: d.discord_label || "Wyślij kronikę na kanał kampanii" });
   const more = iconButton("more", "Więcej", (e) => {
     e.stopPropagation();
     popover(e.currentTarget, [
+      d.previous_versions ? { label: "Cofnij poprawkę", onclick: undoRevision, disabled: state.running } : null,
       { label: "Napisz kronikę ponownie", onclick: () => summarize(true), disabled: state.running },
       { label: "Napisz skrót ponownie", disabled: state.running,
         onclick: () => startTask(`Skrót kroniki ${d.name}`, ["brief", d.name, ...providerArgs(), "--force"]) },
       d.from_notes ? null : { label: "Wybierz cytaty ponownie", disabled: state.running,
         onclick: () => startTask(`Cytaty z sesji ${d.name}`, ["quotes", d.name, ...providerArgs(), "--force"]) },
       "-",
+      { label: d.discord ? "Oznacz jako niewysłaną" : "Oznacz jako wysłaną na Discord", onclick: toggleSent },
       { label: "Otwórz plik kroniki", onclick: () => api("/api/open-session-file", { name: d.name, kind: "kronika" })
           .catch((err) => toast(err.message)) },
     ].filter(Boolean));
   });
-  toolbar.replaceChildren(modes, el("span", { class: "info", title: d.info }, d.info), pdfButton, more);
+  toolbar.replaceChildren(modes, el("span", { class: "info", title: d.info }, d.info), revise, pdfButton, discordButton, more);
 
   const page = el("div", { class: "page chronicle" });
   if (state.mode === "kronika") {
@@ -362,8 +379,8 @@ function renderChronicle() {
         taskButton("Napisz skrót", `Skrót kroniki ${d.name}`, ["brief", d.name, ...providerArgs()], "btn suggested")));
     }
   } else if (d.quotes.length) {
-    page.append(...d.quotes.map((q) => el("div", { class: "quote" }, `„${q.text}”`,
-      el("div", { class: "who" }, [q.who, q.time].filter(Boolean).join(" · ")))));
+    page.append(...d.quotes.map((q, i) => el("div", { class: "quote" }, quotePlayButton(d, q, i),
+      el("div", { class: "body" }, `„${q.text}”`, el("div", { class: "who" }, [q.who, q.time].filter(Boolean).join(" · "))))));
   } else {
     page.append(el("div", { class: "empty" }, el("h2", {}, "Brak cytatów"),
       taskButton("Wybierz cytaty", `Cytaty z sesji ${d.name}`, ["quotes", d.name, ...providerArgs()], "btn suggested")));
@@ -372,13 +389,18 @@ function renderChronicle() {
 }
 
 async function summarize(force) {
+  if (speakersState.name) {   // niezapisane imiona mówców - zapis przed kroniką
+    await autosaveSpeakers();
+    await loadSession(state.current, false);
+  }
   const d = state.detail;
   let allowUnnamed = false;
   if (d.unnamed_speakers) {
     const answer = await ask("Mówcy nie mają imion",
       "Kronika powstanie z etykietami SPEAKER_00, SPEAKER_01… zamiast imion postaci. Lepiej najpierw nazwać mówców "
-      + "(zakładka „Mówcy” w następnej wersji okna; na razie w starym oknie albo komendą speakers).",
-      [["cancel", "Anuluj"], ["generate", "Generuj mimo to", "suggested"]]);
+      + "w zakładce „Mówcy”.",
+      [["cancel", "Anuluj"], ["speakers", "Nazwij mówców", "suggested"], ["generate", "Generuj mimo to"]]);
+    if (answer === "speakers") { state.tab = "mowcy"; renderSession(); return; }
     if (answer !== "generate") return;
     allowUnnamed = true;
   } else if (force) {
@@ -400,7 +422,9 @@ async function summarize(force) {
 
 // --- kampanie (następny etap) -------------------------------------------------------------------
 
-function showMain(name) {
+async function showMain(name) {
+  await autosaveSpeakers();
+  stopPlayback();
   for (const b of document.querySelectorAll("#main-switch button")) b.classList.toggle("active", b.dataset.main === name);
   const sessions = name === "sesje";
   $("#session-tools").hidden = !sessions;
@@ -525,8 +549,17 @@ function init() {
     renderList();
   });
   for (const b of document.querySelectorAll("#session-tabs button")) {
-    b.addEventListener("click", () => { state.tab = b.dataset.tab; renderSession(); });
+    b.addEventListener("click", async () => {
+      if (state.tab === "mowcy" && b.dataset.tab !== "mowcy") await autosaveSpeakers();
+      state.tab = b.dataset.tab;
+      renderSession();
+    });
   }
+  $("#search-button").innerHTML = ICONS.search;
+  $("#search-button").addEventListener("click", searchDialog);
+  $("#add-notes").innerHTML = ICONS.plus;
+  $("#add-notes").addEventListener("click", () => notesDialog());
+  initPlayer();
   for (const b of document.querySelectorAll("#main-switch button")) b.addEventListener("click", () => showMain(b.dataset.main));
   $("#process-all").addEventListener("click", () =>
     startTask("Pełny przebieg", ["run", "--no-interactive", ...providerArgs()]));
@@ -536,13 +569,20 @@ function init() {
   document.addEventListener("keydown", (e) => {
     if (e.ctrlKey && e.key === "1") showMain("sesje");
     if (e.ctrlKey && (e.key === "2" || e.key === "k")) { e.preventDefault(); showMain("kampanie"); }
+    if (e.ctrlKey && e.key === "f") { e.preventDefault(); searchDialog(); }
+    if (e.ctrlKey && e.key === "n") { e.preventDefault(); notesDialog(); }
   });
   // Sygnał życia: w trybie przeglądarki serwer kończy pracę, gdy okno zostanie zamknięte
   setInterval(() => api("/api/task?since=" + state.seq).then((t) => { if (t.running && !state.running) pollTask(); })
     .catch(() => {}), 5000);
   if (HASH.get("tab")) state.tab = HASH.get("tab");
   if (HASH.get("tryb")) state.mode = HASH.get("tryb");
-  refresh().then(() => HASH.get("s") ? loadSession(HASH.get("s"), false) : null).then(pollTask).catch((e) => {
+  // #okno=… otwiera okno dialogowe od razu (zrzuty ekranu i test okna bez klikania)
+  const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
+                    discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika") };
+  refresh().then(() => HASH.get("s") ? loadSession(HASH.get("s"), false) : null)
+    .then(() => { const open = dialogs[HASH.get("okno")]; if (open) return open(); })
+    .then(pollTask).catch((e) => {
     $("#view").replaceChildren(el("div", { class: "empty" }, el("h2", {}, "Nie można połączyć się z programem"),
                                   el("div", {}, e.message)));
   });

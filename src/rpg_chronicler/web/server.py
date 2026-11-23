@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..session import SessionNotFound
-from . import api
+from . import api, session_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -56,6 +56,22 @@ class App:
             ("POST", "/api/task/cancel"): lambda q, b: r.cancel() or {"ok": True},
             ("POST", "/api/open"): lambda q, b: self._open(b["path"]),
             ("POST", "/api/open-session-file"): lambda q, b: self._open_session_file(b["name"], b["kind"]),
+            # etap 2: praca z sesją
+            ("GET", "/api/speakers"): lambda q, b: session_api.speakers(q["name"]),
+            ("POST", "/api/speakers"): lambda q, b: session_api.save_speakers(b["name"], b["mapping"]),
+            ("GET", "/api/discord"): lambda q, b: session_api.discord_info(q["name"]),
+            ("POST", "/api/discord/webhook"): lambda q, b: session_api.save_webhook(b["campaign"], b["url"]),
+            ("POST", "/api/discord/teaser"): lambda q, b: session_api.save_teaser(b["name"], b.get("text", "")),
+            ("POST", "/api/discord/sent"): lambda q, b: session_api.set_sent(b["name"], bool(b["sent"])),
+            ("GET", "/api/notes"): lambda q, b: session_api.notes_form(q.get("name") or None, q.get("campaign")),
+            ("GET", "/api/notes/name"): lambda q, b: session_api.notes_name(q.get("campaign", ""), q.get("date", "")),
+            ("POST", "/api/notes"): lambda q, b: session_api.save_notes(
+                b.get("name") or None, b.get("campaign", ""), b.get("date", ""), b.get("text", ""),
+                [str(x) for x in b.get("present", [])]),
+            ("GET", "/api/delete"): lambda q, b: session_api.delete_plan(q["name"], q["scope"]),
+            ("GET", "/api/delete/options"): lambda q, b: session_api.delete_options(q["name"]),
+            ("GET", "/api/search"): lambda q, b: session_api.run_search(
+                q.get("q", ""), q.get("campaign"), q.get("chronicles", "1") == "1", q.get("transcripts", "1") == "1"),
         }
 
     def _open(self, path: str) -> dict:
@@ -127,6 +143,8 @@ def make_handler(app: App, port_holder: list):
             if not self._token_ok(query):
                 return self._error(HTTPStatus.FORBIDDEN, "Brak klucza okna")
             app.last_seen = time.monotonic()
+            if method == "GET" and url.path == "/api/audio":
+                return self._audio(query)
             route = routes.get((method, url.path))
             if route is None:
                 return self._error(HTTPStatus.NOT_FOUND, f"Nieznane zapytanie {url.path}")
@@ -145,6 +163,52 @@ def make_handler(app: App, port_holder: list):
                 import traceback
                 traceback.print_exc()
                 self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
+
+        def _audio(self, query: dict) -> None:
+            """Nagranie sesji z obsługą zakresów (Range) - odtwarzacz pobiera tylko potrzebny fragment."""
+            try:
+                path = session_api.audio_path(query["name"])
+            except (KeyError, ValueError, SessionNotFound) as e:
+                return self._error(HTTPStatus.NOT_FOUND, str(e))
+            size = os.path.getsize(path)
+            start, end, status = 0, size - 1, HTTPStatus.OK
+            header = self.headers.get("Range", "")
+            if header.startswith("bytes="):
+                first, _, last = header[6:].split(",")[0].partition("-")
+                try:
+                    if first:
+                        start, end = int(first), min(int(last) if last else size - 1, size - 1)
+                    else:  # ostatnie N bajtów
+                        start = max(0, size - int(last))
+                except ValueError:
+                    start, end = 0, size - 1
+                if start > end or start >= size:
+                    return self._send(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE, b"", "text/plain",
+                                      {"Content-Range": f"bytes */{size}"})
+                status = HTTPStatus.PARTIAL_CONTENT
+            length = end - start + 1
+            content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            if path.lower().endswith(".m4a"):
+                content_type = "audio/mp4"
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            if status == HTTPStatus.PARTIAL_CONTENT:
+                self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.end_headers()
+            try:
+                with open(path, "rb") as f:
+                    f.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk = f.read(min(1 << 20, remaining))
+                        if not chunk:
+                            break
+                        self.wfile.write(chunk)
+                        remaining -= len(chunk)
+            except (BrokenPipeError, ConnectionResetError):
+                pass  # odtwarzacz przerwał pobieranie (przewinięcie, stop)
 
         def _static(self, path: str) -> None:
             name = "index.html" if path in ("/", "/index.html") else path.removeprefix("/static/")

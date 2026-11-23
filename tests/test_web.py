@@ -126,3 +126,69 @@ def test_task_runner_reports_progress_lines_and_end(tmp_path):
     assert snap["finished"]["success"] is False and snap["finished"]["description"] == "błąd (kod 3)"
     assert runner.snapshot(snap["seq"])["lines"] == []
     assert runner.start("Zła", ["rm"]).startswith("Nieznana komenda")
+
+
+# --- etap 2: praca z sesją ---
+
+from rpg_chronicler import notes  # noqa: E402
+from rpg_chronicler.web import session_api  # noqa: E402
+
+
+def test_speakers_rows_and_save(workspace):
+    workspace.add_transcript("Warhammer_261015", TRANSCRIPT)
+    data = session_api.speakers("Warhammer_261015")
+    assert data["state"] == "ok"
+    assert {r["label"] for r in data["rows"]} == {"SPEAKER_00", "SPEAKER_01"}
+    assert data["names"][0]["name"] == "MG"
+    with pytest.raises(ValueError):
+        session_api.save_speakers("Warhammer_261015", {"SPEAKER_00": "  "})
+    session_api.save_speakers("Warhammer_261015", {"SPEAKER_00": "MG", "SPEAKER_01": "Fen", "SPEAKER_99": "obcy"})
+    saved = json.loads((workspace.dirs["txt"] / "Warhammer_261015.mowcy.json").read_text(encoding="utf-8"))
+    assert saved == {"SPEAKER_00": "MG", "SPEAKER_01": "Fen"}
+    assert api.session_detail("Warhammer_261015")["unnamed_speakers"] is False
+
+
+def test_notes_new_session_name_and_save(workspace):
+    workspace.add_transcript("Warhammer_261015", TRANSCRIPT)
+    assert session_api.notes_name("Warhammer", "2026-10-15")["error"].startswith("Sesja Warhammer_261015 już istnieje")
+    info = session_api.notes_name("Warhammer", "2026-11-30")
+    assert info == {"name": "Warhammer_261130", "error": "", "characters": []}
+    result = session_api.save_notes(None, "Warhammer", "2026-11-30", "- Drużyna dotarła do miasta.", ["Fen"])
+    assert result["name"] == "Warhammer_261130"
+    saved = notes.read_notes(api.find_session("Warhammer_261130"))
+    assert saved.present == ("Fen",) and "dotarła" in saved.text
+    with pytest.raises(ValueError):
+        session_api.save_notes(None, "Warhammer", "2026-12-01", "   ", [])
+
+
+def test_search_and_delete_plan(workspace):
+    workspace.add_transcript("Warhammer_261015", TRANSCRIPT)
+    (workspace.dirs["summary"] / "Warhammer_261015_podsumowanie.txt").write_text("Drużyna w karczmie.", encoding="utf-8")
+    result = session_api.run_search("karczma", None, True, True)
+    kinds = [h["kind"] for h in result["hits"]]
+    assert kinds == ["kronika", "transkrypcja"] and "<b>karczmie</b>" in result["hits"][0]["html"]
+    assert session_api.run_search("karczma", None, False, True)["hits"][0]["tab"] == "transkrypcja"
+    plan = session_api.delete_plan("Warhammer_261015", "kronika")
+    assert plan["heading"] == "Usunąć kronikę?" and "Warhammer_261015_podsumowanie.txt" in plan["files"]
+    assert session_api.delete_plan("Warhammer_261015", "sesja")["confirm"]
+    options = {o["scope"]: o["enabled"] for o in session_api.delete_options("Warhammer_261015")}
+    assert options == {"kronika": True, "od-nowa": False, "sesja": True}
+
+
+def test_audio_served_with_ranges(workspace):
+    workspace.add_transcript("Warhammer_261015", TRANSCRIPT)
+    (workspace.dirs["audio"] / "Warhammer_261015.m4a").write_bytes(bytes(range(256)) * 4)
+    app = App()
+    server, url = start_server(app)
+    base = url.split("#")[0].rstrip("/")
+    try:
+        audio = f"{base}/api/audio?name=Warhammer_261015&t={app.token}"
+        request = urllib.request.Request(audio, headers={"Range": "bytes=10-19"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 206 and response.read() == bytes(range(10, 20))
+            assert response.headers["Content-Range"] == "bytes 10-19/1024"
+            assert response.headers["Content-Type"] == "audio/mp4"
+        assert _request(f"{base}/api/audio?name=Warhammer_261015")[0] == 403       # bez klucza
+        assert _request(f"{base}/api/audio?name=Nie_ma&t={app.token}")[0] == 404
+    finally:
+        server.shutdown()

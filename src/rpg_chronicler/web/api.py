@@ -109,6 +109,7 @@ def session_detail(name: str) -> dict:
         # przed generowaniem kroniki okno pyta, jak w GTK: mówcy bez imion, niezatwierdzony stan kampanii
         "unnamed_speakers": session.has_transcript and not session.has_speakers and has_speaker_labels(session),
         "memory_warning": memory.unaccepted_warning(key, session.name) if key else None,
+        "previous_versions": bool(text) and bool(chronicle.previous_versions(session)),
     }
 
 

@@ -6,6 +6,7 @@
 <title>RPG Chronicles</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/app.js" defer></script>
+<script src="/static/sesja.js" defer></script>
 </head>
 <body>
 <div id="app">
@@ -19,7 +20,9 @@
       <button class="btn flat icon" id="menu-button" title="Menu"></button>
     </div>
     <div class="bar" id="session-tools">
-      <select id="filter" class="grow" title="Kampania"></select>
+      <select id="filter" title="Kampania"></select>
+      <button class="btn flat icon" id="search-button" title="Szukaj w sesjach (Ctrl+F)"></button>
+      <button class="btn flat icon" id="add-notes" title="Dodaj sesję z notatek MG (Ctrl+N)"></button>
     </div>
     <ul id="session-list"></ul>
     <div class="sidebar-foot">
@@ -33,6 +36,7 @@
       <span class="left" id="session-name"></span>
       <div class="tabs" id="session-tabs">
         <button data-tab="transkrypcja">Transkrypcja</button>
+        <button data-tab="mowcy">Mówcy</button>
         <button data-tab="kronika">Kronika</button>
       </div>
       <div class="right" id="header-right"></div>
@@ -52,5 +56,6 @@
   </footer>
 </div>
 <div id="toasts"></div>
+<audio id="player" preload="none"></audio>
 </body>
 </html>
