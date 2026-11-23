@@ -1,7 +1,7 @@
 """Baner „środowisko transkrypcji nie działa”: sprawdzenie .venv w tle przy starcie i instrukcja naprawy."""
 from gi.repository import Adw, Gio, GLib
 
-from ..config import PROJECT_ROOT
+from ..config import IS_WINDOWS, PROJECT_ROOT, REPAIR_HINT, venv_executable
 
 
 class EnvironmentBanner(Adw.Bin):
@@ -15,12 +15,13 @@ class EnvironmentBanner(Adw.Bin):
     def check(self) -> None:
         """W tle: czy .venv (transkrypcja, AI) działa - np. po aktualizacji systemu może wskazywać na
         odinstalowanego Pythona. Pełne sprawdzenie: ./sprawdz-srodowisko."""
-        venv_python = PROJECT_ROOT / ".venv" / "bin" / "python"
+        venv_python = venv_executable("python")
         if not venv_python.exists():
             self._show_error("brak działającego interpretera w .venv")
             return
         launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_MERGE)
         launcher.unsetenv("PYTHONPATH")
+        launcher.set_cwd(str(PROJECT_ROOT))
         try:
             process = launcher.spawnv([str(venv_python), "-c",
                                        "import faster_whisper, pyannote.audio, torchcodec.decoders"])
@@ -48,8 +49,9 @@ class EnvironmentBanner(Adw.Bin):
     def _show_help(self) -> None:
         dialog = Adw.AlertDialog(
             heading="Napraw środowisko transkrypcji",
-            body="Najczęściej to skutek aktualizacji systemu (zmiana wersji Pythona). W terminalu, w katalogu "
-                 f"programu ({PROJECT_ROOT}), uruchom:\n\n./sprawdz-srodowisko --napraw\n\n"
+            body=("Najczęściej to przerwana instalacja. " if IS_WINDOWS else
+                  "Najczęściej to skutek aktualizacji systemu (zmiana wersji Pythona). ")
+                 + f"Folder programu: {PROJECT_ROOT}\n\nNaprawa: {REPAIR_HINT}.\n\n"
                  "Odtworzy to .venv (kilka minut, pobiera ok. 1 GB). Potem uruchom aplikację ponownie.\n\n"
                  f"Szczegóły: {self._error}")
         dialog.add_response("ok", "Zamknij")

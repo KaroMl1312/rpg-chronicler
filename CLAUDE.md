@@ -34,6 +34,7 @@ Komendy (pakiet `src/rpg_chronicler/cli/`, opcje w `cli/parser.py`): `run [--off
 
 ```
 kampanie.przyklad.toml        # przykład formatu; właściwy plik kampanii jest w TXT_DIR (patrz „Kampanie”)
+instaluj-windows.bat, windows/ # instalator na Windowsa (instaluj.ps1: Python 3.11, VC++, ffmpeg shared do ffmpeg/, .venv z torch CPU, klucze, skróty) i konsola (konsola.bat + pomoc.txt)
 .env / .env.example           # sekrety: HUGGINGFACE_TOKEN, GEMINI_API_KEY, ANTHROPIC_API_KEY, LLM_PROVIDER, CLOUDFLARE_*
 src/rpg_chronicler/
   config.py                   # WSZYSTKIE stałe: ścieżki, remote'y rclone, modele, wątki, retry; własny loader .env
@@ -63,6 +64,10 @@ src/rpg_chronicler/
   discord.py                  # wysyłka przez webhook (urllib, multipart z PDF); stdlib
   doctor.py                   # ./sprawdz-srodowisko: diagnostyka i naprawa .venv (systemowy Python, tylko stdlib)
   progress.py                 # protokół postępu dla GUI: linie `@@postep {json}` gdy RPG_CHRONICLER_PROGRESS=json
+  web/                        # NOWE okno (HTML) - etapami zastępuje gui/: server.py (http.server na 127.0.0.1, losowy
+                              #   port i klucz X-Token, sprawdzanie Host), api.py (dane jako JSON, Markdown → HTML),
+                              #   tasks.py (CLI w podprocesie, log, postęp), static/ (index.html, style.css, app.js - zwykły JS),
+                              #   __main__.py (okno: pywebview → okno_gtk.py na systemowym Pythonie z WebKit 6 → przeglądarka)
   gui/                        # GTK4 + libadwaita, uruchamiane systemowym Pythonem (skrypt ./rpg-chronicler-gui)
     app.py, window.py         #   Adw.Application, główne okno: przełącznik Sesje/Kampanie (Ctrl+1 / Ctrl+K), lista sesji (z filtrem kampanii), zakładki sesji, zadania
     transcript_page.py        #   zakładka „Transkrypcja”: tekst z kolorami mówców + uwagi jakości albo panel nagrania
@@ -227,6 +232,10 @@ Klient LLM tworzony leniwie (`llm.LazyClient`; w testach podmienia się `llm.get
 
 Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py` przez `_setting()`, pole w `gui/settings_dialog.py`. Procesy CLI czytają ustawienia przy starcie, więc działają od następnego zadania; wartości używane przez samo GUI (foldery) wymagają restartu (`win.restart` → `os.execv`).
 
+## Nowe okno (web/)
+
+Przepisywane etapami zamiast GTK (decyzja 2026-11: GTK z MSYS2 na Windowsie ważyłby ~1 GB). Etap 1 (gotowy): sesje, transkrypcja, kronika/skrót/cytaty, zadania z postępem, ustawienia, klucze API, nowości. Dalej: 2) mówcy z odsłuchem, PDF/Discord, poprawka, notatki, usuwanie, wyszukiwarka; 3) Kampanie; 4) panel nagrania, statystyki, jakość, backfill; 5) usunięcie gui/ (GTK), test okna w CI. Serwer działa w `.venv` (może importować wszystko), więc ograniczenia importów z sekcji GUI go nie dotyczą. Uruchamianie: `./rpg-chronicler-okno` (Linux), skrót „RPG Chronicles” (Windows: `.venv\Scripts\pythonw.exe -m rpg_chronicler.web`, pywebview z extra `okno`). Podgląd bez ekranu: `python -m rpg_chronicler.web.server` wypisuje adres, a `google-chrome --headless=new --screenshot=… "ADRES&s=SESJA&tab=kronika"` robi zrzut (`#s=`, `tab=`, `tryb=` otwierają sesję). Tekst od AI przed Markdownem ma escapowane `&` i `<` (bez wstrzykiwania HTML). Testy: `tests/test_web.py`.
+
 ## GUI
 
 - **Dwa interpretery:** GUI działa na systemowym `/usr/bin/python3` (Fedora: PyGObject, GTK 4, libadwaita), bo PyGObject nie ma w `.venv`. Ciężką pracę (transkrypcja, LLM, rclone) zleca procesowi `.venv/bin/rpg-chronicler` z `--no-interactive` i `RPG_CHRONICLER_PROGRESS=json`.
@@ -239,6 +248,7 @@ Nowe ustawienie edytowalne z GUI: klucz w `settings.FIELDS`, odczyt w `config.py
 
 ## Zasady przy zmianach
 
+- **Windows** (bez GUI, tylko CLI): `instaluj-windows.bat` → `windows/instaluj.ps1` (można uruchamiać ponownie). `.bat` muszą być ASCII z CRLF, `.ps1` w UTF-8 z BOM i CRLF (Windows PowerShell 5.1), `.gitattributes` ma `-text` - pilnuje `tests/test_windows_install.py`. ffmpeg w wersji *shared* (biblioteki DLL dla torchcodec, który szuka ich obok `ffmpeg.exe` z PATH) leży w `<program>/ffmpeg/`, a `config.use_bundled_ffmpeg` dopisuje `ffmpeg/bin` na początek PATH. Polecenia natywne z przekierowanym stderr w PS 5.1 przy `$ErrorActionPreference = "Stop"` przerywają skrypt - tam lokalnie `Continue`.
 - **Wersja i nowości przy każdym commicie:** 1.000 = pierwsze wydanie publiczne (2026-11-22). Każdy commit podbija `VERSION` w `version.py` o 0.001 (1.001, 1.002…) i dopisuje na górze `src/rpg_chronicler/nowosci.md` sekcję `## WERSJA – RRRR-MM-DD` z punktami po polsku dla użytkownika (co dodano / poprawiono, bez szczegółów technicznych). `tests/test_version.py` pilnuje zgodności i kolejności. Pakiet pip normalizuje wersję (1.001 → 1.1) - to nic.
 - Licencja: PolyForm Noncommercial 1.0.0 (`LICENSE`, linia `Required Notice` musi zostać). `README.md` jest dla obcych użytkowników (instalacja, wymagania) - aktualizuj go przy nowych wymaganiach i większych funkcjach. Do repozytorium nie trafiają dane sesji ani prawdziwe imiona graczy.
 

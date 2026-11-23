@@ -1,0 +1,19 @@
+
+  RPG Chronicles - kroniki sesji RPG
+  ==================================
+
+  Nagrania wrzucaj do Dokumenty\Audio_sesje_rpg, nazwa: Kampania_RRMMDD (np. Zakon_261123.m4a).
+
+  Najważniejsze komendy (wpisz i naciśnij Enter):
+
+    rpg-chronicler run --offline     wszystko po kolei: transkrypcja, mówcy, kroniki
+    rpg-chronicler status            stan sesji: co jest gotowe, czego brakuje
+    rpg-chronicler transcribe        tylko transkrypcja nowych nagrań
+    rpg-chronicler speakers          przypisz imiona mówcom
+    rpg-chronicler summarize         napisz brakujące kroniki
+    rpg-chronicler pdf NAZWA_SESJI   PDF kroniki
+    rpg-chronicler --help            wszystkie komendy
+
+  Kroniki i PDF-y są w Dokumenty\Podsumowania.
+  Klucze API zmienisz poleceniem:  notepad .env
+

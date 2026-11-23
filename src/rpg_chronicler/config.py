@@ -1,11 +1,35 @@
 import os
+import sys
 from pathlib import Path
 
 from . import envfile as _envfile
 from . import settings as _settings
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+IS_WINDOWS = sys.platform == "win32"  # także Python z MSYS2, na którym działa GUI na Windowsie
 
+
+def venv_executable(name: str) -> Path:
+    """Program z .venv projektu: .venv/bin/<nazwa> (Linux) albo .venv\\Scripts\\<nazwa>.exe (Windows)."""
+    if IS_WINDOWS:
+        return PROJECT_ROOT / ".venv" / "Scripts" / f"{name}.exe"
+    return PROJECT_ROOT / ".venv" / "bin" / name
+
+
+REPAIR_HINT = ("uruchom ponownie instaluj-windows.bat (w folderze programu)" if IS_WINDOWS
+               else "w terminalu, w katalogu programu, uruchom ./sprawdz-srodowisko --napraw")
+
+
+def use_bundled_ffmpeg(root: Path) -> None:
+    """Windows: ffmpeg pobrany przez instaluj-windows.bat leży w <program>/ffmpeg/bin - dopisujemy go na początek
+    PATH (wywołania ffmpeg/ffprobe i torchcodec, który szuka bibliotek DLL obok ffmpeg.exe)."""
+    bundled = root / "ffmpeg" / "bin"
+    path = os.environ.get("PATH", "")
+    if (bundled / "ffmpeg.exe").exists() and str(bundled) not in path.split(os.pathsep):
+        os.environ["PATH"] = str(bundled) + (os.pathsep + path if path else "")
+
+
+use_bundled_ffmpeg(PROJECT_ROOT)
 _envfile.load_into_environ()  # klucze API z .env (edycja: okno ustawień → Klucze API)
 
 # Ustawienia użytkownika z ~/.config/rpg-chronicler/ustawienia.toml (GUI) nadpisują poniższe wartości domyślne

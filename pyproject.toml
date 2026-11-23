@@ -22,6 +22,8 @@ dependencies = [
 anthropic = ["anthropic>=1.0"]
 gemini = ["google-genai>=2.0"]
 dev = ["pytest"]
+# nowe okno na Windowsie (Edge WebView2); na Linuksie okno GTK + WebKit z systemu, bez tej paczki
+okno = ["pywebview>=5"]
 
 [project.scripts]
 rpg-chronicler = "rpg_chronicler.cli:main"
@@ -33,7 +35,7 @@ version = {attr = "rpg_chronicler.version.VERSION"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-rpg_chronicler = ["prompts/*.md", "gui/*.svg", "nowosci.md"]
+rpg_chronicler = ["prompts/*.md", "gui/*.svg", "nowosci.md", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

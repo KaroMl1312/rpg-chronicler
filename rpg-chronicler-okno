@@ -1,0 +1,6 @@
+#!/bin/sh
+# Nowe okno programu (HTML): serwer w .venv + okno GTK/WebKit z systemu (web/okno_gtk.py).
+#   ./rpg-chronicler-okno                  uruchom
+#   ./rpg-chronicler-okno --przegladarka   otwórz w przeglądarce zamiast osobnego okna
+ROOT="$(dirname "$(readlink -f "$0")")"
+exec "$ROOT/.venv/bin/python" -m rpg_chronicler.web "$@"

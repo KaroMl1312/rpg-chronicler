@@ -21,7 +21,7 @@ Interfejs, komunikaty i prompty są po polsku. Kroniki również powstają po po
 
 ## Wymagania
 
-Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucjach powinien działać po doinstalowaniu odpowiedników pakietów. Na Windowsie i macOS nie był sprawdzany.
+Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucjach powinien działać po doinstalowaniu odpowiedników pakietów. Na Windowsie działa wersja bez okna (konsola), z instalatorem - patrz „Instalacja na Windowsie”. Na macOS nie był sprawdzany.
 
 - Python 3.11 do części obliczeniowej (dla nowszych wersji może brakować `onnxruntime`).
 - Systemowy Python z PyGObject, GTK 4 i libadwaita do GUI (Fedora: `python3-gobject`, `gtk4`, `libadwaita`).
@@ -47,6 +47,17 @@ cd rpg-chronicler
 `sprawdz-srodowisko --napraw` instaluje torch, torchaudio i torchcodec w wersjach **CPU**. Zwykły `pip install` ściąga wersje z CUDA (kilka GB więcej), a pyannote nie odczyta wtedy plików bez bibliotek CUDA.
 
 Przy pierwszej transkrypcji modele Whisper i pyannote pobierają się same (ok. 2 GB).
+
+## Instalacja na Windowsie (wersja testowa)
+
+Na Windowsie program działa na razie **bez okna**, z komend w konsoli.
+
+1. Pobierz program: na GitHubie **Code → Download ZIP**, a potem rozpakuj go, np. do `Dokumenty\rpg-chronicler`.
+2. Kliknij dwa razy **`instaluj-windows.bat`**. Windows może ostrzec, że plik pochodzi z internetu: kliknij „Więcej informacji” → „Uruchom mimo to”.
+3. Instalator sam przygotuje wszystko, co potrzebne: Python 3.11, biblioteki Visual C++ (zapyta o zgodę administratora), ffmpeg, PyTorch w wersji na procesor i biblioteki programu. Na koniec zapyta o token Hugging Face i o to, które AI ma pisać kroniki. Zajmuje to zwykle 10–20 minut. Jeśli coś się nie uda, uruchom go ponownie: pominie to, co już jest.
+4. Otwórz skrót **„RPG Chronicles”** z pulpitu albo menu Start. To konsola z gotowymi komendami. Nagrania wrzucaj do `Dokumenty\Audio_sesje_rpg`, a potem wpisz `rpg-chronicler run --offline`.
+
+Pobieranie z Google Drive (rclone) i Claude Code trzeba na Windowsie zainstalować osobnie.
 
 ## Konfiguracja
 

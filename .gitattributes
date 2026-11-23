@@ -1,0 +1,3 @@
+# Skrypty Windowsa: bez zmiany końców linii (CRLF w repozytorium, BOM w .ps1 - wymaga Windows PowerShell 5.1)
+*.bat -text
+*.ps1 -text

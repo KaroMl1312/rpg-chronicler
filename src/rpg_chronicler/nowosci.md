@@ -1,5 +1,10 @@
 # Nowości
 
+## 1.003 – 2026-11-23
+
+- **Instalator na Windowsa (wersja testowa):** po pobraniu programu wystarczy kliknąć instaluj-windows.bat. Instalator sam pobiera Pythona, ffmpeg i biblioteki, pyta o klucze i tworzy skróty do okna programu i do konsoli z komendami. 
+- **Nowe okno programu (wersja wstępna):** lekkie okno na Windowsa i Linuksa, które zastąpi dotychczasowe. Na razie ma listę sesji, transkrypcję, kronikę ze skrótem i cytatami, uruchamianie zadań z postępem, ustawienia z kluczami API i nowości. Mówcy, Discord, poprawki kroniki i zakładka Kampanie dojdą w kolejnych wersjach. Na Linuksie: ./rpg-chronicler-okno, na Windowsie: skrót „RPG Chronicles”.
+
 ## 1.002 – 2026-11-22
 
 - **Przycinanie nagrań FLAC i WAV działa z każdą wersją ffmpeg:** w ffmpeg 8.0 (np. Ubuntu 26.04) przycinanie tych plików kończyło się błędem „Przycięte nagranie ma … zamiast …” i nagranie zostawało bez zmian. Teraz wszystkie formaty są cięte tym samym sposobem.

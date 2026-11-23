@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RPG Chronicles</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <div class="bar">
+      <div class="switcher" id="main-switch">
+        <button data-main="sesje" class="active">Sesje</button>
+        <button data-main="kampanie">Kampanie</button>
+      </div>
+      <span class="grow"></span>
+      <button class="btn flat icon" id="menu-button" title="Menu"></button>
+    </div>
+    <div class="bar" id="session-tools">
+      <select id="filter" class="grow" title="Kampania"></select>
+    </div>
+    <ul id="session-list"></ul>
+    <div class="sidebar-foot">
+      <button class="btn suggested" id="process-all"
+              title="Transkrypcja nowych nagrań, kroniki i wysyłka na Google Drive">Przetwórz wszystko</button>
+    </div>
+  </aside>
+
+  <main id="content">
+    <header class="bar" id="session-header">
+      <span class="left" id="session-name"></span>
+      <div class="tabs" id="session-tabs">
+        <button data-tab="transkrypcja">Transkrypcja</button>
+        <button data-tab="kronika">Kronika</button>
+      </div>
+      <div class="right" id="header-right"></div>
+    </header>
+    <div id="toolbar" class="toolbar" hidden></div>
+    <section id="view"></section>
+  </main>
+
+  <footer id="taskbar" hidden>
+    <div class="task-text">
+      <div class="task-title" id="task-title"></div>
+      <div class="task-stage" id="task-stage"></div>
+      <div class="progress" id="task-progress"><div></div></div>
+    </div>
+    <button class="btn flat" id="task-log">Log</button>
+    <button class="btn" id="task-cancel">Przerwij</button>
+  </footer>
+</div>
+<div id="toasts"></div>
+</body>
+</html>
