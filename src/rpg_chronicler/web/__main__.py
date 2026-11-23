@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import webbrowser
 from pathlib import Path
@@ -25,9 +26,41 @@ def _webview(url: str) -> bool:
         import webview
     except ImportError:
         return False
-    webview.create_window("RPG Chronicles", url, width=1280, height=820, min_size=(900, 600), maximized=True)
+    window = webview.create_window("RPG Chronicles", url, width=1280, height=820, min_size=(900, 600), maximized=True)
+    window.events.closing += closing_handler(window)
     webview.start()
     return True
+
+
+def closing_handler(window):
+    """Zamykanie okna pywebview: strona zapisuje zmiany i pyta o trwające zadanie (confirmClose w app.js).
+
+    Zdarzenie przychodzi w wątku okna, więc JavaScript wołamy z osobnego wątku (inaczej zakleszczenie), a samo
+    zamknięcie odwołujemy (False) do czasu odpowiedzi.
+    """
+    state = {"asking": False, "done": False}
+
+    def answered(close) -> None:
+        state["asking"] = False
+        if close is not False:
+            state["done"] = True
+            window.destroy()
+
+    def ask() -> None:
+        try:
+            window.evaluate_js("confirmClose()", answered)
+        except Exception:  # strona nie działa - nie blokujemy zamknięcia
+            answered(True)
+
+    def on_closing():
+        if state["done"]:
+            return None
+        if not state["asking"]:
+            state["asking"] = True
+            threading.Thread(target=ask, daemon=True).start()
+        return False
+
+    return on_closing
 
 
 def _gtk_shell(url: str) -> bool:

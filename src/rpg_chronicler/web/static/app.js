@@ -15,11 +15,14 @@ const ICONS = {
   stop: '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>',
   search: '<svg viewBox="0 0 16 16"><path d="M6.5 1a5.5 5.5 0 0 1 4.4 8.8l3.7 3.7-1.4 1.4-3.7-3.7A5.5 5.5 0 1 1 6.5 1zm0 2a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7z"/></svg>',
   plus: '<svg viewBox="0 0 16 16"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg>',
+  trash: '<svg viewBox="0 0 16 16"><path d="M6 1h4l1 1h3v2H2V2h3zM3 5h10l-.8 10H3.8zm3 2v6h1V7zm3 0v6h1V7z"/></svg>',
+  next: '<svg viewBox="0 0 16 16"><path d="M5.5 2 11.5 8l-6 6-1.4-1.4L8.7 8 4.1 3.4z"/></svg>',
   close: '<svg viewBox="0 0 16 16"><path d="M3.5 2.1 8 6.6l4.5-4.5 1.4 1.4L9.4 8l4.5 4.5-1.4 1.4L8 9.4l-4.5 4.5-1.4-1.4L6.6 8 2.1 3.5z"/></svg>',
 };
 
 const state = {
   data: null,          // /api/state
+  main: "sesje",       // sesje / kampanie
   filter: null,        // klucz kampanii albo null = wszystkie
   current: null,       // nazwa wybranej sesji
   detail: null,        // /api/session
@@ -75,6 +78,8 @@ function toast(text, action, onAction) {
   const node = el("div", { class: "toast" }, el("span", {}, text));
   if (action) node.append(button(action, () => { node.remove(); onAction(); }, ""));
   $("#toasts").append(node);
+  const plain = [...document.querySelectorAll(".toast")].filter((t) => !t.querySelector("button"));
+  for (const old of plain.slice(0, -2)) old.remove();   // najwyżej dwa zwykłe naraz; te z przyciskiem zostają
   setTimeout(() => node.remove(), action ? 12000 : 5000);
 }
 
@@ -109,6 +114,13 @@ function ask(heading, text, responses) {
     const dialog = openDialog(null, [el("h3", {}, heading), el("div", {}, text)],
                               { footer, cls: "alert", onclose: () => resolve(answer) });
   });
+}
+
+// Nie udało się zapisać: zostać czy porzucić wpisane zmiany (true = porzuć)
+async function confirmDiscard(text) {
+  const answer = await ask("Zmiany nie są zapisane", `${text} Porzucić je?`,
+                           [["stay", "Zostań"], ["drop", "Porzuć zmiany", "destructive"]]);
+  return answer === "drop";
 }
 
 let openPopover = null;
@@ -178,7 +190,7 @@ async function pollTask() {
     if (!first) {
       const f = task.finished;
       toast(`${f.title}: ${f.description}`, f.success ? null : "Pokaż log", showLog);
-      for (const p of f.proposals || []) toast(p.text);
+      for (const p of f.proposals || []) toast(p.text, "Przejrzyj", () => showCampaign(p.campaign, p.text.includes("słownika") ? "slownik" : "ogolne"));
       await refresh();
     }
   }
@@ -206,7 +218,11 @@ async function refresh() {
   state.data = await api("/api/state");
   renderFilter();
   renderList();
-  if (state.current && !state.data.sessions.some((s) => s.name === state.current)) state.current = null;
+  if (state.current && !state.data.sessions.some((s) => s.name === state.current)) {   // sesja usunięta
+    state.current = null;
+    forgetSpeakers();
+  }
+  if (state.main === "kampanie") return renderCampaigns();
   if (state.current) await loadSession(state.current, false);
   else renderEmpty();
 }
@@ -240,6 +256,7 @@ function renderList() {
 }
 
 function renderEmpty() {
+  $("#campaign-tabs").hidden = true;
   $("#session-name").textContent = "";
   $("#session-tabs").hidden = true;
   $("#header-right").replaceChildren();
@@ -256,29 +273,37 @@ function renderEmpty() {
 
 async function loadSession(name, resetMode = true) {
   if (state.current !== name) {
-    await autosaveSpeakers();
+    if (!(await autosaveSpeakers())) return;
     stopPlayback();
     if (resetMode) state.mode = "kronika";
   }
   state.current = name;
   renderList();
-  try {
-    state.detail = await api(`/api/session?name=${encodeURIComponent(name)}`);
-  } catch (e) { return toast(e.message); }
-  renderSession();
+  let detail;
+  try { detail = await api(`/api/session?name=${encodeURIComponent(name)}`); } catch (e) { return toast(e.message); }
+  if (state.current !== name) return;   // w międzyczasie wybrano inną sesję
+  state.detail = detail;
+  if (state.main === "sesje") renderSession();
 }
+
+let keepScroll = 0;
 
 function renderSession() {
   const d = state.detail;
   $("#session-name").textContent = d.name;
   $("#session-tabs").hidden = false;
+  $("#campaign-tabs").hidden = true;
+  const view = $("#view");
+  const place = `${d.name}/${state.tab}/${state.mode}`;   // odświeżenie tego samego widoku nie przewija do góry
+  keepScroll = view.dataset.place === place ? view.scrollTop : 0;
+  view.dataset.place = place;
   const transcriptTab = $('#session-tabs [data-tab="transkrypcja"]');
   transcriptTab.textContent = d.from_notes ? "Notatki" : "Transkrypcja";
   $('#session-tabs [data-tab="mowcy"]').hidden = d.from_notes;
   if (d.from_notes && state.tab === "mowcy") state.tab = "transkrypcja";
   for (const b of document.querySelectorAll("#session-tabs button")) b.classList.toggle("active", b.dataset.tab === state.tab);
   $("#header-right").replaceChildren(
-    d.campaign ? button(`Kampania ${d.campaign}`, () => showMain("kampanie"), "btn flat", { title: "Otwórz kampanię" }) : "",
+    d.campaign ? button(`Kampania ${d.campaign}`, () => showCampaign(d.campaign), "btn flat", { title: "Otwórz kampanię" }) : "",
     iconButton("more", "Notatki i usuwanie sesji", sessionMenu));
   if (state.tab === "transkrypcja") renderTranscript();
   else if (state.tab === "mowcy") renderSpeakers();
@@ -296,10 +321,11 @@ async function renderTranscript() {
       d.audio ? taskButton("Transkrybuj", `Transkrypcja ${d.name}`, ["transcribe", d.name], "btn suggested") : null));
     return;
   }
-  $("#view").replaceChildren(el("div", { class: "empty" }, "Wczytywanie…"));
+  const scroll = keepScroll;
+  if (!scroll) $("#view").replaceChildren(el("div", { class: "empty" }, "Wczytywanie…"));
   let t;
   try { t = await api(`/api/transcript?name=${encodeURIComponent(d.name)}`); } catch (e) { return toast(e.message); }
-  if (state.detail !== d || state.tab !== "transkrypcja") return;
+  if (state.detail !== d || state.tab !== "transkrypcja" || state.main !== "sesje") return;
   if (t.kind === "notatki") {
     toolbar.hidden = false;
     toolbar.replaceChildren(el("span", { class: "info" },
@@ -309,7 +335,7 @@ async function renderTranscript() {
   }
   const page = el("div", { class: "page" });
   // Długie transkrypcje (tysiące wypowiedzi) dokładamy partiami, żeby okno nie zamarło
-  let index = 0;
+  let index = 0, scrolled = false;
   const addChunk = () => {
     const fragment = document.createDocumentFragment();
     for (const b of t.blocks.slice(index, index + 400)) {
@@ -318,7 +344,8 @@ async function renderTranscript() {
     }
     page.append(fragment);
     index += 400;
-    if (index < t.blocks.length) requestAnimationFrame(addChunk);
+    if (scroll && page.isConnected && page.offsetHeight > scroll && !scrolled) { $("#view").scrollTop = scroll; scrolled = true; }
+    if (index < t.blocks.length && (page.isConnected || index <= 400)) requestAnimationFrame(addChunk);
   };
   $("#view").replaceChildren(page);
   addChunk();
@@ -342,7 +369,7 @@ function renderChronicle() {
   const modes = el("div", { class: "switcher" }, [["kronika", "Kronika"], ["skrot", "Skrót"], ["cytaty", "Cytaty"]]
     .filter(([key]) => key !== "cytaty" || !d.from_notes)
     .map(([key, label]) => el("button", { class: state.mode === key ? "active" : "",
-                                          onclick: () => { state.mode = key; renderChronicle(); } }, label)));
+                                          onclick: () => { state.mode = key; renderSession(); } }, label)));
   const pdfButton = d.pdf_current
     ? button("PDF", () => api("/api/open-session-file", { name: d.name, kind: "pdf" }).catch((e) => toast(e.message)),
              "btn", { title: "Otwórz PDF kroniki" })
@@ -386,11 +413,12 @@ function renderChronicle() {
       taskButton("Wybierz cytaty", `Cytaty z sesji ${d.name}`, ["quotes", d.name, ...providerArgs()], "btn suggested")));
   }
   $("#view").replaceChildren(page);
+  $("#view").scrollTop = keepScroll;
 }
 
 async function summarize(force) {
   if (speakersState.name) {   // niezapisane imiona mówców - zapis przed kroniką
-    await autosaveSpeakers();
+    if (!(await autosaveSpeakers())) return;
     await loadSession(state.current, false);
   }
   const d = state.detail;
@@ -411,7 +439,8 @@ async function summarize(force) {
   if (d.memory_warning) {
     const answer = await ask("Stan kampanii czeka na zatwierdzenie",
       `${d.memory_warning}\n\nZatwierdź propozycję w zakładce „Kampanie”, żeby kronika znała najnowszy stan świata.`,
-      [["cancel", "Anuluj"], ["generate", "Generuj mimo to", "suggested"]]);
+      [["cancel", "Anuluj"], ["generate", "Generuj mimo to"], ["campaigns", "Otwórz Kampanie", "suggested"]]);
+    if (answer === "campaigns") return showCampaign(d.campaign, "ogolne");
     if (answer !== "generate") return;
   }
   const args = ["summarize", "--no-interactive", ...providerArgs()];
@@ -420,24 +449,43 @@ async function summarize(force) {
   startTask(`Kronika ${d.name}`, [...args, d.name]);
 }
 
-// --- kampanie (następny etap) -------------------------------------------------------------------
+// --- Sesje / Kampanie (widok kampanii: kampanie.js) ---------------------------------------------------
 
+// false, gdy nie udało się zapisać wpisanych zmian i użytkownik woli zostać
 async function showMain(name) {
-  await autosaveSpeakers();
+  if (!(await autosaveSpeakers()) || !(await leaveEntry())) return false;
   stopPlayback();
+  hideTip();
+  collectDrafts();
+  state.main = name;
   for (const b of document.querySelectorAll("#main-switch button")) b.classList.toggle("active", b.dataset.main === name);
   const sessions = name === "sesje";
-  $("#session-tools").hidden = !sessions;
-  $("#session-list").hidden = !sessions;
-  $(".sidebar-foot").hidden = !sessions;
-  if (sessions) return refresh();
-  $("#session-name").textContent = "";
-  $("#session-tabs").hidden = true;
-  $("#header-right").replaceChildren();
-  $("#toolbar").hidden = true;
-  $("#view").replaceChildren(el("div", { class: "empty" }, el("h2", {}, "Kampanie – wkrótce"),
-    el("div", {}, "Zakładka Kampanie powstaje w kolejnym etapie nowego okna. Do tego czasu słownik, pamięć kampanii "
-                  + "i przygotowanie do sesji są w dotychczasowym oknie programu.")));
+  for (const id of ["#session-tools", "#session-list", "#session-foot"]) $(id).hidden = !sessions;
+  for (const id of ["#campaign-list", "#campaign-foot"]) $(id).hidden = sessions;
+  await refresh();
+  return true;
+}
+
+// Zamykanie okna (wołają je okno_gtk.py i __main__.py): zapisuje wpisane zmiany i pyta, gdy coś by przepadło.
+// true = można zamknąć. Trwające zadanie przerywa serwer po zamknięciu okna.
+async function confirmClose() {
+  try {
+    if (!(await saveSpeakerEdits())) return false;
+    if (!(await saveEntry()) && !(await confirmDiscard("Nie udało się zapisać opisu hasła."))) return false;
+    if (unsavedTexts() && !(await confirmDiscard("Masz niezapisany tekst w zakładce Kampanie."))) return false;
+    const task = await api("/api/task?since=" + Number.MAX_SAFE_INTEGER);
+    if (task.running) {
+      const answer = await ask("Zadanie jest w toku", `„${task.title}” zostanie przerwane. Zamknąć mimo to?`,
+                               [["cancel", "Nie zamykaj"], ["close", "Przerwij i zamknij", "destructive"]]);
+      return answer === "close";
+    }
+  } catch { /* serwer nie odpowiada - nie ma czego zapisać, okno można zamknąć */ }
+  return true;
+}
+
+function unsavedTexts() {
+  collectDrafts();
+  return [...camp.drafts.values()].some((d) => d.long);
 }
 
 // --- menu główne, ustawienia, nowości -----------------------------------------------------------
@@ -550,7 +598,7 @@ function init() {
   });
   for (const b of document.querySelectorAll("#session-tabs button")) {
     b.addEventListener("click", async () => {
-      if (state.tab === "mowcy" && b.dataset.tab !== "mowcy") await autosaveSpeakers();
+      if (state.tab === "mowcy" && b.dataset.tab !== "mowcy" && !(await autosaveSpeakers())) return;
       state.tab = b.dataset.tab;
       renderSession();
     });
@@ -564,6 +612,10 @@ function init() {
   $("#process-all").addEventListener("click", () =>
     startTask("Pełny przebieg", ["run", "--no-interactive", ...providerArgs()]));
   $("#process-all").dataset.task = "1";
+  $("#add-campaign").addEventListener("click", addCampaignMenu);
+  window.addEventListener("beforeunload", (e) => {   // przeglądarka; okna GTK i pywebview wołają confirmClose
+    if (state.running || speakersEdited() || unsavedTexts()) e.preventDefault();
+  });
   $("#task-cancel").addEventListener("click", () => api("/api/task/cancel", {}));
   $("#task-log").addEventListener("click", showLog);
   document.addEventListener("keydown", (e) => {
@@ -580,7 +632,13 @@ function init() {
   // #okno=… otwiera okno dialogowe od razu (zrzuty ekranu i test okna bez klikania)
   const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
                     discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika") };
-  refresh().then(() => HASH.get("s") ? loadSession(HASH.get("s"), false) : null)
+  if (HASH.get("kampania")) {
+    camp.key = HASH.get("kampania");
+    camp.tab = HASH.get("ktab") || camp.tab;
+  }
+  refresh().then(() => camp.key ? showMain("kampanie") : null)
+    .then(() => HASH.get("haslo") ? openEntry(HASH.get("haslo")) : null)
+    .then(() => HASH.get("s") ? loadSession(HASH.get("s"), false) : null)
     .then(() => { const open = dialogs[HASH.get("okno")]; if (open) return open(); })
     .then(pollTask).catch((e) => {
     $("#view").replaceChildren(el("div", { class: "empty" }, el("h2", {}, "Nie można połączyć się z programem"),

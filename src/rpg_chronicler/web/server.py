@@ -19,10 +19,11 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..session import SessionNotFound
-from . import api, session_api
+from . import api, campaign_api, session_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
+BODY_LIMIT = 32 * 1024 * 1024  # bajtów zapytania (zdjęcie hasła w base64)
 
 
 def open_with_system(path: str) -> None:
@@ -72,6 +73,22 @@ class App:
             ("GET", "/api/delete/options"): lambda q, b: session_api.delete_options(q["name"]),
             ("GET", "/api/search"): lambda q, b: session_api.run_search(
                 q.get("q", ""), q.get("campaign"), q.get("chronicles", "1") == "1", q.get("transcripts", "1") == "1"),
+            # etap 3: kampanie
+            ("GET", "/api/campaigns"): lambda q, b: campaign_api.campaign_list(),
+            ("POST", "/api/campaigns"): lambda q, b: campaign_api.create(b["key"]),
+            ("GET", "/api/campaign"): lambda q, b: campaign_api.detail(q["key"]),
+            ("POST", "/api/campaign"): lambda q, b: campaign_api.change(b["key"], b["what"], b),
+            ("POST", "/api/campaign/proposals"): lambda q, b: campaign_api.resolve_proposals(
+                b["key"], b["shown"], b["accepted"]),
+            ("POST", "/api/campaign/memory"): lambda q, b: campaign_api.memory_action(
+                b["key"], b["action"], str(b.get("text", "")), b.get("session")),
+            ("POST", "/api/campaign/forget"): lambda q, b: campaign_api.forget_answer(
+                b["key"], b["question"], b["asked"]),
+            ("POST", "/api/campaign/remove-webhook"): lambda q, b: campaign_api.remove_webhook(b["key"]),
+            ("GET", "/api/entry"): lambda q, b: campaign_api.entry(q["key"], q["name"]),
+            ("POST", "/api/entry/upload"): lambda q, b: campaign_api.upload_image(
+                b["key"], b["name"], b["filename"], b["data"]),
+            ("POST", "/api/entry/image"): lambda q, b: campaign_api.image_action(b["key"], b["name"], b["action"]),
         }
 
     def _open(self, path: str) -> dict:
@@ -145,12 +162,17 @@ def make_handler(app: App, port_holder: list):
             app.last_seen = time.monotonic()
             if method == "GET" and url.path == "/api/audio":
                 return self._audio(query)
+            if method == "GET" and url.path == "/api/image":
+                return self._image(query)
             route = routes.get((method, url.path))
             if route is None:
                 return self._error(HTTPStatus.NOT_FOUND, f"Nieznane zapytanie {url.path}")
             body = {}
             if method == "POST":
                 length = int(self.headers.get("Content-Length") or 0)
+                if length > BODY_LIMIT:
+                    self.close_connection = True
+                    return self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "Za duży plik")
                 try:
                     body = json.loads(self.rfile.read(length) or b"{}")
                 except json.JSONDecodeError:
@@ -163,6 +185,15 @@ def make_handler(app: App, port_holder: list):
                 import traceback
                 traceback.print_exc()
                 self._error(HTTPStatus.INTERNAL_SERVER_ERROR, f"{type(e).__name__}: {e}")
+
+        def _image(self, query: dict) -> None:
+            """Zdjęcie hasła albo propozycja od AI (klucz w ?t=, bo <img> nie wysyła nagłówków)."""
+            try:
+                path = campaign_api.image_file(query["key"], query["name"], query.get("proposal") == "1")
+                data = Path(path).read_bytes()
+            except (KeyError, ValueError, OSError):
+                return self._error(HTTPStatus.NOT_FOUND, "Brak zdjęcia")
+            self._send(HTTPStatus.OK, data, mimetypes.guess_type(path)[0] or "application/octet-stream")
 
         def _audio(self, query: dict) -> None:
             """Nagranie sesji z obsługą zakresów (Range) - odtwarzacz pobiera tylko potrzebny fragment."""

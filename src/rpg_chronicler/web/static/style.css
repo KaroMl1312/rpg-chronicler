@@ -84,14 +84,14 @@ select, input[type=text], input[type=password], input[type=number], textarea {
 select { cursor: pointer; }
 
 /* --- lista sesji --- */
-#session-list { list-style: none; margin: 0; padding: 4px 8px; overflow-y: auto; flex: 1; }
-#session-list li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px;
+.side-list { list-style: none; margin: 0; padding: 4px 8px; overflow-y: auto; flex: 1; }
+.side-list li { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px;
                    cursor: pointer; }
-#session-list li:hover { background: var(--hover); }
-#session-list li.active { background: var(--selected); }
-#session-list .names { flex: 1; min-width: 0; }
-#session-list .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#session-list .sub { font-size: 12.5px; color: var(--dim); }
+.side-list li:hover { background: var(--hover); }
+.side-list li.active { background: var(--selected); }
+.side-list .names { flex: 1; min-width: 0; }
+.side-list .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-list .sub { font-size: 12.5px; color: var(--dim); }
 .state-ok { color: var(--ok); }
 .state-sent { color: var(--accent); }
 .state-old { color: var(--warn); }
@@ -99,12 +99,16 @@ select { cursor: pointer; }
 .sidebar-foot .btn { width: 100%; }
 
 /* --- treść sesji --- */
-#session-header { border-bottom: 1px solid var(--border); justify-content: center; position: relative; }
-#session-header .left { position: absolute; left: 12px; font-weight: 700; }
-#session-header .right { position: absolute; right: 10px; display: flex; gap: 6px; }
+#session-header { border-bottom: 1px solid var(--border); }
+#session-header .left, #session-header .right { flex: 1 1 0; min-width: 0; }
+#session-header .left { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
+#session-header .right { display: flex; gap: 6px; justify-content: flex-end; }
+#session-header .right .btn:not(.icon) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+#session-header .right .icon { flex: none; }
+#session-header .tabs { flex: none; }
 .tabs { display: inline-flex; gap: 4px; }
 .tabs button { border: none; background: transparent; padding: 6px 16px; border-radius: 8px; font-weight: 600;
-               cursor: pointer; }
+               cursor: pointer; white-space: nowrap; }
 .tabs button:hover { background: var(--hover); }
 .tabs button.active { background: var(--selected); }
 
@@ -193,6 +197,43 @@ textarea { width: 100%; min-height: 110px; resize: vertical; line-height: 1.5; }
 .search-bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
 .search-bar input[type=text] { flex: 1; min-width: 200px; }
 
+/* kampanie */
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; margin-left: 6px; }
+.badge { background: var(--accent); color: var(--accent-text); border-radius: 9px; padding: 0 7px; font-size: 12px;
+         margin-left: 6px; }
+.narrow { max-width: 560px; }
+.dim, .hint { color: var(--dim); }
+.hint { font-size: 12.5px; font-weight: 400; }
+.grow { flex: 1; min-width: 0; }
+.mono { font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace; font-size: 13.5px; min-height: 260px; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.actions.center { justify-content: center; }
+.actions.start { justify-content: flex-start; align-items: center; }
+.spaced { margin-top: 14px; }
+.row.block { flex-direction: column; align-items: stretch; gap: 6px; }
+.row input[type=text].short { width: 170px; }
+.row input[type=text].grow { width: auto; max-width: none; flex: 1; }
+.row .label { overflow-wrap: anywhere; }
+.one-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row.entry .label { min-width: 0; }
+.thumb { width: 34px; height: 34px; object-fit: cover; border-radius: 6px; flex: none; }
+.rows details { border-top: 1px solid var(--border); }
+.rows summary { padding: 10px 14px; cursor: pointer; }
+.names-list .row { padding-left: 24px; }
+.prep { border-top: 1px solid var(--border); }
+.prep:first-child { border-top: none; }
+.prep details { border-top: none; }
+.prep summary { padding: 0 14px 10px; color: var(--accent); font-size: 13.5px; }
+.prep details > div, .answer > div { padding: 0 16px 14px; }
+.pre { white-space: pre-wrap; }
+.tip { position: fixed; z-index: 60; width: 320px; background: var(--card); border: 1px solid var(--border);
+       border-radius: var(--radius); box-shadow: var(--shadow); padding: 10px 12px; font-size: 13.5px; pointer-events: none; }
+.tip img { width: 100%; max-height: 220px; object-fit: cover; border-radius: 8px; margin-bottom: 6px; display: block; }
+.entry-head { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+.entry-head h2 { margin: 0; font-size: 20px; }
+.entry-picture { text-align: center; }
+.entry-image { max-width: 100%; width: 320px; border-radius: var(--radius); margin-top: 6px; }
+
 /* --- menu --- */
 .popover { position: fixed; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
            box-shadow: var(--shadow); padding: 6px; min-width: 220px; z-index: 50; }
@@ -249,7 +290,8 @@ pre.log { font: 12.5px/1.45 ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", m
 
 /* --- powiadomienia --- */
 #toasts { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); display: flex;
-          flex-direction: column; gap: 8px; z-index: 100; align-items: center; }
+          flex-direction: column; gap: 8px; z-index: 100; align-items: center; pointer-events: none; }
+.toast button { pointer-events: auto; }
 .toast { background: #333338; color: #fff; padding: 10px 16px; border-radius: 22px; box-shadow: var(--shadow);
          display: flex; gap: 12px; align-items: center; max-width: 80vw; }
 .toast button { background: transparent; border: none; color: #8fc1ff; font-weight: 700; cursor: pointer; }
@@ -258,3 +300,5 @@ pre.log { font: 12.5px/1.45 ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", m
   #app { grid-template-columns: 1fr; }
   #sidebar { display: none; }
 }
+
+@media (max-width: 1050px) { .tabs button { padding: 6px 10px; } }

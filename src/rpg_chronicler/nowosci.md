@@ -1,5 +1,12 @@
 # Nowości
 
+## 1.005 – 2026-11-23
+
+- **Nowe okno: zakładka „Kampanie”.** Opis świata i styl obrazków, pamięć kampanii, kanał Discord, słownik z propozycjami AI, opisy i zdjęcia haseł (także obrazki od AI), „Poprzednio w kampanii…”, pomysły na sesję, notatki MG, „Zapytaj kronikarza”, encyklopedia i dzienniki postaci.
+- **Naprawiono odsłuch w nowym oknie:** w wersji 1.004 przycisk ▶ nie odtwarzał nagrania.
+- **Niezapisane teksty w nowym oknie nie przepadają:** imiona mówców zostają w polach, gdy w tle skończy się zadanie, a przed zamknięciem okna program zapisuje zmiany i pyta, gdy trwa zadanie (wcześniej po cichu je przerywał).
+- **Bezpieczniejszy zapis kampanii w nowym oknie:** jeśli plik kampanii ma błąd po ręcznej edycji, program nie nadpisuje go, tylko pokazuje komunikat.
+
 ## 1.004 – 2026-11-23
 
 - **Nowe okno: praca z sesją.** Doszły:

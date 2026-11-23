@@ -4,9 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RPG Chronicles</title>
+<link rel="icon" href="data:,">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/app.js" defer></script>
 <script src="/static/sesja.js" defer></script>
+<script src="/static/kampanie.js" defer></script>
 </head>
 <body>
 <div id="app">
@@ -24,8 +26,12 @@
       <button class="btn flat icon" id="search-button" title="Szukaj w sesjach (Ctrl+F)"></button>
       <button class="btn flat icon" id="add-notes" title="Dodaj sesję z notatek MG (Ctrl+N)"></button>
     </div>
-    <ul id="session-list"></ul>
-    <div class="sidebar-foot">
+    <ul id="session-list" class="side-list"></ul>
+    <ul id="campaign-list" class="side-list" hidden></ul>
+    <div class="sidebar-foot" id="campaign-foot" hidden>
+      <button class="btn" id="add-campaign">Dodaj kampanię</button>
+    </div>
+    <div class="sidebar-foot" id="session-foot">
       <button class="btn suggested" id="process-all"
               title="Transkrypcja nowych nagrań, kroniki i wysyłka na Google Drive">Przetwórz wszystko</button>
     </div>
@@ -39,6 +45,7 @@
         <button data-tab="mowcy">Mówcy</button>
         <button data-tab="kronika">Kronika</button>
       </div>
+      <div class="tabs" id="campaign-tabs" hidden></div>
       <div class="right" id="header-right"></div>
     </header>
     <div id="toolbar" class="toolbar" hidden></div>
@@ -56,6 +63,6 @@
   </footer>
 </div>
 <div id="toasts"></div>
-<audio id="player" preload="none"></audio>
+<audio id="player" preload="metadata"></audio>
 </body>
 </html>

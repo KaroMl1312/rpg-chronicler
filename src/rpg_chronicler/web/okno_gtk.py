@@ -11,7 +11,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("WebKit", "6.0")
-from gi.repository import Gio, Gtk, WebKit  # noqa: E402
+from gi.repository import Gio, GLib, Gtk, WebKit  # noqa: E402
 
 APP_ID = "pl.rpgchronicler.Kronikarz"
 
@@ -30,9 +30,29 @@ def main(url: str) -> int:
             Gtk.UriLauncher.new(target).launch(None, None, None)
         return True
 
+    def on_close(window, view):
+        """Strona zapisuje wpisane zmiany i pyta o trwające zadanie (confirmClose w app.js), potem zamykamy."""
+        if window.closing:
+            return True   # pytanie już jest na ekranie
+        window.closing = True
+
+        def answered(view_, result):
+            window.closing = False
+            try:
+                close = view_.call_async_javascript_function_finish(result).to_boolean()
+            except GLib.Error:
+                close = True   # strona nie działa - nie blokujemy zamknięcia
+            if close:
+                window.destroy()
+
+        view.call_async_javascript_function("return await confirmClose()", -1, None, None, None, None, answered)
+        return True
+
     def activate(app):
         window = Gtk.ApplicationWindow(application=app, title="RPG Chronicles", default_width=1280, default_height=820)
+        window.closing = False
         view = WebKit.WebView()
+        window.connect("close-request", on_close, view)
         if os.environ.get("RPG_CHRONICLER_DEBUG"):
             view.get_settings().set_enable_developer_extras(True)
         view.connect("decide-policy", on_policy)

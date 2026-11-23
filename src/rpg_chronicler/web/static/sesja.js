@@ -36,10 +36,11 @@ function togglePlay(session, start, end, key) {
   const audio = $("#player");
   if (player.key === key) return stopPlayback();
   const src = `/api/audio?name=${encodeURIComponent(session)}&t=${encodeURIComponent(TOKEN)}`;
-  if (!audio.src.endsWith(src)) audio.src = src;
   player.key = key;
+  if (!audio.src.endsWith(src)) { audio.src = src; audio.load(); }   // bez load() metadane by nie przyszły
   player.end = end;
   const begin = () => {
+    if (player.key !== key) return;   // w międzyczasie kliknięto inny fragment albo stop
     audio.currentTime = Math.max(0, start);
     audio.play().catch((e) => { toast(`Nie można odtworzyć nagrania: ${e.message}`); stopPlayback(); });
   };
@@ -69,11 +70,6 @@ function speakerEdits() {
   return Object.fromEntries(Object.entries(speakersState.inputs).map(([k, input]) => [k, input.value.trim()]));
 }
 
-function speakersDirty() {
-  if (!speakersState.name) return false;
-  return JSON.stringify(speakerEdits()) !== JSON.stringify(speakersState.saved) || speakersState.prefilled;
-}
-
 async function saveSpeakers(notify = true) {
   const name = speakersState.name;
   const mapping = speakerEdits();
@@ -92,21 +88,39 @@ async function saveSpeakers(notify = true) {
 }
 
 // Niezapisane imiona zapisujemy przy zmianie sesji, zakładki i przed kroniką (jak w starym oknie)
+// Zwraca false, gdy zapis się nie udał i użytkownik woli zostać (wpisy zostają w polach).
 async function autosaveSpeakers() {
-  if (speakersDirty() && JSON.stringify(speakerEdits()) !== JSON.stringify(speakersState.saved)) {
-    await saveSpeakers(false);
-  }
+  if (!(await saveSpeakerEdits())) return false;
+  forgetSpeakers();
+  return true;
+}
+
+async function saveSpeakerEdits() {
+  if (!speakersEdited() || !Object.values(speakerEdits()).some(Boolean)) return true;
+  return (await saveSpeakers(false)) || confirmDiscard("Nie udało się zapisać imion mówców.");
+}
+
+function forgetSpeakers() {
   speakersState.name = null;
   speakersState.inputs = {};
+}
+
+// Zmiany użytkownika (imiona wpisane przez rozpoznawanie głosu się nie liczą - zapis dopiero po zatwierdzeniu)
+function speakersEdited() {
+  return Boolean(speakersState.name) && JSON.stringify(speakerEdits()) !== JSON.stringify(speakersState.saved);
 }
 
 async function renderSpeakers() {
   const d = state.detail;
   $("#toolbar").hidden = true;
-  $("#view").replaceChildren(el("div", { class: "empty" }, "Wczytywanie…"));
+  // Odświeżenie tej samej sesji (np. koniec zadania): pola zostają na ekranie, a wpisy przechodzą do nowych
+  const again = speakersState.name === d.name && $("#view .save-bar") !== null;
+  if (!again) $("#view").replaceChildren(el("div", { class: "empty" }, "Wczytywanie…"));
   let s;
   try { s = await api(`/api/speakers?name=${encodeURIComponent(d.name)}`); } catch (e) { return toast(e.message); }
-  if (state.detail !== d || state.tab !== "mowcy") return;
+  if (state.detail !== d || state.tab !== "mowcy" || state.main !== "sesje") return;
+  const keep = again && speakersEdited() ? speakerEdits() : null;
+  const scroll = again ? $("#view").scrollTop : 0;
   if (s.state !== "ok") {
     $("#view").replaceChildren(el("div", { class: "empty" },
       el("h2", {}, s.state === "brak-transkrypcji" ? "Brak transkrypcji" : "Brak rozpoznanych mówców"),
@@ -174,7 +188,11 @@ async function renderSpeakers() {
   }
   speakersState.saved = speakerEdits();
   speakersState.prefilled = false;
-  if (!d.has_speakers) {
+  if (keep) {
+    for (const [label, value] of Object.entries(keep)) {
+      if (speakersState.inputs[label]) speakersState.inputs[label].value = value;
+    }
+  } else if (!d.has_speakers) {
     const filled = fillRecognized(s, false);
     if (filled) {
       speakersState.saved = speakerEdits();
@@ -184,6 +202,7 @@ async function renderSpeakers() {
   }
   page.append(el("div", { class: "save-bar" }, button("Zapisz mówców", () => saveSpeakers(), "btn suggested")));
   $("#view").replaceChildren(page);
+  $("#view").scrollTop = scroll;
 }
 
 function fillRecognized(s, notify) {
@@ -206,7 +225,7 @@ function reviseDialog() {
     const instruction = text.value.trim();
     if (!instruction) return toast("Napisz, co poprawić");
     dialog.close();
-    startTask(`Poprawka kroniki ${d.name}`, ["revise", d.name, instruction, ...providerArgs()]);
+    startTask(`Poprawka kroniki ${d.name}`, ["revise", d.name, ...providerArgs(), "--", instruction]);
   };
   const dialog = openDialog("Popraw kronikę", [
     el("div", { class: "field" }, el("div", { class: "hint" },
@@ -243,7 +262,8 @@ async function discordDialog() {
   const rows = el("div", { class: "rows" });
   if (info.webhook) {
     rows.append(el("div", { class: "row" }, el("div", { class: "label" }, `Kanał kampanii ${info.campaign}`,
-      el("div", { class: "hint" }, "webhook ustawiony (zmiana: zakładka Kampanie)"))));
+      el("div", { class: "hint" }, "webhook ustawiony")),
+      button("Zmień", () => { dialog.close(); showCampaign(info.campaign, "ogolne"); }, "btn flat")));
   } else {
     const input = el("input", { type: "password", placeholder: "https://discord.com/api/webhooks/…" });
     rows.append(el("div", { class: "row" }, el("div", { class: "label" }, `Adres webhooka kanału ${info.campaign}`,
@@ -453,7 +473,7 @@ function searchDialog() {
           dialog.close();
           state.tab = h.tab;
           if (h.tab === "kronika") state.mode = "kronika";
-          showMain("sesje").then(() => loadSession(h.session, false));
+          showMain("sesje").then((ok) => ok && loadSession(h.session, false));
         }, "btn flat", { title: h.tab === "kronika" ? "Otwórz kronikę" : "Otwórz transkrypcję" }));
     }));
   };
