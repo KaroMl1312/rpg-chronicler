@@ -6,7 +6,7 @@ from ..config import (
 )
 from ..version import VERSION
 from .audio import cmd_benchmark, cmd_record, cmd_silence, cmd_trim, cmd_voices
-from .campaigns import cmd_glossary, cmd_memory
+from .campaigns import KEEP_CHOICES, cmd_glossary, cmd_memory, cmd_sync_campaigns
 from .chronicles import (cmd_ask, cmd_backfill, cmd_brief, cmd_describe, cmd_diary, cmd_discord, cmd_discord_test,
                          cmd_encyclopedia, cmd_gm_notes, cmd_ideas, cmd_image, cmd_pdf, cmd_quotes, cmd_recap,
                          cmd_revise, cmd_search)
@@ -274,6 +274,16 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("discord-test", help="wyślij wiadomość testową na kanał Discord kampanii")
     p.add_argument("campaign", metavar="KAMPANIA")
     p.set_defaults(func=cmd_discord_test)
+
+    p = sub.add_parser("sync-campaigns", help="dwukierunkowa synchronizacja danych kampanii z Google Drive "
+                                              "(kampanie.toml, kampanie/, obrazy/) z wykrywaniem konfliktów")
+    p.add_argument("--dry-run", action="store_true", help="tylko pokaż, co by się zmieniło")
+    p.add_argument("--force", action="store_true", help="pomiń bezpiecznik przy usuwaniu wielu plików")
+    p.add_argument("--konflikty", dest="conflicts", action="store_true", help="pokaż pliki w konflikcie")
+    p.add_argument("--rozstrzygnij", dest="resolve", metavar="PLIK", help="rozstrzygnij konflikt pliku (ścieżka z listy)")
+    p.add_argument("--zostaw", dest="keep", choices=sorted(KEEP_CHOICES),
+                   help="moja = ta z tego komputera, drive = z Google Drive, obie = wersja z Drive obok jako kopia")
+    p.set_defaults(func=cmd_sync_campaigns)
 
     p = sub.add_parser("glossary", help="AI proponuje słownik kampanii (nazwy) na podstawie jej kronik")
     p.add_argument("campaign", metavar="KAMPANIA", help="klucz kampanii, np. Warhammer")

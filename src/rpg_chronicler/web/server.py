@@ -19,8 +19,9 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..recording import RecordingError
+from ..storage.campaign_sync import SyncError
 from ..session import SessionNotFound
-from . import api, campaign_api, environment, prompts_api, record_api, recording_api, session_api
+from . import api, campaign_api, environment, prompts_api, record_api, recording_api, session_api, sync_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -103,6 +104,10 @@ class App:
             ("POST", "/api/rec/start"): lambda q, b: record_api.start(b["name"], b["device"], bool(b.get("upload"))),
             ("POST", "/api/rec/stop"): lambda q, b: record_api.stop(),
             ("GET", "/api/rec/finish-args"): lambda q, b: {"args": record_api.finish_args(q["name"])},
+            ("GET", "/api/sync"): lambda q, b: sync_api.status(),
+            ("POST", "/api/sync"): lambda q, b: sync_api.start(),
+            ("GET", "/api/sync/conflict"): lambda q, b: sync_api.conflict(q["path"]),
+            ("POST", "/api/sync/resolve"): lambda q, b: sync_api.resolve(b["path"], b["keep"]),
             ("GET", "/api/environment"): lambda q, b: {"done": environment.done(), "status": environment.status()},
             ("GET", "/api/prompts"): lambda q, b: prompts_api.prompt_list(),
             ("GET", "/api/prompt"): lambda q, b: prompts_api.prompt(q["name"]),
@@ -198,7 +203,7 @@ def make_handler(app: App, port_holder: list):
                     return self._error(HTTPStatus.BAD_REQUEST, "Niepoprawny JSON")
             try:
                 self._json(route(query, body))
-            except (KeyError, ValueError, SessionNotFound, RecordingError) as e:
+            except (KeyError, ValueError, SessionNotFound, RecordingError, SyncError) as e:
                 self._error(HTTPStatus.BAD_REQUEST, str(e.args[0]) if e.args else str(e))
             except Exception as e:  # błąd programu - komunikat do okna, szczegóły w konsoli
                 import traceback

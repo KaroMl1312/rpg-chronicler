@@ -201,6 +201,8 @@ def settings_payload() -> dict:
             _field("google_drive.nagrania", "Nagrania", "text", RCLONE_AUDIO_REMOTE),
             _field("google_drive.transkrypcje", "Transkrypcje", "text", RCLONE_TXT_REMOTE),
             _field("google_drive.podsumowania", "Kroniki", "text", RCLONE_SUMMARY_REMOTE),
+            _field("google_drive.synchronizuj_kampanie", "Synchronizuj kampanie przy starcie", "bool", True,
+                   "Dane kampanii (kampanie.toml, przygotowania, zdjęcia) dwukierunkowo, z wykrywaniem konfliktów"),
         ]},
     ]
     saved = envfile.read()

@@ -88,6 +88,8 @@ Transkrypcja 2-godzinnego nagrania trwa ok. 1 godz. 20 min (procesor Ryzen 5 750
 
 Rozpoznawanie mówców ma dwa silniki (ustawienia → „Rozpoznawanie głosów”): `pyannote` (domyślny) i nowy `onnx`, ok. 6 razy szybszy, ale z nieco innym podziałem na mówców. Gdy dwóch graczy o podobnych głosach trafia do jednego mówcy, obniż próg rozdzielania głosów tej kampanii (zakładka Kampanie → Ogólne, np. 0,65).
 
+Dane kampanii (słownik, opisy, zdjęcia, przygotowania) synchronizują się przez Google Drive w obie strony: zmiany z drugiego komputera trafiają tutaj i odwrotnie, a gdy ten sam plik zmieni się na obu, program pokaże obie wersje i zapyta, którą zostawić.
+
 Sesję można nagrać w programie: „+” nad listą sesji → „Nagraj sesję…”. Po zatrzymaniu nagranie przechodzi przez filtr (ustawienia → „Nagrywanie sesji”) i trafia jako FLAC do folderu nagrań. W konsoli: `rpg-chronicler record Kampania_RRMMDD`.
 
 Prompty AI (kronika, skrót, cytaty, encyklopedia…) można podejrzeć i zmienić w oknie programu: menu ☰ → „Prompty AI”. Zmienione zapisują się na tym komputerze, a „Przywróć domyślny” cofa zmianę.

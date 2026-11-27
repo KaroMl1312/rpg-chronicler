@@ -1,5 +1,10 @@
 # Nowości
 
+## 1.012 – 2026-11-28
+
+- **Dane kampanii synchronizują się między komputerami bez gubienia zmian:** kampanie (słownik, opisy, postacie), zdjęcia haseł i przygotowania. Zmiana z jednego komputera trafia na drugi, usunięcie też (do kosza). Gdy ten sam plik zmienisz na dwóch komputerach, program niczego nie nadpisze - pokaże obie wersje obok siebie i zapyta, którą zostawić.
+- Synchronizacja rusza sama przy starcie programu (wyłączysz ją w ustawieniach, grupa „Google Drive”), jest też w menu: „Synchronizuj kampanie z Drive”. W konsoli: `rpg-chronicler sync-campaigns`.
+
 ## 1.011 – 2026-11-27
 
 - **Nagrywanie sesji w programie:** „+” nad listą sesji → „Nagraj sesję…” (albo Ctrl+R). Wybierasz kampanię, datę i mikrofon, a wskaźnik głośności od razu pokazuje, czy mikrofon słyszy. W czasie nagrywania na górze okna widać czas, głośność i wolne miejsce na dysku, a komputer nie zaśnie (także po zamknięciu klapy laptopa).

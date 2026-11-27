@@ -25,6 +25,7 @@ FIELDS: dict[str, type] = {
     "transkrypcja.pomijanie_ciszy": bool,
     "transkrypcja.podpowiedz_nazw": bool,
     "transkrypcja.rozpoznawanie_glosow": str,
+    "google_drive.synchronizuj_kampanie": bool,
     "nagrywanie.mikrofon": str,
     "nagrywanie.filtr": str,
     "nagrywanie.wyslij_na_drive": bool,

@@ -14,7 +14,7 @@ import webbrowser
 from pathlib import Path
 
 from ..config import IS_WINDOWS
-from . import environment, record_api
+from . import environment, record_api, sync_api
 from .server import App, start_server
 
 SYSTEM_PYTHON = "/usr/bin/python3"
@@ -98,6 +98,7 @@ def main(argv: list[str]) -> int:
     app = App()
     server, url = start_server(app)
     environment.start()
+    sync_api.start_if_enabled()   # dane kampanii z drugiego komputera, zanim zaczniesz je edytować
     try:
         if "--przegladarka" in argv or not (_webview(url) or _gtk_shell(url)):
             _browser(url, app)

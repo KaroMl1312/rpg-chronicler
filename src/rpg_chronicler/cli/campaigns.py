@@ -1,4 +1,4 @@
-"""Komendy kampanii: słownik nazw i pamięć kampanii."""
+"""Komendy kampanii: słownik nazw, pamięć kampanii, synchronizacja danych kampanii."""
 from .. import progress
 from ..session import SessionNotFound, list_sessions
 
@@ -59,3 +59,29 @@ def cmd_memory(args):
     else:
         print(f"Kampania {campaign.key} nie ma jeszcze stanu. Zbuduj go z kronik: "
               f"rpg-chronicler memory {campaign.key} --rebuild")
+
+
+KEEP_CHOICES = {"moja": "local", "drive": "remote", "obie": "both"}
+
+
+def cmd_sync_campaigns(args):
+    import sys
+
+    from ..storage import campaign_sync
+    if args.conflicts:
+        pending = campaign_sync.CampaignSync().pending
+        print("\n".join(pending) if pending else "Brak konfliktów.")
+        return
+    if args.resolve:
+        if not args.keep:
+            print("[BŁĄD] Podaj, którą wersję zostawić: --zostaw moja|drive|obie")
+            sys.exit(1)
+        try:
+            extra = campaign_sync.CampaignSync().resolve(args.resolve, KEEP_CHOICES[args.keep])
+        except campaign_sync.SyncError as e:
+            print(f"[BŁĄD] {e}")
+            sys.exit(1)
+        print(f"[SUKCES] Rozstrzygnięto {args.resolve}" + (f" (wersja z Drive zapisana jako {extra})" if extra else ""))
+        return
+    if campaign_sync.run_and_print(dry_run=args.dry_run, force=args.force) is None:
+        sys.exit(1)

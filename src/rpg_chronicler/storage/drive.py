@@ -2,6 +2,8 @@
 import os
 import subprocess
 
+from . import campaign_sync
+
 from ..config import (
     AUDIO_DIR,
     RCLONE_AUDIO_REMOTE,
@@ -10,6 +12,10 @@ from ..config import (
     SUMMARY_DIR,
     TXT_DIR,
 )
+
+
+# dane kampanii synchronizuje storage/campaign_sync (dwukierunkowo, z konfliktami) - zwykła kopia je pomija
+CAMPAIGN_EXCLUDES = ("--exclude", "/kampanie.toml", "--exclude", "/kampanie/**", "--exclude", "/obrazy/**")
 
 
 def rclone_copy(src: str, dst: str, quiet: bool = False, extra: tuple[str, ...] = ()) -> None:
@@ -25,10 +31,13 @@ def sync_from_gdrive():
     # Pobieramy też gotowe transkrypcje (z .mowcy.json) i podsumowania, żeby wiedzieć co już zostało zrobione
     for remote, local in ((RCLONE_TXT_REMOTE, TXT_DIR), (RCLONE_SUMMARY_REMOTE, SUMMARY_DIR)):
         try:
-            # --update: nie nadpisujemy nowszych plików zmienionych lokalnie (kampanie.toml, mówcy) starszymi z Drive
-            rclone_copy(remote, local, quiet=True, extra=("--update",))
+            # --update: nie nadpisujemy nowszych plików zmienionych lokalnie (mówcy) starszymi z Drive
+            extra = ("--update", *CAMPAIGN_EXCLUDES) if local == TXT_DIR else ("--update",)
+            rclone_copy(remote, local, quiet=True, extra=extra)
         except Exception as e:
             print(f"[OSTRZEŻENIE] Nie udało się pobrać {remote}: {e}")
+
+    campaign_sync.run_and_print()
 
     try:
         # --ignore-existing: nie nadpisujemy lokalnych nagrań (np. przyciętych) oryginałami z Drive
@@ -43,10 +52,11 @@ def upload_to_gdrive():
 
     print("Wysyłanie transkrypcji...")
     try:
-        rclone_copy(TXT_DIR, RCLONE_TXT_REMOTE, extra=("--update",))
+        rclone_copy(TXT_DIR, RCLONE_TXT_REMOTE, extra=("--update", *CAMPAIGN_EXCLUDES))
         print("Transkrypcje wysłane z sukcesem.")
     except Exception as e:
         print(f"[BŁĄD] Nie udało się wysłać transkrypcji: {e}")
+    campaign_sync.run_and_print()
 
     print("Wysyłanie podsumowań AI...")
     try:

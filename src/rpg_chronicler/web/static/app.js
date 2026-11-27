@@ -533,6 +533,7 @@ function mainMenu(e) {
     { label: "Odśwież listę", onclick: refresh },
     { label: "Pobierz z Google Drive", onclick: () => startTask("Pobieranie z Google Drive", ["sync"]), disabled: state.running },
     { label: "Wyślij na Google Drive", onclick: () => startTask("Wysyłanie na Google Drive", ["upload"]), disabled: state.running },
+    { label: "Synchronizuj kampanie z Drive", onclick: startSync, disabled: !!(syncView.data && syncView.data.running) },
     { label: "Przetwórz bez Google Drive", disabled: state.running,
       onclick: () => startTask("Przebieg bez Google Drive", ["run", "--offline", "--no-interactive", ...providerArgs()]) },
     { section: "Dostawca AI" },
@@ -646,6 +647,7 @@ function init() {
   $("#add-notes").innerHTML = ICONS.plus;
   $("#add-notes").addEventListener("click", addSessionMenu);
   watchRecording();
+  watchSync();
   initPlayer();
   for (const b of document.querySelectorAll("#main-switch button")) b.addEventListener("click", () => showMain(b.dataset.main));
   $("#process-all").addEventListener("click", () =>
@@ -680,7 +682,8 @@ function init() {
   const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
                     discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika"),
                     statystyki: () => statsDialog(state.detail), uzupelnij: backfillDialog,
-                    prompty: () => promptsDialog(HASH.get("prompt")), nagraj: recordDialog };
+                    prompty: () => promptsDialog(HASH.get("prompt")), nagraj: recordDialog,
+                    konflikty: () => conflictsDialog() };
   if (HASH.get("kampania")) {
     camp.key = HASH.get("kampania");
     camp.tab = HASH.get("ktab") || camp.tab;
