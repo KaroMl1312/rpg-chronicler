@@ -83,7 +83,7 @@ Nazwa pliku nagrania wyznacza sesję i kampanię: `Kampania_RRMMDD.m4a` (np. `Za
 .venv/bin/rpg-chronicler --help      # lista komend
 ```
 
-Transkrypcja 2-godzinnego nagrania trwa ok. 1 godz. 20 min (procesor Ryzen 5 7500F, model `medium`, 6 wątków); większość tego czasu zajmuje rozpoznawanie mówców. Na słabszym procesorze będzie dłużej. Szybkość na swoim komputerze sprawdzisz komendą `benchmark`.
+Transkrypcja 2-godzinnego nagrania trwa ok. 1 godz. 20 min (procesor Ryzen 5 7500F, model `medium`, 6 wątków); większość tego czasu zajmuje rozpoznawanie mówców. Na słabszym procesorze będzie dłużej. Szybkość na swoim komputerze sprawdzisz komendą `benchmark`. Bardzo długie nagrania potrzebują dużo pamięci: 4-godzinna sesja z `pyannote` zajęła w szczycie ok. 17 GB RAM.
 
 Testy: `.venv/bin/python -m pytest`. Testy nie potrzebują modeli ani sieci.
 

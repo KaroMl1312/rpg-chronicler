@@ -20,6 +20,7 @@ from ..config import (
 from ..session import Session
 from ..transcript import Segment, Transcript, save_transcript
 from ..voices import save_voiceprints, voices_path
+from .audio import load_for_diarization
 from .compare import uses_previous_text
 from .merge import Turn, assign_speakers
 
@@ -129,7 +130,7 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             print("Analizowanie głosów uczestników...")
             started = time.perf_counter()
             progress.report("rozpoznawanie głosów", session.name)
-            turns = diarize(diarization_pipeline, session.audio_path, session.name)
+            turns = diarize(diarization_pipeline, load_for_diarization(session.audio_path), session.name)
             diarization_time = time.perf_counter() - started
             print(f"[CZAS] Rozpoznawanie głosów: {format_duration(diarization_time)}")
 

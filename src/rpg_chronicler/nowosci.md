@@ -1,5 +1,9 @@
 # Nowości
 
+## 1.007 – 2026-11-27
+
+- **Naprawiono transkrypcję nagrań dłuższych niż ok. 3 godziny:** rozpoznawanie głosów kończyło się na nich błędem „could not create a primitive”.
+
 ## 1.006 – 2026-11-23
 
 - **Nowe okno: panel nagrania przed transkrypcją.** Wykrywanie ciszy z osią czasu, odsłuch granic i fragmentów ciszy, przycinanie nagrania.

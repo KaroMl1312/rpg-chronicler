@@ -94,6 +94,7 @@ src/rpg_chronicler/
     gemini.py                 #   google-genai, wymuszony odstęp między zapytaniami
   transcription/
     runner.py                 # load_whisper/load_diarization/diarize/transcribe_audio, transcribe_sessions()
+    audio.py                  # dźwięk dla diaryzacji: długie nagrania przepróbkowane po kawałkach
     merge.py                  # assign_speakers(): segment → mówca o największym pokryciu (wskaźnik przesuwny)
     benchmark.py              # pomiar szybkości na fragmencie nagrania
     voiceprints.py            # liczenie odcisków głosu (pyannote/wespeaker) z nagrania i czasów z transkrypcji
@@ -195,6 +196,10 @@ Gdy `ai.kronika_etapami` (domyślnie włączone) i transkrypcja ma ponad ~1 h (`
 
 - **Statystyki** (`stats`, przycisk „Statystyki” nad transkrypcją): `stats.session_stats` liczy z segmentów i mapowania mówców (imiona ujednolicone `NameResolver`, gracz → postać) czas mówienia, wypowiedzi (ciągi segmentów jednego mówcy) i słowa; udział MG a graczy; przerwy = ≥ 3 min bez wypowiedzi (`BREAK_SECONDS`), czas gry = od pierwszej do ostatniej wypowiedzi bez przerw. Nagrania użytkownika są zwykle przycięte z ciszy, więc przerw zwykle nie ma. `--campaign K` dodaje sumę (`merge_stats`).
 - **Dziennik postaci** (`diary KAMPANIA POSTAĆ`, zakładka Kampanie → „Dzienniki postaci”): wpis AI (`prompts/diary.md`, pierwsza osoba, tylko to, co postać przeżyła) o każdej sesji kampanii z kroniką, na której postać była - kronika wymienia ją lub skrót jej imienia (`diary.aliases`: „Fen Wanderer” → „Fen”, „Wanderer”; „Sir Amos” → „Amos”) albo mówiła wg mapowania mówców. Źródło: kronika + lista wydarzeń (prefiks wspólny dla dzienników różnych postaci), cytaty postaci i **poprzedni wpis** (bez niego wpisy pisane osobno zmieniały rodzaj gramatyczny postaci). Wpisy w `~/.cache/rpg-chronicler/dziennik/<kampania>/<sha1>.md` - odświeżenie po nowej sesji pyta tylko o nowy wpis; `--force` pisze wszystko od nowa. AI odpowiada „BRAK”, gdy postaci nie było - wpis jest pomijany. `canonical_character` zamienia „fen” na „Fen Wanderer” z kampanii.
+
+## Rozpoznawanie głosów (diaryzacja)
+
+- **`pyannote`:** całe nagranie przepróbkowuje naraz, a torch pada na tensorze > 2 GB („could not create a primitive”, przy 48 kHz od ok. 3 h 6 min), więc `audio.load_for_diarization` podaje dłuższe nagrania jako gotowy dźwięk 16 kHz przeliczony po 10 min z zapasem (wynik identyczny co do próbki); krótsze idą ścieżką jak dotąd. Dekodowanie zakresów (`get_samples_played_in_range`) **nie** nadaje się do kawałków: po przewinięciu AAC jest przesunięte o kilkaset próbek.
 
 ## Rozpoznawanie graczy po głosie
 
