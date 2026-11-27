@@ -14,7 +14,7 @@ import webbrowser
 from pathlib import Path
 
 from ..config import IS_WINDOWS
-from . import environment
+from . import environment, record_api
 from .server import App, start_server
 
 SYSTEM_PYTHON = "/usr/bin/python3"
@@ -102,6 +102,7 @@ def main(argv: list[str]) -> int:
         if "--przegladarka" in argv or not (_webview(url) or _gtk_shell(url)):
             _browser(url, app)
     finally:
+        record_api.shutdown()   # nagrywanie: ffmpeg kończy plik, przy następnym starcie „Dokończ nagranie”
         if app.runner.running:  # zamknięte okno nie zostawia osieroconego zadania
             app.runner.cancel()
         server.shutdown()

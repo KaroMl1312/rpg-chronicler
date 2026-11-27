@@ -5,7 +5,7 @@ from ..config import (
     DIARIZATION_ENGINE, DIARIZATION_ENGINES, DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS,
 )
 from ..version import VERSION
-from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
+from .audio import cmd_benchmark, cmd_record, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
 from .chronicles import (cmd_ask, cmd_backfill, cmd_brief, cmd_describe, cmd_diary, cmd_discord, cmd_discord_test,
                          cmd_encyclopedia, cmd_gm_notes, cmd_ideas, cmd_image, cmd_pdf, cmd_quotes, cmd_recap,
@@ -134,6 +134,18 @@ def build_parser() -> argparse.ArgumentParser:
                        help="próg ciszy w dB (domyślnie -40; wyżej, np. -35, przy szumach w tle)")
         p.add_argument("--min-silence", type=float, default=30.0, metavar="S",
                        help="najkrótsza wykrywana cisza w sekundach (domyślnie 30)")
+
+    p = sub.add_parser("record", help="nagraj sesję z mikrofonu (Enter kończy), potem filtr i FLAC w folderze nagrań")
+    p.add_argument("session", nargs="?", metavar="SESJA", help="nazwa nowej sesji, np. Warhammer_261127")
+    p.add_argument("--mikrofon", dest="device", metavar="ID", help="mikrofon z --mikrofony (domyślnie z ustawień)")
+    p.add_argument("--mikrofony", dest="devices", action="store_true", help="pokaż dostępne mikrofony")
+    p.add_argument("--dokoncz", dest="finish", action="store_true",
+                   help="tylko obróbka już nagranego (np. przerwanego) surowego pliku")
+    p.add_argument("--filtr", dest="filter", metavar="FILTR", help="filtr ffmpeg -af (domyślnie z ustawień; \"\" = bez)")
+    upload = p.add_mutually_exclusive_group()
+    upload.add_argument("--wyslij", dest="upload", action="store_true", help="po obróbce wyślij nagranie na Google Drive")
+    upload.add_argument("--nie-wysylaj", dest="no_upload", action="store_true", help="nie wysyłaj mimo ustawienia")
+    p.set_defaults(func=cmd_record)
 
     p = sub.add_parser("silence", help="wykryj ciszę w nagraniu i zaproponuj przycięcie")
     silence_args(p)

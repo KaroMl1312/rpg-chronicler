@@ -18,8 +18,9 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
+from ..recording import RecordingError
 from ..session import SessionNotFound
-from . import api, campaign_api, environment, prompts_api, recording_api, session_api
+from . import api, campaign_api, environment, prompts_api, record_api, recording_api, session_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -95,6 +96,13 @@ class App:
                 q["name"], q.get("start", ""), q.get("end", ""), float(q.get("gaps") or 0)),
             ("GET", "/api/stats"): lambda q, b: recording_api.session_stats(q["name"], q.get("campaign") == "1"),
             ("GET", "/api/backfill"): lambda q, b: recording_api.backfill_plan(),
+            ("GET", "/api/rec/devices"): lambda q, b: record_api.devices(),
+            ("GET", "/api/rec/name"): lambda q, b: record_api.suggest_name(q.get("campaign", ""), q.get("date", "")),
+            ("GET", "/api/rec/status"): lambda q, b: record_api.status(),
+            ("POST", "/api/rec/preview"): lambda q, b: record_api.preview(b["device"]),
+            ("POST", "/api/rec/start"): lambda q, b: record_api.start(b["name"], b["device"], bool(b.get("upload"))),
+            ("POST", "/api/rec/stop"): lambda q, b: record_api.stop(),
+            ("GET", "/api/rec/finish-args"): lambda q, b: {"args": record_api.finish_args(q["name"])},
             ("GET", "/api/environment"): lambda q, b: {"done": environment.done(), "status": environment.status()},
             ("GET", "/api/prompts"): lambda q, b: prompts_api.prompt_list(),
             ("GET", "/api/prompt"): lambda q, b: prompts_api.prompt(q["name"]),
@@ -190,7 +198,7 @@ def make_handler(app: App, port_holder: list):
                     return self._error(HTTPStatus.BAD_REQUEST, "Niepoprawny JSON")
             try:
                 self._json(route(query, body))
-            except (KeyError, ValueError, SessionNotFound) as e:
+            except (KeyError, ValueError, SessionNotFound, RecordingError) as e:
                 self._error(HTTPStatus.BAD_REQUEST, str(e.args[0]) if e.args else str(e))
             except Exception as e:  # błąd programu - komunikat do okna, szczegóły w konsoli
                 import traceback

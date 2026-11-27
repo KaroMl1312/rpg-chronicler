@@ -23,7 +23,7 @@ LINE_END_RE = re.compile(r"(\r\n|\r|\n)")
 COMMANDS = {"run", "status", "sync", "transcribe", "speakers", "summarize", "add-session", "voices", "brief",
             "quotes", "pdf", "discord", "discord-test", "glossary", "memory", "revise", "encyclopedia", "describe",
             "recap", "ideas", "gm-notes", "ask", "image", "diary", "stats", "silence", "trim", "check", "fix-loops",
-            "backfill", "archive", "delete", "migrate", "upload"}
+            "backfill", "archive", "delete", "migrate", "upload", "record"}
 
 
 class TaskRunner:
@@ -50,6 +50,8 @@ class TaskRunner:
         """Uruchamia `rpg-chronicler <args>`; zwraca opis błędu albo None."""
         if not args or args[0] not in COMMANDS:
             return f"Nieznana komenda: {args[0] if args else '(brak)'}"
+        if args[0] == "record" and "--dokoncz" not in args:   # samo nagrywanie okno robi przez record_api
+            return "Okno uruchamia tylko obróbkę nagrania (record --dokoncz)."
         with self._lock:
             if self._process is not None:
                 return "Inne zadanie jest w toku."

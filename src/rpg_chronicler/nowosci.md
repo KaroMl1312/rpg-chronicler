@@ -1,5 +1,12 @@
 # Nowości
 
+## 1.011 – 2026-11-27
+
+- **Nagrywanie sesji w programie:** „+” nad listą sesji → „Nagraj sesję…” (albo Ctrl+R). Wybierasz kampanię, datę i mikrofon, a wskaźnik głośności od razu pokazuje, czy mikrofon słyszy. W czasie nagrywania na górze okna widać czas, głośność i wolne miejsce na dysku, a komputer nie zaśnie (także po zamknięciu klapy laptopa).
+- **Po zatrzymaniu nagranie samo przechodzi przez filtr** (wycięcie basów poniżej 80 Hz i kompresor - do zmiany w ustawieniach) i trafia jako FLAC do folderu nagrań, gotowe do przycięcia ciszy i transkrypcji. Surowe nagranie zostaje w podfolderze `oryginaly`. Opcjonalnie nagranie od razu jedzie na Google Drive.
+- **Nagranie przetrwa awarię:** po zaniku prądu, odłączeniu mikrofonu czy zamknięciu programu to, co się nagrało, zostaje, a okno proponuje „Dokończ”.
+- W konsoli: `rpg-chronicler record Kampania_RRMMDD` (`--mikrofony` pokazuje listę mikrofonów).
+
 ## 1.010 – 2026-11-27
 
 - **Prompty AI do podglądu i edycji** (menu ☰ → „Prompty AI”): wszystkie prompty programu pogrupowane według zastosowania, z opisem, kiedy są używane, i z polami do wstawienia jednym kliknięciem. Zmienione zapisują się na tym komputerze, „Przywróć domyślny” cofa zmianę, a program ostrzega, gdy usuniesz potrzebne pole albo gdy nowa wersja programu zmieni domyślny prompt.

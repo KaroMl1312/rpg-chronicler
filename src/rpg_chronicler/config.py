@@ -66,6 +66,11 @@ if DIARIZATION_ENGINE not in DIARIZATION_ENGINES:
     DIARIZATION_ENGINE = "pyannote"
 # Próg grupowania głosów (pyannote 3.1); niższy = więcej osobnych mówców. Kampania może mieć własny (prog_glosow).
 DIARIZATION_THRESHOLD = 0.7045654963945799
+# Nagrywanie sesji w programie (recording.py): mikrofon (pusty = pierwszy z listy), filtr ffmpeg po nagraniu
+RECORDING_FILTER_DEFAULT = "highpass=f=80, acompressor=threshold=-20dB:ratio=4:makeup=3dB:attack=0.2:release=1000"
+RECORDING_DEVICE = _setting("nagrywanie.mikrofon", "")
+RECORDING_FILTER = _setting("nagrywanie.filtr", RECORDING_FILTER_DEFAULT)
+RECORDING_UPLOAD = _setting("nagrywanie.wyslij_na_drive", False)
 SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
 
 # --- AI KONFIGURACJA (sekrety z .env) ---

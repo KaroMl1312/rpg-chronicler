@@ -1,5 +1,7 @@
-"""Komendy nagrań: pomiar szybkości, cisza i przycinanie, odciski głosu."""
+"""Komendy nagrań: nagrywanie, pomiar szybkości, cisza i przycinanie, odciski głosu."""
 import os
+import subprocess
+import sys
 
 from ..session import SessionNotFound, list_sessions
 from .common import audio_session
@@ -95,3 +97,33 @@ def _print_voice_suggestions(session):
         kind = "pewne" if s.confident else "możliwe"
         others = ", ".join(f"{n} {score:.0%}" for n, score in s.alternatives)
         print(f"  {spk}: {s.name} ({s.score:.0%}, {kind})" + (f"   [inne: {others}]" if others else ""))
+
+
+def cmd_record(args):
+    from .. import recording
+    from ..config import RECORDING_DEVICE, RECORDING_FILTER, RECORDING_UPLOAD
+    if args.devices:
+        for device in recording.list_devices():
+            print(f"{device.id}\n    {device.label}")
+        return
+    if not args.session:
+        unfinished = recording.unfinished()
+        print("Podaj nazwę sesji, np. rpg-chronicler record Warhammer_261127"
+              + (f"\nPrzerwane nagrania do dokończenia (--dokoncz): {', '.join(unfinished)}" if unfinished else ""))
+        return
+    try:
+        if not args.finish:
+            device = args.device or RECORDING_DEVICE or recording.list_devices()[0].id
+            recording.record_in_terminal(args.session, device)
+        path = recording.finish(args.session, RECORDING_FILTER if args.filter is None else args.filter)
+    except recording.RecordingError as e:
+        print(f"[BŁĄD] {e}")
+        sys.exit(1)
+    print(f"[SUKCES] Nagranie gotowe: {path} (surowe: {recording.kept_raw_path(args.session)})")
+    if args.upload or (RECORDING_UPLOAD and not args.no_upload):
+        from ..storage.drive import upload_recording
+        try:
+            upload_recording(str(path))
+            print("[SUKCES] Nagranie jest na Google Drive.")
+        except (OSError, subprocess.CalledProcessError) as e:  # brak rclone albo sieci - nagranie zostaje lokalnie
+            print(f"[BŁĄD] Nie udało się wysłać nagrania na Google Drive: {e}")

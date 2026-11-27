@@ -353,3 +353,19 @@ dialog.prompts-default textarea { width: 100%; height: 70vh; box-sizing: border-
 .env-banner { display: flex; align-items: center; gap: 12px; padding: 8px 16px; background: var(--warn); color: #1d1d1f; }
 .env-banner[hidden] { display: none; }
 .env-help { text-align: left; }
+
+/* nagrywanie sesji */
+.level-meter { height: 10px; border-radius: 5px; background: var(--hover); overflow: hidden; min-width: 120px; margin: 6px 0; }
+.level-meter > div { height: 100%; width: 0; background: #2ec27e; transition: width 0.12s linear; }
+.level-meter.clip > div { background: var(--danger); }
+.level-meter.quiet > div { background: var(--dim); }
+.rec-bar { display: flex; align-items: center; gap: 12px; padding: 6px 16px; flex-wrap: wrap; }
+.rec-bar[hidden] { display: none; }
+.rec-bar.live { background: color-mix(in srgb, var(--danger) 14%, var(--bg)); border-bottom: 1px solid var(--border); }
+.rec-bar.live .level-meter { width: 160px; margin: 0; }
+.rec-bar.pending { background: color-mix(in srgb, var(--warn) 22%, var(--bg)); border-bottom: 1px solid var(--border); }
+.rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: rec-blink 1.2s infinite; }
+@keyframes rec-blink { 50% { opacity: 0.25; } }
+.rec-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+.rec-bar .grow { flex: 1; }
+label.check { display: flex; align-items: center; gap: 8px; margin: 10px 0 6px; cursor: pointer; }

@@ -196,6 +196,13 @@ async function pollTask() {
       toast(`${f.title}: ${f.description}`, f.success ? null : "Pokaż log", showLog);
       for (const p of f.proposals || []) toast(p.text, "Przejrzyj", () => showCampaign(p.campaign, p.text.includes("słownika") ? "slownik" : "ogolne"));
       await refresh();
+      const open = state.openAfterTask;
+      state.openAfterTask = null;
+      if (open && f.success && state.data.sessions.some((s) => s.name === open)) {
+        state.tab = "transkrypcja";   // panel nagrania: przycinanie ciszy, potem transkrypcja
+        await loadSession(open);
+      }
+      updateRecording();
     }
   }
   updateTaskButtons();
@@ -284,8 +291,8 @@ function renderEmpty() {
   $("#view").replaceChildren(el("div", { class: "empty" },
     el("h2", {}, count ? "Wybierz sesję" : "Nie ma jeszcze sesji"),
     el("div", {}, count ? "Kliknij sesję na liście po lewej."
-                        : `Wrzuć nagranie do folderu ${state.data.folders.nagrania} (nazwa: Kampania_RRMMDD) `
-                          + "i kliknij „Przetwórz wszystko”.")));
+                        : "Nagraj sesję przyciskiem + nad listą albo wrzuć nagranie do folderu "
+                          + `${state.data.folders.nagrania} (nazwa: Kampania_RRMMDD) i kliknij „Przetwórz wszystko”.`)));
 }
 
 // --- sesja ----------------------------------------------------------------------------------------
@@ -495,6 +502,13 @@ async function confirmClose() {
     if (!(await saveSpeakerEdits())) return false;
     if (!(await saveEntry()) && !(await confirmDiscard("Nie udało się zapisać opisu hasła."))) return false;
     if (unsavedTexts() && !(await confirmDiscard("Masz niezapisany tekst w zakładce Kampanie."))) return false;
+    const recording = await api("/api/rec/status");
+    if (recording.recording) {
+      const answer = await ask("Trwa nagrywanie sesji", `Nagranie ${recording.name} zostanie zatrzymane. Przetworzysz je przyciskiem `
+                               + "„Dokończ” po ponownym otwarciu programu. Zamknąć mimo to?",
+                               [["cancel", "Nie zamykaj"], ["close", "Zatrzymaj i zamknij", "destructive"]]);
+      if (answer !== "close") return false;
+    }
     const task = await api("/api/task?since=" + Number.MAX_SAFE_INTEGER);
     if (task.running) {
       const answer = await ask("Zadanie jest w toku", `„${task.title}” zostanie przerwane. Zamknąć mimo to?`,
@@ -630,7 +644,8 @@ function init() {
   $("#search-button").innerHTML = ICONS.search;
   $("#search-button").addEventListener("click", searchDialog);
   $("#add-notes").innerHTML = ICONS.plus;
-  $("#add-notes").addEventListener("click", () => notesDialog());
+  $("#add-notes").addEventListener("click", addSessionMenu);
+  watchRecording();
   initPlayer();
   for (const b of document.querySelectorAll("#main-switch button")) b.addEventListener("click", () => showMain(b.dataset.main));
   $("#process-all").addEventListener("click", () =>
@@ -647,6 +662,7 @@ function init() {
     if (e.ctrlKey && (e.key === "2" || e.key === "k")) { e.preventDefault(); showMain("kampanie"); }
     if (e.ctrlKey && e.key === "f") { e.preventDefault(); searchDialog(); }
     if (e.ctrlKey && e.key === "n") { e.preventDefault(); notesDialog(); }
+    if (e.ctrlKey && e.key === "r" && !recordingActive()) { e.preventDefault(); recordDialog(); }
   });
   // Sygnał życia: w trybie przeglądarki serwer kończy pracę, gdy okno zostanie zamknięte
   // wynik sprawdzenia .venv przychodzi kilka sekund po starcie
@@ -664,7 +680,7 @@ function init() {
   const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
                     discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika"),
                     statystyki: () => statsDialog(state.detail), uzupelnij: backfillDialog,
-                    prompty: () => promptsDialog(HASH.get("prompt")) };
+                    prompty: () => promptsDialog(HASH.get("prompt")), nagraj: recordDialog };
   if (HASH.get("kampania")) {
     camp.key = HASH.get("kampania");
     camp.tab = HASH.get("ktab") || camp.tab;

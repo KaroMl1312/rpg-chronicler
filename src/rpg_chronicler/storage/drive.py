@@ -116,3 +116,9 @@ def delete_on_gdrive(name: str, plan, dry_run: bool = False) -> int:
         finally:
             os.unlink(lst.name)
     return total
+
+
+def upload_recording(path: str) -> None:
+    """Nagrana w programie sesja → folder nagrań na Drive (np. z laptopa przy stole do komputera z transkrypcją)."""
+    print(f"Wysyłanie nagrania {os.path.basename(path)} na {RCLONE_AUDIO_REMOTE}...")
+    rclone_copy(path, RCLONE_AUDIO_REMOTE)

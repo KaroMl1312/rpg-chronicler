@@ -11,6 +11,7 @@
 <script src="/static/kampanie.js" defer></script>
 <script src="/static/nagranie.js" defer></script>
 <script src="/static/prompty.js" defer></script>
+<script src="/static/nagrywanie.js" defer></script>
 </head>
 <body>
 <div id="app">
@@ -26,7 +27,7 @@
     <div class="bar" id="session-tools">
       <select id="filter" title="Kampania"></select>
       <button class="btn flat icon" id="search-button" title="Szukaj w sesjach (Ctrl+F)"></button>
-      <button class="btn flat icon" id="add-notes" title="Dodaj sesję z notatek MG (Ctrl+N)"></button>
+      <button class="btn flat icon" id="add-notes" title="Nagraj sesję albo dodaj sesję z notatek MG"></button>
     </div>
     <ul id="session-list" class="side-list"></ul>
     <ul id="campaign-list" class="side-list" hidden></ul>
@@ -41,6 +42,7 @@
 
   <main id="content">
     <div id="env-banner" class="env-banner" hidden></div>
+    <div id="rec-bar" class="rec-bar" hidden></div>
     <header class="bar" id="session-header">
       <span class="left" id="session-name"></span>
       <div class="tabs" id="session-tabs">

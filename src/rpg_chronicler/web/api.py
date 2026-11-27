@@ -9,6 +9,7 @@ from .. import chronicle, envfile, notes, settings
 from ..campaigns import campaign_key
 from ..config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_QUOTES, CHRONICLE_TWO_STEP, CLAUDE_CODE_MODEL,
                       DIARIZATION_ENGINE, GLOSSARY_PROPOSALS, LLM_PROVIDER, MODEL_SIZE, RCLONE_AUDIO_REMOTE,
+                      RECORDING_FILTER, RECORDING_FILTER_DEFAULT, RECORDING_UPLOAD,
                       RCLONE_SUMMARY_REMOTE, RCLONE_TXT_REMOTE, WHISPER_CPU_THREADS, WHISPER_NAME_HINTS, WHISPER_VAD)
 from . import environment
 from .text import (campaign_filter_options, format_timestamp, has_speaker_labels, session_campaign, session_stage,
@@ -181,6 +182,15 @@ def settings_payload() -> dict:
             _field("transkrypcja.podpowiedz_nazw", "Podpowiadaj nazwy z kampanii", "bool", WHISPER_NAME_HINTS,
                    "Whisper dostaje słownik kampanii i poprawniej zapisuje imiona"),
         ]},
+        {"title": "Nagrywanie sesji", "description": "Nagrywanie w programie: + nad listą sesji → „Nagraj sesję…” (Ctrl+R).",
+         "fields": [
+             _field("nagrywanie.filtr", "Filtr po nagraniu", "text", RECORDING_FILTER,
+                    "Filtr ffmpeg (-af) przed zapisem jako FLAC mono; pusty = bez filtra. Domyślnie: "
+                    + RECORDING_FILTER_DEFAULT),
+             _field("nagrywanie.wyslij_na_drive", "Wysyłaj nagranie na Google Drive", "bool",
+                    RECORDING_UPLOAD,
+                    "Po obróbce nagranie trafia do folderu nagrań na Drive (np. z laptopa do komputera z transkrypcją)"),
+         ]},
         {"title": "Foldery na dysku", "description": "Zmiana folderów działa po ponownym uruchomieniu programu.",
          "fields": [
              _field("foldery.nagrania", "Nagrania", "text", session_module.AUDIO_DIR),
