@@ -32,6 +32,7 @@ FILE_HEADER = """\
 #   npc, miejsca, przedmioty, inne - słownik nazw: poprawna pisownia w transkrypcji i kronikach
 #   opisy           - nazwa = "krótki opis: kto to albo co to jest" (zdjęcia: folder obrazy/<kampania>/)
 #   styl_obrazow    - styl obrazków generowanych przez AI (po angielsku, np. "grimdark ink and watercolor")
+#   prog_glosow     - próg rozdzielania głosów przy transkrypcji (domyślnie 0.70; niższy = więcej osobnych głosów)
 """
 IMAGES_DIR = "obrazy"                                  # TXT_DIR/obrazy/<kampania>/<nazwa>.<rozszerzenie>
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
@@ -46,6 +47,7 @@ class Campaign:
     glossary: dict[str, tuple[str, ...]] = field(default_factory=dict)  # kategoria -> nazwy
     descriptions: dict[str, str] = field(default_factory=dict)  # nazwa (postać, BN, miejsce…) -> krótki opis
     image_style: str = ""   # styl generowanych obrazków (cechy po angielsku, bez nazw artystów i wydawców)
+    voice_threshold: float | None = None  # próg rozdzielania głosów (None = domyślny z config)
 
     def category_of(self, name: str) -> str | None:
         """Kategoria nazwy: "postacie_graczy" albo klucz słownika (npc, miejsca…); None, gdy jej nie ma."""
@@ -173,7 +175,24 @@ def _campaign_from_toml(key: str, values: dict) -> Campaign:
         descriptions={str(k).strip(): str(v).strip() for k, v in descriptions.items()
                       if str(k).strip() and str(v).strip()},
         image_style=str(values.get("styl_obrazow", "")).strip(),
+        voice_threshold=parse_voice_threshold(values.get("prog_glosow")),
     )
+
+
+
+VOICE_THRESHOLD_RANGE = (0.3, 1.0)
+
+
+def parse_voice_threshold(value) -> float | None:
+    """Próg z pliku albo pola tekstowego (przecinek też); pusty lub spoza zakresu = None (domyślny)."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        number = float(str(value).strip().replace(",", "."))
+    except ValueError:
+        return None
+    low, high = VOICE_THRESHOLD_RANGE
+    return round(number, 3) if low <= number <= high else None
 
 
 def campaign_for(session_name: str) -> Campaign:
@@ -217,6 +236,8 @@ def _campaign_to_toml(campaign: Campaign) -> str:
         lines.append(f"kontekst = {_toml_string(campaign.context)}")
     if campaign.image_style:
         lines.append(f"styl_obrazow = {_toml_string(campaign.image_style)}")
+    if campaign.voice_threshold is not None:
+        lines.append(f"prog_glosow = {campaign.voice_threshold}")
     for category in GLOSSARY_CATEGORIES:
         names = campaign.names(category)
         if names:

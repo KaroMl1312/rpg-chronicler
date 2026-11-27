@@ -237,7 +237,10 @@ function generalGroup() {
     textRow("System RPG", "styl i słownictwo kroniki", "system", c.system, (value) => changeCampaign("system", { value }, "Zapisano system")),
     textRow("Styl obrazków AI", "po angielsku, np. „grimdark fantasy, ink and watercolor”; pusty - AI zaproponuje przy "
             + "pierwszym obrazku. Bez nazwisk artystów i nazw wydawców.", "image_style", c.image_style,
-            (value) => changeCampaign("image_style", { value }, "Zapisano styl obrazków")));
+            (value) => changeCampaign("image_style", { value }, "Zapisano styl obrazków")),
+    textRow("Próg rozdzielania głosów", "przy transkrypcji nowych sesji; puste = domyślny 0,70. Niższy (np. 0,65) "
+            + "rozdziela podobne głosy, ale daje więcej głosów do nazwania.", "voice_threshold", c.voice_threshold,
+            (value) => changeCampaign("voice_threshold", { value }, "Zapisano próg rozdzielania głosów")));
   return groupBox("Ogólne", `Opis świata, postacie graczy i słownik nazw trafiają do transkrypcji (poprawna pisownia) i do kronik. Plik: ${c.file}`,
     [rows, el("div", { class: "field spaced" }, el("label", {}, "Opis świata i kampanii dla AI"),
        el("div", { class: "hint" }, "gdzie toczy się akcja, główny wątek, ton"), context, el("div", { class: "actions" }, save))]);

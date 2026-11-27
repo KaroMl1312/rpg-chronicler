@@ -2,13 +2,14 @@ import os
 import time
 
 from faster_whisper import BatchedInferencePipeline, WhisperModel
-from pyannote.audio import Pipeline
 from tqdm import tqdm
 
 from .. import progress
 from ..audio_trim import has_duration_header
 from ..config import (
+    DIARIZATION_ENGINE,
     DIARIZATION_MODEL,
+    DIARIZATION_THRESHOLD,
     HUGGINGFACE_TOKEN,
     MODEL_SIZE,
     TXT_DIR,
@@ -20,9 +21,10 @@ from ..config import (
 from ..session import Session
 from ..transcript import Segment, Transcript, save_transcript
 from ..voices import save_voiceprints, voices_path
-from .audio import load_for_diarization
+from .audio import load_for_diarization, load_waveform
 from .compare import uses_previous_text
 from .merge import Turn, assign_speakers
+from .onnx_models import ModelDownloadError
 
 
 def format_duration(seconds: float) -> str:
@@ -35,7 +37,8 @@ def load_whisper(cpu_threads: int = WHISPER_CPU_THREADS, model_size: str = MODEL
     return WhisperModel(model_size, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
 
 
-def load_diarization(model: str = DIARIZATION_MODEL) -> Pipeline:
+def load_diarization(model: str = DIARIZATION_MODEL):
+    from pyannote.audio import Pipeline
     return Pipeline.from_pretrained(model, token=HUGGINGFACE_TOKEN)
 
 
@@ -52,7 +55,7 @@ def _progress_hook(session_name: str | None):
     return hook
 
 
-def diarize(pipeline: Pipeline, audio, session_name: str | None = None) -> list[Turn]:
+def diarize(pipeline, audio, session_name: str | None = None) -> list[Turn]:
     """`audio` to ścieżka do pliku albo {"waveform": tensor, "sample_rate": int}."""
     if progress.enabled():
         diarization = pipeline(audio, hook=_progress_hook(session_name))
@@ -60,6 +63,44 @@ def diarize(pipeline: Pipeline, audio, session_name: str | None = None) -> list[
         diarization = pipeline(audio)
     return [Turn(turn.start, turn.end, spk)
             for turn, _, spk in diarization.speaker_diarization.itertracks(yield_label=True)]
+
+
+def set_threshold(pipeline, threshold: float) -> None:
+    """Próg grupowania głosów pyannote (niższy = więcej osobnych mówców)."""
+    parameters = pipeline.parameters(instantiated=True)
+    if parameters["clustering"]["threshold"] != threshold:
+        parameters["clustering"]["threshold"] = threshold
+        pipeline.instantiate(parameters)
+
+
+def load_diarizer(engine: str = DIARIZATION_ENGINE):
+    """Funkcja (ścieżka nagrania, nazwa sesji, próg) -> wypowiedzi mówców, z załadowanym modelem wybranego silnika."""
+    if engine == "onnx":
+        from . import onnx_diarization
+        models = onnx_diarization.Models(WHISPER_CPU_THREADS)
+
+        def diarize_onnx(audio_path: str, session_name: str | None = None,
+                         threshold: float = DIARIZATION_THRESHOLD) -> list[Turn]:
+            def report(step: str, done: int, total: int) -> None:
+                progress.report(f"rozpoznawanie głosów: {step}", session_name, done, total)
+            return onnx_diarization.diarize(models, load_waveform(audio_path)[0].numpy(), report, threshold)
+        return diarize_onnx
+
+    pipeline = load_diarization()
+
+    def diarize_pyannote(audio_path: str, session_name: str | None = None,
+                         threshold: float = DIARIZATION_THRESHOLD) -> list[Turn]:
+        set_threshold(pipeline, threshold)
+        return diarize(pipeline, load_for_diarization(audio_path), session_name)
+    return diarize_pyannote
+
+
+def session_threshold(session: Session, override: float | None = None) -> float:
+    """Próg rozdzielania głosów: z opcji komendy, z kampanii sesji albo domyślny."""
+    if override is not None:
+        return override
+    threshold = session.campaign.voice_threshold
+    return DIARIZATION_THRESHOLD if threshold is None else threshold
 
 
 def transcribe_audio(whisper_model: WhisperModel, audio, *, vad: bool = WHISPER_VAD,
@@ -100,7 +141,8 @@ def name_hints(session: Session) -> str | None:
     return ", ".join(names) if names else None
 
 
-def transcribe_sessions(sessions: list[Session]) -> bool:
+def transcribe_sessions(sessions: list[Session], engine: str = DIARIZATION_ENGINE,
+                        threshold: float | None = None) -> bool:
     """Transkrybuje sesje, które mają nagranie, ale nie mają jeszcze transkrypcji."""
     print("\n--- Transkrypcja plików audio (z rozpoznawaniem osób) ---")
     os.makedirs(TXT_DIR, exist_ok=True)
@@ -111,9 +153,14 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
         return False
 
     progress.report("ładowanie modeli")
-    print(f"Ładowanie modeli Whisper ({MODEL_SIZE}, {WHISPER_CPU_THREADS} wątków) oraz PyAnnote...")
+    print(f"Ładowanie modeli Whisper ({MODEL_SIZE}, {WHISPER_CPU_THREADS} wątków) oraz "
+          f"{'ONNX' if engine == 'onnx' else 'PyAnnote'}...")
+    try:
+        diarize_session = load_diarizer(engine)
+    except ModelDownloadError as e:
+        print(f"[BŁĄD] {e} Sprawdź połączenie z internetem i spróbuj ponownie.")
+        return False
     whisper_model = load_whisper()
-    diarization_pipeline = load_diarization()
 
     processed_any = False
     embedding_model = None
@@ -130,7 +177,10 @@ def transcribe_sessions(sessions: list[Session]) -> bool:
             print("Analizowanie głosów uczestników...")
             started = time.perf_counter()
             progress.report("rozpoznawanie głosów", session.name)
-            turns = diarize(diarization_pipeline, load_for_diarization(session.audio_path), session.name)
+            voice_threshold = session_threshold(session, threshold)
+            if voice_threshold != DIARIZATION_THRESHOLD:
+                print(f"[INFO] Próg rozdzielania głosów: {voice_threshold:g} (domyślny {DIARIZATION_THRESHOLD:.2f})")
+            turns = diarize_session(session.audio_path, session.name, voice_threshold)
             diarization_time = time.perf_counter() - started
             print(f"[CZAS] Rozpoznawanie głosów: {format_duration(diarization_time)}")
 

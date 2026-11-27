@@ -6,7 +6,7 @@ na górze nowosci.md (nagłówek `## WERSJA – RRRR-MM-DD`, punkty po polsku). 
 import re
 from pathlib import Path
 
-VERSION = "1.007"
+VERSION = "1.008"
 
 CHANGELOG_PATH = Path(__file__).with_name("nowosci.md")
 HEADER_RE = re.compile(r"^## (\d+\.\d{3}) – (\d{4}-\d{2}-\d{2})\s*$", re.MULTILINE)

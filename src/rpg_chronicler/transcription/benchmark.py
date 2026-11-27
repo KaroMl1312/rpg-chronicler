@@ -5,6 +5,8 @@ import time
 import torch
 from faster_whisper import decode_audio
 
+from ..config import WHISPER_CPU_THREADS
+from . import onnx_diarization
 from .compare import agreement, format_segments, names_found, words
 from .runner import diarize, format_duration, load_diarization, load_whisper, transcribe_audio
 
@@ -31,9 +33,14 @@ def run_benchmark(audio_path: str, seconds: int, *, threads: list[int], vad: boo
     texts: dict[str, str] = {}
 
     for model_name in diarization_models if diarization else []:
-        pipeline = load_diarization(model_name)
-        started = time.perf_counter()
-        turns = diarize(pipeline, {"waveform": torch.from_numpy(audio).unsqueeze(0), "sample_rate": SAMPLE_RATE})
+        if model_name == "onnx":
+            models = onnx_diarization.Models(WHISPER_CPU_THREADS)
+            started = time.perf_counter()
+            turns = onnx_diarization.diarize(models, audio)
+        else:
+            pipeline = load_diarization(model_name)
+            started = time.perf_counter()
+            turns = diarize(pipeline, {"waveform": torch.from_numpy(audio).unsqueeze(0), "sample_rate": SAMPLE_RATE})
         elapsed = time.perf_counter() - started
         results.append((f"głosy: {model_name.split('/')[-1]}", elapsed, f"{len({t.speaker for t in turns})} mówców"))
 

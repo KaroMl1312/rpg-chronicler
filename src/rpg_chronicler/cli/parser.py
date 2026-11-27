@@ -1,7 +1,9 @@
 """Definicje komend i opcji CLI (argparse)."""
 import argparse
 
-from ..config import DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS
+from ..config import (
+    DIARIZATION_ENGINE, DIARIZATION_ENGINES, DIARIZATION_MODEL, LLM_PROVIDER, MODEL_SIZE, WHISPER_CPU_THREADS,
+)
 from ..version import VERSION
 from .audio import cmd_benchmark, cmd_silence, cmd_trim, cmd_voices
 from .campaigns import cmd_glossary, cmd_memory
@@ -21,7 +23,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Transkrypcje i kroniki sesji RPG z Google Drive.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
-    parser.set_defaults(func=cmd_run, provider=LLM_PROVIDER, interactive=None,
+    parser.set_defaults(func=cmd_run, provider=LLM_PROVIDER, engine=DIARIZATION_ENGINE, threshold=None, interactive=None,
                         allow_unnamed=False, offline=False)
     sub = parser.add_subparsers(title="komendy", metavar="KOMENDA")
 
@@ -41,10 +43,19 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--allow-unnamed", action="store_true",
                        help="w trybie nieinteraktywnym podsumuj też sesje bez przypisanych mówców")
 
+    def engine_arg(p):
+        p.add_argument("--glosy", dest="engine", choices=DIARIZATION_ENGINES, default=DIARIZATION_ENGINE,
+                       help=f"silnik rozpoznawania głosów: pyannote albo szybszy onnx (domyślnie: {DIARIZATION_ENGINE}, "
+                            "z ustawień)")
+        p.add_argument("--prog-glosow", dest="threshold", type=float, default=None, metavar="PRÓG",
+                       help="próg rozdzielania głosów, np. 0.65 - niższy daje więcej osobnych głosów "
+                            "(domyślnie z kampanii albo 0.70)")
+
     p = sub.add_parser("run", help="pełny przebieg: sync → transkrypcja → podsumowania → upload (domyślne)")
     provider_arg(p)
     interactive_args(p)
     p.add_argument("--offline", action="store_true", help="pomiń pobieranie i wysyłkę na Google Drive")
+    engine_arg(p)
     p.set_defaults(func=cmd_run)
 
     p = sub.add_parser("status", help="pokaż stan sesji")
@@ -71,6 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("transcribe", help="transkrybuj nagrania bez transkrypcji")
     sessions_arg(p, "nazwy sesji (domyślnie wszystkie)")
+    engine_arg(p)
     p.set_defaults(func=cmd_transcribe)
 
     p = sub.add_parser("speakers", help="przypisz imiona mówcom (interaktywnie, z podpowiedzią AI)")
@@ -111,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=0, help="tryb wsadowy z podanym rozmiarem partii")
     p.add_argument("--no-diarization", action="store_true", help="pomiń pomiar rozpoznawania głosów")
     p.add_argument("--diarization-models", nargs="+", default=[DIARIZATION_MODEL], metavar="MODEL",
-                   help=f"modele diaryzacji do porównania (domyślnie {DIARIZATION_MODEL})")
+                   help=f"modele diaryzacji do porównania; „onnx” = silnik bez PyTorcha (domyślnie {DIARIZATION_MODEL})")
     p.add_argument("--no-whisper", dest="threads", action="store_const", const=[],
                    help="pomiń pomiar Whispera")
     p.set_defaults(func=cmd_benchmark)

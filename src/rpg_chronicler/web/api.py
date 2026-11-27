@@ -8,8 +8,8 @@ import os
 from .. import chronicle, envfile, notes, settings
 from ..campaigns import campaign_key
 from ..config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_QUOTES, CHRONICLE_TWO_STEP, CLAUDE_CODE_MODEL,
-                      GLOSSARY_PROPOSALS, LLM_PROVIDER, MODEL_SIZE, RCLONE_AUDIO_REMOTE, RCLONE_SUMMARY_REMOTE,
-                      RCLONE_TXT_REMOTE, WHISPER_CPU_THREADS, WHISPER_NAME_HINTS, WHISPER_VAD)
+                      DIARIZATION_ENGINE, GLOSSARY_PROPOSALS, LLM_PROVIDER, MODEL_SIZE, RCLONE_AUDIO_REMOTE,
+                      RCLONE_SUMMARY_REMOTE, RCLONE_TXT_REMOTE, WHISPER_CPU_THREADS, WHISPER_NAME_HINTS, WHISPER_VAD)
 from ..gui.text import (campaign_filter_options, format_timestamp, has_speaker_labels, session_campaign, session_stage,
                         transcript_blocks)
 from .. import session as session_module
@@ -169,6 +169,9 @@ def settings_payload() -> dict:
         {"title": "Transkrypcja", "description": "Zmiany obowiązują od następnej transkrypcji.", "fields": [
             _field("transkrypcja.model", "Model Whisper", "choice", MODEL_SIZE,
                    "Nowy model pobiera się przy pierwszym użyciu (do ok. 3 GB)", whisper),
+            _field("transkrypcja.rozpoznawanie_glosow", "Rozpoznawanie głosów", "choice", DIARIZATION_ENGINE,
+                   "ONNX jest nowy - porównaj podział na mówców, zanim przy nim zostaniesz",
+                   [("pyannote", "pyannote – dotychczasowy"), ("onnx", "ONNX – ok. 6× szybszy (nowy)")]),
             _field("transkrypcja.watki", "Wątki procesora", "int", WHISPER_CPU_THREADS,
                    f"Zwykle najszybciej przy liczbie rdzeni fizycznych ({max(1, cpu // 2)})", None),
             _field("transkrypcja.pomijanie_ciszy", "Pomijanie ciszy", "bool", WHISPER_VAD,

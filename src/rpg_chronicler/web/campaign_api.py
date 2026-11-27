@@ -134,6 +134,7 @@ def detail(key: str) -> dict:
     recap_text, ideas_text = prep.read(recap)[1], prep.read(ideas)[1]
     return {
         "key": key, "system": campaign.system, "context": campaign.context, "image_style": campaign.image_style,
+        "voice_threshold": "" if campaign.voice_threshold is None else f"{campaign.voice_threshold:g}",
         "file": campaigns.campaigns_file(), "webhook": bool(chronicle.webhook_for(key)),
         "state": _state(memory.load_state(key)), "proposal": _state(memory.load_proposal(key)),
         # słownik
@@ -194,6 +195,15 @@ def _remove_character(campaign: Campaign, body: dict) -> Campaign:
                                                 if k != body["name"]})
 
 
+def _set_voice_threshold(campaign: Campaign, body: dict) -> Campaign:
+    text = str(body.get("value", "")).strip()
+    threshold = campaigns.parse_voice_threshold(text) if text else None
+    if text and threshold is None:
+        low, high = campaigns.VOICE_THRESHOLD_RANGE
+        raise ValueError(f"Próg musi być liczbą od {low:g} do {high:g}, np. 0,65 (puste = domyślny)")
+    return replace(campaign, voice_threshold=threshold)
+
+
 def _category(body: dict) -> str:
     if body["category"] not in GLOSSARY_CATEGORIES:
         raise ValueError(f"Nieznana kategoria: {body['category']}")
@@ -219,7 +229,8 @@ def _set_description(campaign: Campaign, body: dict) -> Campaign:
 
 CHANGES = {
     "system": _set_text("system", required=True), "context": _set_text("context"),
-    "image_style": _set_text("image_style"), "description": _set_description,
+    "image_style": _set_text("image_style"), "voice_threshold": _set_voice_threshold,
+    "description": _set_description,
     "add_character": _add_character, "set_player": _set_player, "remove_character": _remove_character,
     "add_names": _add_names, "remove_name": _remove_name,
 }

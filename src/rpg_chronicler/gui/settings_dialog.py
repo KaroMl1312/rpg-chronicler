@@ -19,6 +19,7 @@ WHISPER_MODELS = [
     ("large-v3-turbo", "Large v3 Turbo", "ok. 2,5× szybszy od Medium, podobna jakość, dłuższe fragmenty"),
     ("large-v3", "Large v3", "najdokładniejszy, ok. 2,6× wolniejszy od Medium"),
 ]
+DIARIZATION_ENGINES = [("pyannote", "pyannote – dotychczasowy"), ("onnx", "ONNX – ok. 6× szybszy (nowy)")]
 FOLDERS = [("foldery.nagrania", "Nagrania", config.AUDIO_DIR),
            ("foldery.transkrypcje", "Transkrypcje", config.TXT_DIR),
            ("foldery.podsumowania", "Kroniki", config.SUMMARY_DIR)]
@@ -114,6 +115,12 @@ class SettingsDialog(Adw.PreferencesDialog):
             models.append((current_model, current_model))
         group.add(self._combo("Model Whisper", "Nowy model pobiera się przy pierwszym użyciu (do ok. 3 GB)",
                               models, current_model, lambda key: self._save("transkrypcja.model", key)))
+
+        group.add(self._combo("Rozpoznawanie głosów",
+                              "ONNX jest nowy - porównaj podział na mówców, zanim przy nim zostaniesz",
+                              DIARIZATION_ENGINES,
+                              self._value("transkrypcja.rozpoznawanie_glosow", config.DIARIZATION_ENGINE),
+                              lambda key: self._save("transkrypcja.rozpoznawanie_glosow", key)))
 
         cpu_count = os.cpu_count() or 2
         threads = Adw.SpinRow.new_with_range(1, cpu_count, 1)

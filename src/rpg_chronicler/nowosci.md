@@ -1,5 +1,11 @@
 # Nowości
 
+## 1.008 – 2026-11-27
+
+- **Drugi sposób rozpoznawania głosów do wyboru: ONNX.** Ok. 6 razy szybszy od dotychczasowego (w próbach 7–19 minut na sesję). Wybór jest w ustawieniach, w grupie „Transkrypcja”, albo przez `transcribe --glosy onnx`. Domyślnie zostaje pyannote - porównaj podział na mówców na swoich nagraniach, zanim zmienisz.
+- **Mniej pobierania przy ONNX:** jego modele zajmują ok. 33 MB i nie wymagają tokenu Hugging Face (token jest na razie nadal potrzebny do odcisków głosu).
+- **Próg rozdzielania głosów dla kampanii** (Kampanie → Ogólne): gdy dwóch graczy ma podobne głosy i program łączy ich w jeden, niższy próg (np. 0,65) rozdzieli ich, kosztem kilku dodatkowych krótkich głosów do nazwania. Jednorazowo: `transcribe --prog-glosow 0.65`.
+
 ## 1.007 – 2026-11-27
 
 - **Naprawiono transkrypcję nagrań dłuższych niż ok. 3 godziny:** rozpoznawanie głosów kończyło się na nich błędem „could not create a primitive”.

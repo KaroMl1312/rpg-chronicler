@@ -257,7 +257,7 @@ def cmd_upload(args):
 
 def cmd_transcribe(args):
     from ..transcription.runner import transcribe_sessions
-    transcribe_sessions(list_sessions(args.sessions))
+    transcribe_sessions(list_sessions(args.sessions), args.engine, args.threshold)
 
 
 def cmd_speakers(args):
@@ -289,7 +289,7 @@ def cmd_run(args):
         header("Google Drive → dysk")
         sync_from_gdrive()
     header("Transkrypcja")
-    transcribe_sessions(list_sessions())
+    transcribe_sessions(list_sessions(), args.engine, args.threshold)
     header("Podsumowania")
     summarize_sessions(list_sessions(), args.provider,
                        interactive=args.interactive, allow_unnamed=args.allow_unnamed)

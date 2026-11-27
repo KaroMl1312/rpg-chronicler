@@ -24,6 +24,7 @@ FIELDS: dict[str, type] = {
     "transkrypcja.watki": int,
     "transkrypcja.pomijanie_ciszy": bool,
     "transkrypcja.podpowiedz_nazw": bool,
+    "transkrypcja.rozpoznawanie_glosow": str,
     "foldery.nagrania": str,
     "foldery.transkrypcje": str,
     "foldery.podsumowania": str,

@@ -43,7 +43,7 @@ jobs:
       - name: Zależności testów
         run: |
           python -m pip install --upgrade pip
-          pip install pytest markdown weasyprint
+          pip install pytest numpy markdown weasyprint
           pip install --no-deps -e .
 
       - name: Testy

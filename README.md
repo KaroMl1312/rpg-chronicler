@@ -85,6 +85,8 @@ Nazwa pliku nagrania wyznacza sesję i kampanię: `Kampania_RRMMDD.m4a` (np. `Za
 
 Transkrypcja 2-godzinnego nagrania trwa ok. 1 godz. 20 min (procesor Ryzen 5 7500F, model `medium`, 6 wątków); większość tego czasu zajmuje rozpoznawanie mówców. Na słabszym procesorze będzie dłużej. Szybkość na swoim komputerze sprawdzisz komendą `benchmark`. Bardzo długie nagrania potrzebują dużo pamięci: 4-godzinna sesja z `pyannote` zajęła w szczycie ok. 17 GB RAM.
 
+Rozpoznawanie mówców ma dwa silniki (ustawienia → „Rozpoznawanie głosów”): `pyannote` (domyślny) i nowy `onnx`, ok. 6 razy szybszy, ale z nieco innym podziałem na mówców. Gdy dwóch graczy o podobnych głosach trafia do jednego mówcy, obniż próg rozdzielania głosów tej kampanii (zakładka Kampanie → Ogólne, np. 0,65).
+
 Testy: `.venv/bin/python -m pytest`. Testy nie potrzebują modeli ani sieci.
 
 ## Licencja
@@ -93,7 +95,7 @@ Testy: `.venv/bin/python -m pytest`. Testy nie potrzebują modeli ani sieci.
 
 Program jest dostarczany „tak jak jest”, bez żadnej gwarancji.
 
-Biblioteki i modele, których program używa (faster-whisper, pyannote, PyTorch, WeasyPrint i inne), mają własne licencje. Pobierasz je osobno i obowiązują ich warunki.
+Biblioteki i modele, których program używa (faster-whisper, pyannote, PyTorch, WeasyPrint i inne), mają własne licencje. Pobierasz je osobno i obowiązują ich warunki. Silnik `onnx` pobiera modele [pyannote segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) (MIT, © CNRS; wersja ONNX: [k2-fsa](https://huggingface.co/csukuangfj/sherpa-onnx-pyannote-segmentation-3-0)) i [WeSpeaker ResNet34-LM](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM) (CC BY 4.0).
 
 ## Zastrzeżenie
 

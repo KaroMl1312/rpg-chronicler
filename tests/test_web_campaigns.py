@@ -50,14 +50,19 @@ def test_changes_are_saved_and_keep_other_campaigns(zakon):
                        ("add_character", {"value": "Amos = Ania"}), ("set_player", {"name": "Fen", "value": "Ola"}),
                        ("add_names", {"category": "miejsca", "value": "Altdorf, Dolina,"}),
                        ("remove_name", {"category": "npc", "name": "Ojciec Romulus"}),
-                       ("description", {"name": "fen", "value": "Tropicielka"})):
+                       ("description", {"name": "fen", "value": "Tropicielka"}),
+                       ("voice_threshold", {"value": "0,65"})):
         campaign_api.change("Zakon", what, body)
     c = load()
     assert (c.system, c.context, c.player_characters) == ("Nowy", "Dolina", {"Fen": "Ola", "Amos": "Ania"})
     assert c.names("miejsca") == ("Altdorf", "Dolina") and c.names("npc") == ("Hans",)
     assert c.description("Fen") == "Tropicielka" and "Inna" in load_campaigns()
+    assert c.voice_threshold == 0.65 and campaign_api.detail("Zakon")["voice_threshold"] == "0.65"
+    campaign_api.change("Zakon", "voice_threshold", {"value": ""})
+    assert load().voice_threshold is None
     for what, body in (("system", {"value": " "}), ("add_names", {"category": "zla", "value": "x"}),
-                       ("description", {"name": "Nikt", "value": "x"}), ("usun_wszystko", {})):
+                       ("description", {"name": "Nikt", "value": "x"}), ("usun_wszystko", {}),
+                       ("voice_threshold", {"value": "1,5"})):
         with pytest.raises(ValueError):
             campaign_api.change("Zakon", what, body)
 

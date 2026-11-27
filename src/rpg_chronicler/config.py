@@ -58,6 +58,14 @@ WHISPER_VAD = _setting("transkrypcja.pomijanie_ciszy", False)  # szybciej, mniej
 WHISPER_NAME_HINTS = _setting("transkrypcja.podpowiedz_nazw", True)  # słownik kampanii jako hotwords Whispera
 WHISPER_BATCH_SIZE = 0       # >0 = tryb wsadowy BatchedInferencePipeline (zawsze z VAD)
 DIARIZATION_MODEL = "pyannote/speaker-diarization-3.1"
+# Silnik rozpoznawania głosów: "pyannote" (PyTorch) albo "onnx" (te same sieci bez PyTorcha, ok. 6 razy szybciej)
+DIARIZATION_ENGINES = ("pyannote", "onnx")
+DIARIZATION_ENGINE = _setting("transkrypcja.rozpoznawanie_glosow", "pyannote")
+if DIARIZATION_ENGINE not in DIARIZATION_ENGINES:
+    print(f"[OSTRZEŻENIE] Nieznany silnik rozpoznawania głosów '{DIARIZATION_ENGINE}' - używam pyannote.")
+    DIARIZATION_ENGINE = "pyannote"
+# Próg grupowania głosów (pyannote 3.1); niższy = więcej osobnych mówców. Kampania może mieć własny (prog_glosow).
+DIARIZATION_THRESHOLD = 0.7045654963945799
 SUPPORTED_EXTS = [".m4a", ".mp3", ".wav", ".flac", ".ogg"]
 
 # --- AI KONFIGURACJA (sekrety z .env) ---
