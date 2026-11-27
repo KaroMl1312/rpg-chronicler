@@ -1,4 +1,4 @@
-"""Logika GUI niezależna od GTK (formatowanie, stan sesji) - testowana zwykłym pytestem."""
+"""Logika okna niezależna od HTTP (formatowanie, stan sesji) - testowana zwykłym pytestem."""
 import os
 import re
 

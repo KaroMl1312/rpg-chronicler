@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sprawdza GUI (systemowy Python), .venv (transkrypcja), programy zewnętrzne i konfigurację.
+# Sprawdza okno programu (systemowy Python), .venv (transkrypcja), programy zewnętrzne i konfigurację.
 # Warto uruchomić po aktualizacji systemu (np. nowej wersji Fedory).
 #   ./sprawdz-srodowisko            sprawdź
 #   ./sprawdz-srodowisko --napraw   odtwórz .venv (torch w wersji CPU) i sprawdź ponownie

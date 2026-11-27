@@ -1,6 +1,6 @@
 """Dane nowego okna do zakładki Kampanie (etap 3): kampania, słownik, pamięć, przed sesją, dokumenty, obrazki.
 
-Jak api.py - bez HTTP, słowniki gotowe do JSON-a; logika ta sama co w gui/campaigns_view.py i gui/entry_page.py.
+Jak api.py - bez HTTP, słowniki gotowe do JSON-a.
 Serwer obsługuje zapytania w wątkach, więc zmiany kampanie.toml (odczyt - zmiana - zapis) idą przez jeden zamek.
 """
 import base64

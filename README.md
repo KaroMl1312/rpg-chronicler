@@ -15,16 +15,16 @@ Transkrypcja działa lokalnie na procesorze (bez karty graficznej): [faster-whis
 - **„Zapytaj kronikarza”:** pytania o przebieg kampanii z odpowiedzią na podstawie kronik.
 - **Sesje bez nagrania:** kronika z notatek MG.
 - **Wyszukiwarka** po kronikach i transkrypcjach.
-- GUI (GTK 4 + libadwaita) i pełny interfejs wiersza poleceń.
+- Okno programu (Linux i Windows) i pełny interfejs wiersza poleceń.
 
 Interfejs, komunikaty i prompty są po polsku. Kroniki również powstają po polsku.
 
 ## Wymagania
 
-Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucjach powinien działać po doinstalowaniu odpowiedników pakietów. Na Windowsie działa wersja bez okna (konsola), z instalatorem - patrz „Instalacja na Windowsie”. Na macOS nie był sprawdzany.
+Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucjach powinien działać po doinstalowaniu odpowiedników pakietów. Na Windowsie działa z instalatorem (wersja testowa) - patrz „Instalacja na Windowsie”. Na macOS nie był sprawdzany.
 
 - Python 3.11 do części obliczeniowej (dla nowszych wersji może brakować `onnxruntime`).
-- Systemowy Python z PyGObject, GTK 4 i libadwaita do GUI (Fedora: `python3-gobject`, `gtk4`, `libadwaita`).
+- Do okna programu: systemowy Python z PyGObject i WebKitGTK 6 (Fedora: `python3-gobject`, `webkitgtk6.0`). Bez nich okno otworzy się w przeglądarce.
 - `ffmpeg` / `ffprobe`.
 - `rclone` z remote'em `gdrive:`, jeśli nagrania mają przychodzić z Google Drive (opcjonalnie; można też wrzucać pliki do folderu lokalnie).
 - Darmowy token [HuggingFace](https://huggingface.co/settings/tokens) z zaakceptowaną licencją modelu [pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1).
@@ -40,7 +40,7 @@ Program powstał i jest używany na **Linuksie (Fedora)**. Na innych dystrybucja
 git clone https://github.com/KaroMl1312/rpg-chronicler.git
 cd rpg-chronicler
 ./sprawdz-srodowisko --napraw   # tworzy .venv (Python 3.11, torch w wersji CPU) i instaluje program
-./rpg-chronicler-gui            # Ustawienia → Klucze API: wklej token Hugging Face (i klucz AI, jeśli potrzebny)
+./rpg-chronicler-okno           # menu ☰ → Ustawienia → Klucze API: wklej token Hugging Face (i klucz AI, jeśli potrzebny)
 ./sprawdz-srodowisko            # sprawdza, czy wszystko jest na miejscu
 ```
 
@@ -50,33 +50,33 @@ Przy pierwszej transkrypcji modele Whisper i pyannote pobierają się same (ok. 
 
 ## Instalacja na Windowsie (wersja testowa)
 
-Na Windowsie program działa na razie **bez okna**, z komend w konsoli.
+Na Windowsie okno programu korzysta z wbudowanego w system Edge WebView2. Są też komendy w konsoli.
 
 1. Pobierz program: na GitHubie **Code → Download ZIP**, a potem rozpakuj go, np. do `Dokumenty\rpg-chronicler`.
 2. Kliknij dwa razy **`instaluj-windows.bat`**. Windows może ostrzec, że plik pochodzi z internetu: kliknij „Więcej informacji” → „Uruchom mimo to”.
 3. Instalator sam przygotuje wszystko, co potrzebne: Python 3.11, biblioteki Visual C++ (zapyta o zgodę administratora), ffmpeg, PyTorch w wersji na procesor i biblioteki programu. Na koniec zapyta o token Hugging Face i o to, które AI ma pisać kroniki. Zajmuje to zwykle 10–20 minut. Jeśli coś się nie uda, uruchom go ponownie: pominie to, co już jest.
-4. Otwórz skrót **„RPG Chronicles”** z pulpitu albo menu Start. To konsola z gotowymi komendami. Nagrania wrzucaj do `Dokumenty\Audio_sesje_rpg`, a potem wpisz `rpg-chronicler run --offline`.
+4. Otwórz skrót **„RPG Chronicles”** z pulpitu albo menu Start. Nagrania wrzucaj do `Dokumenty\Audio_sesje_rpg`. Skrót **„RPG Chronicles (konsola)”** otwiera konsolę z gotowymi komendami (np. `rpg-chronicler run --offline`).
 
 Pobieranie z Google Drive (rclone) i Claude Code trzeba na Windowsie zainstalować osobnie.
 
 ## Konfiguracja
 
-- **Klucze API:** najprościej w GUI, w oknie ustawień na stronie „Klucze API”. Przy każdej usłudze są linki do stron, na których zakłada się klucz, i krótka instrukcja. Klucze zapisują się w pliku `.env` w folderze programu (prawa tylko dla Ciebie). Można go też edytować ręcznie (`cp .env.example .env`): `HUGGINGFACE_TOKEN`, `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, `LLM_PROVIDER` i `CLOUDFLARE_*`. Plik jest w `.gitignore`, nie wrzucaj go nigdzie.
-- **Ustawienia:** okno ustawień w GUI albo `~/.config/rpg-chronicler/ustawienia.toml`. Ustawia się tam między innymi:
+- **Klucze API:** najprościej w oknie programu: menu ☰ → Ustawienia → „Klucze API”. Przy każdej usłudze są linki do stron, na których zakłada się klucz, i krótka instrukcja. Klucze zapisują się w pliku `.env` w folderze programu (prawa tylko dla Ciebie). Można go też edytować ręcznie (`cp .env.example .env`): `HUGGINGFACE_TOKEN`, `ANTHROPIC_API_KEY` / `GEMINI_API_KEY`, `LLM_PROVIDER` i `CLOUDFLARE_*`. Plik jest w `.gitignore`, nie wrzucaj go nigdzie.
+- **Ustawienia:** w oknie programu (menu ☰ → Ustawienia) albo `~/.config/rpg-chronicler/ustawienia.toml`. Ustawia się tam między innymi:
   - foldery: domyślnie `~/Documents/Audio_sesje_rpg`, `~/Documents/Transkrypcje`, `~/Documents/Podsumowania`,
   - foldery na Google Drive,
   - dostawcę AI,
   - liczbę wątków transkrypcji,
   - adresy webhooków Discorda dla kampanii.
-- **Kampanie:** plik `kampanie.toml` w folderze transkrypcji, najwygodniej edytowany w GUI (zakładka „Kampanie”). Format pokazuje `kampanie.przyklad.toml`.
+- **Kampanie:** plik `kampanie.toml` w folderze transkrypcji, najwygodniej edytowany w oknie programu (zakładka „Kampanie”). Format pokazuje `kampanie.przyklad.toml`.
 
 Nazwa pliku nagrania wyznacza sesję i kampanię: `Kampania_RRMMDD.m4a` (np. `Zakon_261015.m4a`). Część przed pierwszym `_` to kampania, a data służy do ustalenia kolejności sesji.
 
 ## Uruchamianie
 
 ```bash
-./rpg-chronicler-gui                 # GUI
-./rpg-chronicler-gui --instaluj      # wpis w menu aplikacji (--pulpit: także skrót na pulpicie)
+./rpg-chronicler-okno                # okno programu (--przegladarka: w przeglądarce)
+./rpg-chronicler-okno --instaluj     # wpis w menu aplikacji (--pulpit: także skrót na pulpicie)
 
 .venv/bin/rpg-chronicler             # cały przebieg: pobranie → transkrypcja → kroniki → wysyłka na Drive
 .venv/bin/rpg-chronicler status      # stan wszystkich sesji
@@ -86,6 +86,8 @@ Nazwa pliku nagrania wyznacza sesję i kampanię: `Kampania_RRMMDD.m4a` (np. `Za
 Transkrypcja 2-godzinnego nagrania trwa ok. 1 godz. 20 min (procesor Ryzen 5 7500F, model `medium`, 6 wątków); większość tego czasu zajmuje rozpoznawanie mówców. Na słabszym procesorze będzie dłużej. Szybkość na swoim komputerze sprawdzisz komendą `benchmark`. Bardzo długie nagrania potrzebują dużo pamięci: 4-godzinna sesja z `pyannote` zajęła w szczycie ok. 17 GB RAM.
 
 Rozpoznawanie mówców ma dwa silniki (ustawienia → „Rozpoznawanie głosów”): `pyannote` (domyślny) i nowy `onnx`, ok. 6 razy szybszy, ale z nieco innym podziałem na mówców. Gdy dwóch graczy o podobnych głosach trafia do jednego mówcy, obniż próg rozdzielania głosów tej kampanii (zakładka Kampanie → Ogólne, np. 0,65).
+
+Prompty AI (kronika, skrót, cytaty, encyklopedia…) można podejrzeć i zmienić w oknie programu: menu ☰ → „Prompty AI”. Zmienione zapisują się na tym komputerze, a „Przywróć domyślny” cofa zmianę.
 
 Testy: `.venv/bin/python -m pytest`. Testy nie potrzebują modeli ani sieci.
 

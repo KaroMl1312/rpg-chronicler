@@ -1,12 +1,12 @@
-from importlib.resources import files
+from . import custom
 
 # Linia w szablonie oddzielająca stały początek (wspólny dla kilku zapytań - do cache'owania w API) od reszty
-CACHE_MARK = "---8<---"
+CACHE_MARK = custom.CACHE_MARK
 
 
 def _template(name: str, values: dict) -> str:
-    template = files(__package__).joinpath(f"{name}.md").read_text(encoding="utf-8")
-    return template.format(**values)
+    """Szablon zmieniony przez użytkownika (okno „Prompty AI”) albo domyślny, z podstawionymi polami."""
+    return custom.template(name).format(**values)
 
 
 def render(name: str, **values: str) -> str:

@@ -1,11 +1,11 @@
 """Dane nowego okna (etap 4): panel nagrania przed transkrypcją, uwagi jakości, statystyki, „Uzupełnij brakujące”.
 
-Jak api.py - bez HTTP, słowniki gotowe do JSON-a; logika ta sama co w gui/recording_page.py i gui/transcript_page.py.
+Jak api.py - bez HTTP, słowniki gotowe do JSON-a.
 """
 import os
 
 from .. import audio_trim, quality, stats
-from ..gui.text import format_minutes
+from .text import format_minutes
 from ..maintenance import backfill
 from ..session import list_sessions
 from ..transcript import Transcript, load_speaker_mapping

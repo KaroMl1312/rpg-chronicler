@@ -14,6 +14,7 @@ import webbrowser
 from pathlib import Path
 
 from ..config import IS_WINDOWS
+from . import environment
 from .server import App, start_server
 
 SYSTEM_PYTHON = "/usr/bin/python3"
@@ -96,6 +97,7 @@ def _browser(url: str, app: App) -> None:
 def main(argv: list[str]) -> int:
     app = App()
     server, url = start_server(app)
+    environment.start()
     try:
         if "--przegladarka" in argv or not (_webview(url) or _gtk_shell(url)):
             _browser(url, app)

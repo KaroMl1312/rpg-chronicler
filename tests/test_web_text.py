@@ -1,5 +1,5 @@
-"""Logika GUI bez GTK (rpg_chronicler.gui.text nie importuje gi)."""
-from rpg_chronicler.gui.text import (campaign_filter_options, estimate_remaining, format_minutes,
+"""Logika GUI bez GTK (rpg_chronicler.web.text nie importuje gi)."""
+from rpg_chronicler.web.text import (campaign_filter_options, estimate_remaining, format_minutes,
                                      format_timestamp, markdown_spans, session_stage, transcript_blocks)
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.transcript import Segment, Transcript, save_speaker_mapping
@@ -55,7 +55,7 @@ def test_estimate_remaining():
 
 def test_new_proposals_after_task(workspace):
     from rpg_chronicler.campaign_tools import glossary, memory
-    from rpg_chronicler.gui.text import new_proposals, proposals_snapshot
+    from rpg_chronicler.web.text import new_proposals, proposals_snapshot
     from rpg_chronicler.campaigns import Campaign
 
     glossary.add_proposals(Campaign("Fallout", "Fallout"), {"npc": ["Moira"]})

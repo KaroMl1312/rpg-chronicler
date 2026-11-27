@@ -1,13 +1,13 @@
 """Dane nowego okna do pracy z sesją (etap 2): mówcy, Discord, notatki MG, usuwanie, wyszukiwarka, nagranie.
 
-Jak api.py - bez HTTP, słowniki gotowe do JSON-a. Logika ta sama co w oknie GTK (gui/speakers_page.py itd.).
+Jak api.py - bez HTTP, słowniki gotowe do JSON-a.
 """
 import datetime
 import os
 
 from .. import chronicle, discord, notes, voices
 from ..campaigns import campaign_key, load_campaigns
-from ..gui.text import format_minutes, format_timestamp, highlight_markup
+from .text import format_minutes, format_timestamp, highlight_markup
 from ..maintenance import deletion
 from ..search import KIND_CHRONICLE, KIND_NOTES, TranscriptCache, search, summary_line
 from ..session import list_sessions

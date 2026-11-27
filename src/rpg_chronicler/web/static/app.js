@@ -221,6 +221,7 @@ function showLog() {
 
 async function refresh() {
   state.data = await api("/api/state");
+  renderEnvironment();
   renderFilter();
   renderList();
   if (state.current && !state.data.sessions.some((s) => s.name === state.current)) {   // sesja usunięta
@@ -230,6 +231,19 @@ async function refresh() {
   if (state.main === "kampanie") return renderCampaigns();
   if (state.current) await loadSession(state.current, false);
   else renderEmpty();
+}
+
+// Baner „środowisko .venv nie działa” (sprawdzenie w tle przy starcie okna)
+function renderEnvironment() {
+  const env = state.data.environment, banner = $("#env-banner");
+  banner.hidden = !env;
+  if (!env) return;
+  banner.replaceChildren(
+    el("span", { class: "grow" }, "Środowisko transkrypcji (.venv) nie działa - transkrypcja, odciski głosu i kroniki są niedostępne."),
+    button("Jak naprawić", () => openDialog("Napraw środowisko transkrypcji", el("div", { class: "env-help" },
+      el("p", {}, `Naprawa: ${env.hint}. Odtworzy to .venv (kilka minut, pobiera ok. 1 GB). Potem uruchom program ponownie.`),
+      el("p", { class: "hint" }, `Folder programu: ${env.folder}`),
+      el("p", { class: "hint" }, `Szczegóły: ${env.error}`)), { cls: "alert" })));
 }
 
 function renderFilter() {
@@ -493,7 +507,7 @@ async function confirmClose() {
 
 function unsavedTexts() {
   collectDrafts();
-  return [...camp.drafts.values()].some((d) => d.long);
+  return [...camp.drafts.values()].some((d) => d.long) || promptEditorDirty();
 }
 
 // --- menu główne, ustawienia, nowości -----------------------------------------------------------
@@ -512,6 +526,7 @@ function mainMenu(e) {
     "-",
     { label: "Uzupełnij brakujące…", onclick: backfillDialog, disabled: state.running },
     { label: "Ustawienia", onclick: showSettings },
+    { label: "Prompty AI", onclick: () => promptsDialog() },
     { label: "Pokaż log", onclick: showLog },
     { label: `Nowości (wersja ${state.data.version})`, onclick: showChangelog },
   ]);
@@ -634,6 +649,13 @@ function init() {
     if (e.ctrlKey && e.key === "n") { e.preventDefault(); notesDialog(); }
   });
   // Sygnał życia: w trybie przeglądarki serwer kończy pracę, gdy okno zostanie zamknięte
+  // wynik sprawdzenia .venv przychodzi kilka sekund po starcie
+  const envPoll = setInterval(() => api("/api/environment").then((r) => {
+    if (!r.done || !state.data) return;
+    clearInterval(envPoll);
+    state.data.environment = r.status;
+    renderEnvironment();
+  }).catch(() => {}), 3000);
   setInterval(() => api("/api/task?since=" + state.seq).then((t) => { if (t.running && !state.running) pollTask(); })
     .catch(() => {}), 5000);
   if (HASH.get("tab")) state.tab = HASH.get("tab");
@@ -641,7 +663,8 @@ function init() {
   // #okno=… otwiera okno dialogowe od razu (zrzuty ekranu i test okna bez klikania)
   const dialogs = { szukaj: searchDialog, notatki: () => notesDialog(), ustawienia: showSettings, nowosci: showChangelog,
                     discord: discordDialog, popraw: reviseDialog, usun: () => confirmDelete("kronika"),
-                    statystyki: () => statsDialog(state.detail), uzupelnij: backfillDialog };
+                    statystyki: () => statsDialog(state.detail), uzupelnij: backfillDialog,
+                    prompty: () => promptsDialog(HASH.get("prompt")) };
   if (HASH.get("kampania")) {
     camp.key = HASH.get("kampania");
     camp.tab = HASH.get("ktab") || camp.tab;

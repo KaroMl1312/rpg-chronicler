@@ -1,7 +1,6 @@
 # Testy przy każdym pushu i pull requeście, na Linuksie i Windowsie.
 # Bez modeli (torch, faster-whisper, pyannote) - testy ich nie potrzebują (patrz CLAUDE.md, „Zasady przy zmianach”).
-# Python 3.11 jak .venv, najnowszy 3.x jak systemowy Python, na którym działa GUI.
-# Test dymny GUI pomija się na obu systemach (brak gtk4-broadwayd i PyGObject).
+# Python 3.11 jak .venv, najnowszy 3.x jak systemowy Python (sprawdz-srodowisko, instalacja skrótów).
 name: Testy
 
 on:

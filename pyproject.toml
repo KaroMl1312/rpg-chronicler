@@ -35,9 +35,8 @@ version = {attr = "rpg_chronicler.version.VERSION"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-rpg_chronicler = ["prompts/*.md", "gui/*.svg", "nowosci.md", "web/static/*"]
+rpg_chronicler = ["prompts/*.md", "*.svg", "nowosci.md", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q -p no:anyio"
-markers = ["gui: test dymny GUI w Broadway (systemowy Python z GTK 4); wyłączenie: -m \"not gui\""]

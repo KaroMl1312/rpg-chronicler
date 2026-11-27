@@ -1,5 +1,5 @@
 from rpg_chronicler import cli
-from rpg_chronicler.gui.text import highlight_markup
+from rpg_chronicler.web.text import highlight_markup
 from rpg_chronicler.search import KIND_CHRONICLE, KIND_TRANSCRIPT, search, summary_line
 from rpg_chronicler.session import list_sessions
 from rpg_chronicler.textmatch import contains_name, variants

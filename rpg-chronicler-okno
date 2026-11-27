@@ -1,6 +1,28 @@
 #!/bin/sh
-# Nowe okno programu (HTML): serwer w .venv + okno GTK/WebKit z systemu (web/okno_gtk.py).
-#   ./rpg-chronicler-okno                  uruchom
-#   ./rpg-chronicler-okno --przegladarka   otwórz w przeglądarce zamiast osobnego okna
-ROOT="$(dirname "$(readlink -f "$0")")"
-exec "$ROOT/.venv/bin/python" -m rpg_chronicler.web "$@"
+# Okno programu (HTML): serwer w .venv + okno GTK/WebKit z systemu (web/okno_gtk.py).
+#   ./rpg-chronicler-okno                         uruchom
+#   ./rpg-chronicler-okno --przegladarka          otwórz w przeglądarce zamiast osobnego okna
+#   ./rpg-chronicler-okno --instaluj [--pulpit]   dodaj do menu aplikacji (i skrót na pulpicie); --odinstaluj usuwa
+SELF="$(readlink -f "$0")"
+ROOT="$(dirname "$SELF")"
+case " $* " in
+    *" --instaluj "*|*" --odinstaluj "*)
+        # systemowym Pythonem (tylko stdlib) - działa także przy zepsutym .venv
+        RPG_CHRONICLER_LAUNCHER="$SELF" PYTHONPATH="$ROOT/src" exec /usr/bin/python3 -m rpg_chronicler.desktop "$@" ;;
+esac
+VENV_PY="$ROOT/.venv/bin/python"
+if ! ERR="$("$VENV_PY" -c "import rpg_chronicler.web.server" 2>&1)"; then
+    MSG="Środowisko programu (.venv) nie działa - najczęściej po aktualizacji systemu.
+Naprawa: w terminalu, w katalogu programu, uruchom ./sprawdz-srodowisko --napraw
+
+Katalog: $ROOT
+Szczegóły: $(printf '%s' "$ERR" | tail -n 1)"
+    echo "[BŁĄD] $MSG" >&2
+    if command -v zenity >/dev/null 2>&1; then
+        zenity --error --title="RPG Chronicler" --width=520 --text="$MSG" 2>/dev/null
+    elif command -v notify-send >/dev/null 2>&1; then
+        notify-send -a "RPG Chronicler" "RPG Chronicler nie może się uruchomić" "$MSG"
+    fi
+    exit 1
+fi
+exec "$VENV_PY" -m rpg_chronicler.web "$@"

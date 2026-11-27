@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 from ..config import IS_WINDOWS
 from ..session import SessionNotFound
-from . import api, campaign_api, recording_api, session_api
+from . import api, campaign_api, environment, prompts_api, recording_api, session_api
 from .tasks import TaskRunner
 
 STATIC_DIR = Path(__file__).with_name("static")
@@ -95,6 +95,11 @@ class App:
                 q["name"], q.get("start", ""), q.get("end", ""), float(q.get("gaps") or 0)),
             ("GET", "/api/stats"): lambda q, b: recording_api.session_stats(q["name"], q.get("campaign") == "1"),
             ("GET", "/api/backfill"): lambda q, b: recording_api.backfill_plan(),
+            ("GET", "/api/environment"): lambda q, b: {"done": environment.done(), "status": environment.status()},
+            ("GET", "/api/prompts"): lambda q, b: prompts_api.prompt_list(),
+            ("GET", "/api/prompt"): lambda q, b: prompts_api.prompt(q["name"]),
+            ("POST", "/api/prompt"): lambda q, b: prompts_api.save(b["name"], b["text"]),
+            ("POST", "/api/prompt/reset"): lambda q, b: prompts_api.reset(b["name"]),
         }
 
     def _open(self, path: str) -> dict:

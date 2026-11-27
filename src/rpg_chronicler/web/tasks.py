@@ -14,7 +14,7 @@ import time
 
 from .. import progress
 from ..config import IS_WINDOWS, PROJECT_ROOT
-from ..gui.text import estimate_remaining, new_proposals, proposals_snapshot
+from .text import estimate_remaining, new_proposals, proposals_snapshot
 
 CANCEL_TIMEOUT = 10        # sekundy od przerwania do wymuszonego zakończenia
 LOG_LIMIT = 5000           # tyle ostatnich linii logu trzyma serwer

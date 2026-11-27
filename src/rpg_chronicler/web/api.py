@@ -10,7 +10,8 @@ from ..campaigns import campaign_key
 from ..config import (CAMPAIGN_MEMORY, CHRONICLE_BRIEF, CHRONICLE_QUOTES, CHRONICLE_TWO_STEP, CLAUDE_CODE_MODEL,
                       DIARIZATION_ENGINE, GLOSSARY_PROPOSALS, LLM_PROVIDER, MODEL_SIZE, RCLONE_AUDIO_REMOTE,
                       RCLONE_SUMMARY_REMOTE, RCLONE_TXT_REMOTE, WHISPER_CPU_THREADS, WHISPER_NAME_HINTS, WHISPER_VAD)
-from ..gui.text import (campaign_filter_options, format_timestamp, has_speaker_labels, session_campaign, session_stage,
+from . import environment
+from .text import (campaign_filter_options, format_timestamp, has_speaker_labels, session_campaign, session_stage,
                         transcript_blocks)
 from .. import session as session_module
 from ..session import Session, SessionNotFound, list_sessions
@@ -49,6 +50,7 @@ def state() -> dict:
     sessions = list_sessions()
     return {
         "version": VERSION,
+        "environment": environment.status(),
         "provider": current_provider(),
         "providers": [{"key": k, "label": label} for k, label in PROVIDERS],
         "sessions": [session_item(s) for s in sessions],

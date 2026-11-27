@@ -1,5 +1,11 @@
 # Nowości
 
+## 1.010 – 2026-11-27
+
+- **Prompty AI do podglądu i edycji** (menu ☰ → „Prompty AI”): wszystkie prompty programu pogrupowane według zastosowania, z opisem, kiedy są używane, i z polami do wstawienia jednym kliknięciem. Zmienione zapisują się na tym komputerze, „Przywróć domyślny” cofa zmianę, a program ostrzega, gdy usuniesz potrzebne pole albo gdy nowa wersja programu zmieni domyślny prompt.
+- **Zostało jedno okno programu:** stare okno (GTK) usunięte. Wpis w menu i skrót na pulpicie tworzy teraz `./rpg-chronicler-okno --instaluj` (`--pulpit` dodaje skrót).
+- **Ostrzeżenie, gdy środowisko transkrypcji nie działa** (np. po aktualizacji systemu) - pasek na górze okna z instrukcją naprawy, a gdy nie da się uruchomić nawet okna, komunikat na ekranie.
+
 ## 1.009 – 2026-11-27
 
 - **Nowe okno wykorzystuje całą szerokość:** transkrypcja, kronika i pozostałe widoki zaczynają się od lewej i rozciągają na całe okno, jak w poprzedniej wersji, zamiast wąskiej kolumny na środku.

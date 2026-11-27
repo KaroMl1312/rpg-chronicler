@@ -1,9 +1,11 @@
 """Wpis aplikacji w menu (.desktop + ikona) i skrót na pulpicie, w katalogach użytkownika.
 
-Standard freedesktop - działa w GNOME, KDE i innych środowiskach. Bez GTK - testowane pytestem."""
+Standard freedesktop - działa w GNOME, KDE i innych środowiskach. Tylko stdlib - uruchamiane systemowym Pythonem
+ze skryptu ./rpg-chronicler-okno (--instaluj [--pulpit] / --odinstaluj), więc działa także przy zepsutym .venv."""
 import os
 import shutil
 import subprocess
+import sys
 from importlib.resources import files
 from pathlib import Path
 
@@ -106,3 +108,28 @@ def uninstall() -> list[Path]:
             path.unlink()
             removed.append(path)
     return removed
+
+
+def _launcher() -> str:
+    # Skrypt ./rpg-chronicler-okno ustawia RPG_CHRONICLER_LAUNCHER na swoją pełną ścieżkę
+    return os.environ.get("RPG_CHRONICLER_LAUNCHER") or os.path.abspath(sys.argv[0])
+
+
+def main(argv: list[str]) -> int:
+    if "--odinstaluj" in argv:
+        removed = uninstall()
+        print("\n".join(f"[SUKCES] Usunięto {p}" for p in removed) or "Nic do usunięcia.")
+        return 0
+    for path in install(_launcher()):
+        print(f"[SUKCES] Zapisano {path}")
+    print("RPG Chronicler jest w menu aplikacji (może być potrzebne ponowne zalogowanie).")
+    if "--pulpit" in argv:
+        print(f"[SUKCES] Skrót na pulpicie: {install_shortcut(_launcher())}")
+        if "GNOME" in os.environ.get("XDG_CURRENT_DESKTOP", "").upper():
+            print("[INFO] GNOME sam nie pokazuje ikon na pulpicie - potrzebne jest rozszerzenie "
+                  "„Desktop Icons NG (DING)”. Bez niego uruchamiaj z menu aplikacji lub przypnij do panelu.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

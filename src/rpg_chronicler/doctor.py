@@ -1,4 +1,4 @@
-"""Sprawdzenie środowiska: GUI (systemowy Python), .venv (transkrypcja), programy zewnętrzne i konfiguracja.
+"""Sprawdzenie środowiska: okno (systemowy Python z GTK i WebKit), .venv, programy zewnętrzne i konfiguracja.
 
 Uruchamiane systemowym Pythonem przez ./sprawdz-srodowisko, więc działa nawet przy zepsutym .venv
 (np. po aktualizacji Fedory). `--napraw` odtwarza .venv (stare zostaje jako kopia do czasu sukcesu).
@@ -70,27 +70,22 @@ def _clean_env() -> dict:
 
 # --- grupy sprawdzeń ---
 
-def check_gui(report: Report) -> None:
-    print("\nGUI (systemowy Python)")
+def check_window(report: Report) -> None:
+    """Okno programu: serwer działa w .venv, a samo okno to GTK 4 + WebKit 6 z systemowego Pythona
+    (web/okno_gtk.py). Bez WebKit okno otwiera się w przeglądarce."""
+    print("\nOkno programu (systemowy Python)")
     report.add(OK, f"Python {sys.version.split()[0]}", sys.executable)
-    probe = ("import gi; gi.require_version('Gtk', '4.0'); gi.require_version('Adw', '1');"
-             "from gi.repository import Gtk, Adw;"
-             "print(f'{Gtk.get_major_version()}.{Gtk.get_minor_version()} {Adw.get_major_version()}.{Adw.get_minor_version()}')")
+    probe = ("import gi; gi.require_version('Gtk', '4.0'); gi.require_version('WebKit', '6.0');"
+             "from gi.repository import Gtk, WebKit;"
+             "print(f'{Gtk.get_major_version()}.{Gtk.get_minor_version()} "
+             "{WebKit.get_major_version()}.{WebKit.get_minor_version()}')")
     proc = _run([sys.executable, "-c", probe])
     if proc.returncode == 0:
-        gtk, adw = proc.stdout.split()
-        adw_ok = tuple(map(int, adw.split("."))) >= (1, 5)  # Adw.Dialog, AlertDialog, PreferencesDialog
-        report.add(OK if adw_ok else ERROR, f"GTK {gtk}, libadwaita {adw}",
-                   "" if adw_ok else "GUI wymaga libadwaita ≥ 1.5")
+        gtk, webkit = proc.stdout.split()
+        report.add(OK, f"GTK {gtk}, WebKit {webkit}")
     else:
-        report.add(ERROR, "PyGObject / GTK 4 / libadwaita",
-                   "zainstaluj: sudo dnf install python3-gobject gtk4 libadwaita")
-        return
-
-    env = dict(os.environ, PYTHONPATH=str(ROOT / "src"))
-    proc = _run([sys.executable, "-c", "import rpg_chronicler.gui.window"], env=env)
-    report.add(OK if proc.returncode == 0 else ERROR, "Moduły GUI",
-               "" if proc.returncode == 0 else proc.stderr.strip().splitlines()[-1][:200])
+        report.add(WARN, "GTK 4 / WebKit 6",
+                   "brak - okno otworzy się w przeglądarce; zainstaluj: sudo dnf install python3-gobject webkitgtk6.0")
 
     if shutil.which("gst-inspect-1.0"):
         missing = [desc for element, desc in (("flacdec", "FLAC"), ("faad", "AAC/M4A"))
@@ -155,7 +150,7 @@ def check_tools(report: Report) -> None:
         report.add(OK if shutil.which("claude") else ERROR, "Claude Code (dostawca AI)",
                    "" if shutil.which("claude") else "brak komendy claude")
     report.add(OK if config.HUGGINGFACE_TOKEN else ERROR, "HUGGINGFACE_TOKEN",
-               "" if config.HUGGINGFACE_TOKEN else "brak - potrzebny do rozpoznawania mówców; wpisz go w GUI: Ustawienia → Klucze API")
+               "" if config.HUGGINGFACE_TOKEN else "brak - potrzebny do rozpoznawania mówców; wpisz go w oknie programu: Ustawienia → Klucze API")
 
     hub = Path(os.environ.get("HF_HOME") or os.path.expanduser("~/.cache/huggingface")) / "hub"
     for model, label in ((config.DIARIZATION_MODEL, "model diaryzacji"),
@@ -167,13 +162,13 @@ def check_tools(report: Report) -> None:
                           (config.SUMMARY_DIR, "folder kronik")):
         report.add(OK if os.path.isdir(folder) else WARN, label, folder if os.path.isdir(folder) else f"brak: {folder}")
 
-    from .gui.desktop import desktop_file_path
+    from .desktop import desktop_file_path
     desktop = desktop_file_path()
     if desktop.exists():
-        launcher = ROOT / "rpg-chronicler-gui"
+        launcher = ROOT / "rpg-chronicler-okno"
         valid = str(launcher) in desktop.read_text(encoding="utf-8")
         report.add(OK if valid else WARN, "Wpis w menu aplikacji",
-                   "" if valid else "wskazuje inny katalog - ./rpg-chronicler-gui --instaluj")
+                   "" if valid else "wskazuje stare okno albo inny katalog - ./rpg-chronicler-okno --instaluj")
 
 
 # --- naprawa .venv ---
@@ -214,7 +209,7 @@ def repair_venv() -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sprawdz-srodowisko",
-                                     description="Sprawdza, czy GUI, .venv i narzędzia rpg-chronicler działają.")
+                                     description="Sprawdza, czy okno, .venv i narzędzia rpg-chronicler działają.")
     parser.add_argument("--napraw", action="store_true", help="odtwórz .venv (torch w wersji CPU) i sprawdź ponownie")
     args = parser.parse_args(argv)
 
@@ -222,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     report = Report()
-    check_gui(report)
+    check_window(report)
     check_venv(report)
     check_tools(report)
     print(f"\nWynik: {report.errors} błędów, {report.warnings} uwag.")

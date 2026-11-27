@@ -9,7 +9,7 @@ from rpg_chronicler import after_chronicle, campaigns, cli, notes, revision, sea
 from rpg_chronicler.maintenance import backfill
 from rpg_chronicler.campaign_tools import diary
 from rpg_chronicler.campaigns import Campaign
-from rpg_chronicler.gui.text import session_stage
+from rpg_chronicler.web.text import session_stage
 from rpg_chronicler.session import list_sessions
 
 NOTES = "- Drużyna dotarła do Ubersreiku.\n- Fen kupił linę u kupca Hansa.\n- Most na Reiku zawalony.\n"
