@@ -2,6 +2,7 @@
 import json
 import shutil
 import subprocess
+import sys
 import time
 
 import pytest
@@ -88,7 +89,11 @@ def test_crashed_recording_can_be_finished(workspace):
     recorder = recording.Recorder(source_args=tone)
     raw = recorder.start("Warhammer_261127", "ton")
     assert wait_for(lambda: raw.exists() and raw.stat().st_size > 20000)
-    recorder.process.kill()   # awaria: ffmpeg nie kończy pliku
+    # awaria: ffmpeg nie kończy pliku (Windows: ffmpeg z Chocolatey to program pośredniczący - całe drzewo)
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/T", "/F", "/PID", str(recorder.process.pid)], capture_output=True)
+    else:
+        recorder.process.kill()
     recorder.process.wait()
     assert not recorder.status()["recording"] and recording.unfinished() == ["Warhammer_261127"]
     assert recording.duration(recording.finish("Warhammer_261127", "")) > 0.5

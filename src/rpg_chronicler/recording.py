@@ -342,8 +342,22 @@ def finish(name: str, audio_filter: str = DEFAULT_FILTER) -> Path:
         details = "".join(errors).strip().splitlines()
         raise RecordingError(f"ffmpeg nie przetworzył nagrania {name}: {details[-1] if details else proc.returncode}")
     os.replace(tmp, target)
-    os.replace(raw, kept_raw_path(name))
+    _move_when_free(raw, kept_raw_path(name))
     return target
+
+
+def _move_when_free(source: Path, target: Path, seconds: float = 10) -> None:
+    """Windows nie przeniesie pliku, który ktoś trzyma otwarty (np. kończący się ffmpeg) - chwilę ponawiamy."""
+    end = time.monotonic() + seconds
+    while True:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            if time.monotonic() > end:
+                raise RecordingError(f"Surowe nagranie {source} jest wciąż otwarte przez inny program (czy nagrywanie "
+                                     "nie trwa w innym oknie?). Gotowy plik jest już w folderze nagrań.") from None
+            time.sleep(0.5)
 
 
 def record_in_terminal(name: str, device: str) -> None:
