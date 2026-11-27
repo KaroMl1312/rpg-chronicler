@@ -1,5 +1,9 @@
 # Nowości
 
+## 1.009 – 2026-11-27
+
+- **Nowe okno wykorzystuje całą szerokość:** transkrypcja, kronika i pozostałe widoki zaczynają się od lewej i rozciągają na całe okno, jak w poprzedniej wersji, zamiast wąskiej kolumny na środku.
+
 ## 1.008 – 2026-11-27
 
 - **Drugi sposób rozpoznawania głosów do wyboru: ONNX.** Ok. 6 razy szybszy od dotychczasowego (w próbach 7–19 minut na sesję). Wybór jest w ustawieniach, w grupie „Transkrypcja”, albo przez `transcribe --glosy onnx`. Domyślnie zostaje pyannote - porównaj podział na mówców na swoich nagraniach, zanim zmienisz.
